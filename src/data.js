@@ -63,6 +63,22 @@ function rowIsUsable(row, context) {
   return true;
 }
 
+function breakdownRowIsUsable(row, context) {
+  const importId = Number(row.source_import_id);
+  const runDate = context.runDateByImport.get(importId);
+  if (runDate && row.period_end > runDate) return false;
+  return true;
+}
+
+function withBreakdownStatus(row, context) {
+  const runDate = context.runDateByImport.get(Number(row.source_import_id));
+  return {
+    ...row,
+    analysis_tail_incomplete: Boolean(runDate && row.period_end >= runDate),
+    report_run_date: runDate || null
+  };
+}
+
 export async function loadTimeSeries(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE) {
   const params = new URLSearchParams({
     select: "period_start,period_end,station_value,benchmark_value,benchmark_label,unit,quality_flags,source_import_id",
@@ -93,13 +109,18 @@ export async function loadLatestBreakdown(metricKey, dimensionType, filterSignat
     selectRows("wnmufm_analytics_observations", params.toString()),
     loadAnalysisContext()
   ]);
-  const usable = rows.filter((row) => rowIsUsable(row, context));
+  const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
   if (!usable.length) return [];
 
-  const latestEnd = usable.reduce((latest, row) => !latest || row.period_end > latest ? row.period_end : latest, null);
-  const latest = usable.filter((row) => row.period_end === latestEnd);
+  const complete = usable.filter((row) => periodIsComplete(
+    row.period_end,
+    context.runDateByImport.get(Number(row.source_import_id))
+  ));
+  const pool = complete.length ? complete : usable;
+  const latestEnd = pool.reduce((latest, row) => !latest || row.period_end > latest ? row.period_end : latest, null);
+  const latest = pool.filter((row) => row.period_end === latestEnd);
   const latestStart = latest.reduce((earliest, row) => !earliest || row.period_start < earliest ? row.period_start : earliest, null);
-  return latest.filter((row) => row.period_start === latestStart);
+  return latest.filter((row) => row.period_start === latestStart).map((row) => withBreakdownStatus(row, context));
 }
 
 export async function loadLatestValues(metricKeys, grain = "day") {

@@ -194,7 +194,10 @@ async function renderListeningByHour(hours) {
     scheduleNote = `The NPR One figures are valid, but automatic Composer schedule lookup is currently unavailable in this browser: ${error.message}`;
   }
 
-  els.nprHourDescription.innerHTML = `NPR One does <strong>not</strong> provide individual dates for this breakdown. It reports an average for each clock hour across weekdays and weekends during ${escapeHtml(formatDayDate(periodStart))} through ${escapeHtml(formatDayDate(periodEnd))}. The table is therefore ordered by time of day, not by audience size. ${escapeHtml(scheduleNote)} <a href="${escapeHtml(CONFIG.stationScheduleUrl)}" target="_blank" rel="noreferrer">Open the WNMU-FM schedule</a>.`;
+  const runDayNote = hours[0]?.analysis_tail_incomplete
+    ? ` This range-level NPR One aggregate includes the ${formatDayDate(hours[0].report_run_date)} report-run day; NPR does not provide dated hourly rows that would let us remove only that day. A future export ending the previous day will eliminate that limitation.`
+    : "";
+  els.nprHourDescription.innerHTML = `NPR One does <strong>not</strong> provide individual dates for this breakdown. It reports an average for each clock hour across weekdays and weekends during ${escapeHtml(formatDayDate(periodStart))} through ${escapeHtml(formatDayDate(periodEnd))}. The table is therefore ordered by time of day, not by audience size.${escapeHtml(runDayNote)} ${escapeHtml(scheduleNote)} <a href="${escapeHtml(CONFIG.stationScheduleUrl)}" target="_blank" rel="noreferrer">Open the WNMU-FM schedule</a>.`;
 
   const rows = [];
   for (let hour = 0; hour < 24; hour += 1) {
@@ -302,7 +305,7 @@ async function renderExplore() {
     els.exploreTable.innerHTML = "";
     return;
   }
-  els.explorePeriod.textContent = formatPeriod(rows[0], rows[0].grain);
+  els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
   const sorted = sortBreakdown(rows);
   const isPercent = rows[0].unit === "percent";
   renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
