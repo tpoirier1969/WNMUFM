@@ -1,43 +1,94 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
+import { formatDayDate, formatPeriod, isWeekendDate, shortDayLabel } from "./analysis.js";
+import { buildHourSchedule, fetchComposerSchedule, hourLabel } from "./schedule.js";
+import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
-  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton",
-  "refreshButton","summaryCards","trendMetric","trendGrain","trendTitle","trendChart","trendTable","programBars",
-  "deviceBars","channelBars","nprHourBars","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","versionBadge"
+  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
+  "refreshButton","summaryCards","trendMetric","trendGrain","trendTitle","trendDescription","trendChart","trendTable","programBars",
+  "deviceBars","channelBars","nprHourTable","nprHourDescription","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = { role: null, loading: false };
 
+const METRIC_DESCRIPTIONS = {
+  "streaming.listeners": "Unique listeners to WNMU-FM's live digital stream for each period. Use this to track reach. It does not measure how long they listened.",
+  "streaming.listener_hours": "Total hours spent listening to the live stream. Use this with listener counts to distinguish broader reach from deeper listening.",
+  "streaming.sessions": "Individual live-stream sessions. A listener can create more than one session, so this measures usage occasions rather than unique people.",
+  "website.active_users": "People NPR/Google Analytics counted as active visitors to wnmufm.org. Sudden spikes should be checked against engagement, geography and traffic source before being treated as audience growth.",
+  "website.pageviews": "Pages viewed on wnmufm.org. Useful for overall site activity, but strongest when paired with users, engagement and acquisition source.",
+  "website.engaged_seconds_per_user": "Average engaged time per website user. Low values during a traffic spike can reveal automated, accidental or low-quality visits.",
+  "audio.downloads": "On-demand audio file downloads. Use program, episode and player drilldowns to determine whether movement comes from real audience interest or bulk/archive retrieval.",
+  "audio.users": "Unique users downloading on-demand audio in the NPR reporting period. Do not add daily unique users to manufacture weekly or monthly uniques.",
+  "npr_one.localized_listeners": "Listeners localized to WNMU-FM in NPR One. This is an NPR One audience measure, not the same population as the live stream.",
+  "npr_one.average_minutes": "Average listening minutes among localized NPR One listeners. Use it as an engagement measure within NPR One, not as live-stream session duration."
+};
+
+const EXPLORE_VIEWS = {
+  "audio-programs": {
+    title: "On-demand downloads by program",
+    metric: "audio.downloads_by_program",
+    dimension: "program",
+    description: "Compare which WNMU-FM program/content buckets generated on-demand downloads in the latest complete export. Station Stories is a broad archive bucket and should not be treated as directly comparable with a discrete program."
+  },
+  "audio-players": {
+    title: "On-demand downloads by player",
+    metric: "audio.downloads_by_player",
+    dimension: "player",
+    description: "Shows which player/client requested WNMU-FM audio. This is especially useful for separating broad audience changes from browser-driven or automated-looking download bursts."
+  },
+  "website-channels": {
+    title: "Website sessions by traffic channel",
+    metric: "website.sessions_by_channel",
+    dimension: "traffic_channel",
+    description: "Shows how visitors reached wnmufm.org: direct, search, social, referral, newsletters and other channels. Use it to evaluate acquisition, not just raw pageviews."
+  },
+  "website-countries": {
+    title: "Website sessions by country",
+    metric: "website.sessions_by_country",
+    dimension: "country",
+    description: "Geographic website traffic helps distinguish service-area use from unusual outside traffic. Geography is a clue, not proof that traffic is invalid."
+  },
+  "streaming-devices": {
+    title: "Live-stream device share",
+    metric: "streaming.device_share_pct",
+    dimension: "device",
+    description: "Share of live-stream usage by device class. Percentage bars use a true 0–100% scale, so a 62.8% share occupies 62.8% of the bar."
+  },
+  "npr-one-podcasts": {
+    title: "NPR One station podcast users",
+    metric: "npr_one.station_users_by_podcast",
+    dimension: "podcast",
+    description: "Shows localized NPR One users consuming individual WNMU-FM podcasts. Treat small counts carefully and watch longer-term direction."
+  },
+  "npr-one-audio": {
+    title: "NPR One listens by station audio type",
+    metric: "npr_one.listens_by_audio_type",
+    dimension: "station_audio_type",
+    description: "Separates WNMU-FM station stories, podcast episodes and other station audio inside NPR One."
+  },
+  "npr-one-clients": {
+    title: "NPR One users by client/content",
+    metric: "npr_one.all_users_by_client_content",
+    dimension: "client_content",
+    description: "Shows where NPR One station content was consumed, such as mobile apps, Alexa or web, paired with the content category."
+  }
+};
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
-}
-
-function formatDate(value) {
-  if (!value) return "—";
-  const date = new Date(`${value}T12:00:00Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric", timeZone:"UTC" });
-}
-
-function shortDate(value) {
-  if (!value) return "";
-  const date = new Date(`${value}T12:00:00Z`);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(undefined, { month:"short", day:"numeric", timeZone:"UTC" });
-}
-
-function rangeText(row) {
-  if (!row?.period_start) return "No dated data";
-  return row.period_start === row.period_end ? formatDate(row.period_start) : `${formatDate(row.period_start)} – ${formatDate(row.period_end)}`;
 }
 
 function setAuthenticated(isAuthenticated) {
   els.authPanel.hidden = isAuthenticated;
   els.appPanel.hidden = !isAuthenticated;
   els.logoutButton.hidden = !isAuthenticated;
+  els.printButton.hidden = !isAuthenticated;
   els.userBadge.hidden = !isAuthenticated;
 }
 
@@ -70,7 +121,7 @@ function metricCard(title, row) {
   return `<article class="metric-card">
     <h3>${escapeHtml(title)}</h3>
     <div class="metric-value">${row ? escapeHtml(formatMetric(row.station_value, row.unit)) : "—"}</div>
-    <div class="metric-sub">${row ? escapeHtml(rangeText(row)) : "No imported data yet"}</div>
+    <div class="metric-sub">${row ? escapeHtml(formatPeriod(row, "day")) : "No complete imported day yet"}</div>
   </article>`;
 }
 
@@ -91,16 +142,22 @@ async function renderSummary() {
   ].map(([title,row]) => metricCard(title,row)).join("");
 }
 
+function rowClass(row, grain) {
+  return grain === "day" && isWeekendDate(row.period_start) ? ' class="weekend-row"' : "";
+}
+
 async function renderTrend() {
   const metricKey = els.trendMetric.value;
   const grain = els.trendGrain.value;
   const label = els.trendMetric.selectedOptions[0]?.textContent || metricKey;
   els.trendTitle.textContent = label;
+  els.trendDescription.textContent = METRIC_DESCRIPTIONS[metricKey] || "";
   const rows = await loadTimeSeries(metricKey, grain);
   const points = rows.filter((row) => row.station_value !== null).map((row) => ({
-    label: rangeText(row),
-    shortLabel: shortDate(row.period_start),
-    value: Number(row.station_value)
+    label: formatPeriod(row, grain),
+    shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row, grain),
+    value: Number(row.station_value),
+    weekend: grain === "day" && isWeekendDate(row.period_start)
   }));
   renderLineChart(els.trendChart, points, { title: label, ariaLabel: `${label} by ${grain}` });
   if (!rows.length) {
@@ -109,7 +166,51 @@ async function renderTrend() {
   }
   els.trendTable.innerHTML = `<table>
     <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead>
-    <tbody>${rows.map((row) => `<tr><td>${escapeHtml(rangeText(row))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}</tbody>
+    <tbody>${rows.map((row) => `<tr${rowClass(row, grain)}><td>${escapeHtml(formatPeriod(row, grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}</tbody>
+  </table>`;
+}
+
+function sortBreakdown(rows) {
+  return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
+}
+
+async function renderListeningByHour(hours) {
+  if (!hours.length) {
+    els.nprHourTable.innerHTML = '<p class="empty-state">No NPR One hour-of-day data is available.</p>';
+    return;
+  }
+  const periodStart = hours[0].period_start;
+  const periodEnd = hours[0].period_end;
+  const byKey = new Map(hours.map((row) => [row.dimension_value, row]));
+  let schedule = new Map();
+  let scheduleNote = "";
+
+  try {
+    const entries = await fetchComposerSchedule(periodStart, periodEnd);
+    schedule = buildHourSchedule(entries);
+    scheduleNote = `Program names are cross-referenced to NPR Composer for ${formatDayDate(periodStart)} through ${formatDayDate(periodEnd)}.`;
+  } catch (error) {
+    scheduleNote = `The NPR One figures are valid, but automatic Composer schedule lookup is currently unavailable in this browser: ${error.message}`;
+  }
+
+  els.nprHourDescription.innerHTML = `NPR One does <strong>not</strong> provide individual dates for this breakdown. It reports an average for each clock hour across weekdays and weekends during ${escapeHtml(formatDayDate(periodStart))} through ${escapeHtml(formatDayDate(periodEnd))}. The table is therefore ordered by time of day, not by audience size. ${escapeHtml(scheduleNote)} <a href="${escapeHtml(CONFIG.stationScheduleUrl)}" target="_blank" rel="noreferrer">Open the WNMU-FM schedule</a>.`;
+
+  const rows = [];
+  for (let hour = 0; hour < 24; hour += 1) {
+    const key = String(hour).padStart(2, "0");
+    const weekday = byKey.get(`weekday|${key}`);
+    const weekend = byKey.get(`weekend|${key}`);
+    rows.push(`<tr>
+      <td>${escapeHtml(hourLabel(hour))}</td>
+      <td class="numeric">${weekday ? escapeHtml(formatMetric(weekday.station_value, weekday.unit)) : "—"}</td>
+      <td>${escapeHtml(schedule.get(`weekday|${key}`) || "Schedule lookup unavailable")}</td>
+      <td class="numeric">${weekend ? escapeHtml(formatMetric(weekend.station_value, weekend.unit)) : "—"}</td>
+      <td>${escapeHtml(schedule.get(`weekend|${key}`) || "Schedule lookup unavailable")}</td>
+    </tr>`);
+  }
+  els.nprHourTable.innerHTML = `<table class="hour-table">
+    <thead><tr><th>Hour</th><th class="numeric">Weekday avg.</th><th>Programs scheduled on weekdays</th><th class="numeric">Weekend avg.</th><th>Programs scheduled on weekends</th></tr></thead>
+    <tbody>${rows.join("")}</tbody>
   </table>`;
 }
 
@@ -120,10 +221,13 @@ async function renderBreakdowns() {
     loadLatestBreakdown("website.sessions_by_channel", "traffic_channel"),
     loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart")
   ]);
-  renderBarChart(els.programBars, programs.map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 12 });
-  renderBarChart(els.deviceBars, devices.map((row) => ({ label: row.dimension_value, value: row.station_value })), { formatValue: (value) => `${Number(value).toFixed(1)}%` });
-  renderBarChart(els.channelBars, channels.map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 8 });
-  renderBarChart(els.nprHourBars, hours.map((row) => ({ label: row.dimension_value.replace("|"," "), value: row.station_value })), { limit: 24 });
+  renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 12 });
+  renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value })), {
+    maxValue: 100,
+    formatValue: (value) => `${Number(value).toFixed(1)}%`
+  });
+  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 8 });
+  await renderListeningByHour(hours);
 }
 
 async function renderAnomalies() {
@@ -160,15 +264,16 @@ async function renderCoverage() {
   const grouped = new Map();
   imports.forEach((item) => {
     const key = item.report_type;
-    if (!grouped.has(key)) grouped.set(key, { type:key, grains:new Set(), start:null, end:null, count:0 });
+    if (!grouped.has(key)) grouped.set(key, { type:key, grains:new Set(), start:null, end:null, run:null, count:0 });
     const group = grouped.get(key);
     group.grains.add(item.grain);
     group.count += 1;
     if (item.report_start && (!group.start || item.report_start < group.start)) group.start = item.report_start;
     if (item.report_end && (!group.end || item.report_end > group.end)) group.end = item.report_end;
+    if (item.report_run_date && (!group.run || item.report_run_date > group.run)) group.run = item.report_run_date;
   });
-  els.coverageTable.innerHTML = `<table><thead><tr><th>Report</th><th>Grains</th><th>Coverage</th><th class="numeric">Imports</th></tr></thead><tbody>
-    ${[...grouped.values()].map((group) => `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml([...group.grains].sort().join(", "))}</td><td>${escapeHtml(group.start ? `${formatDate(group.start)} – ${formatDate(group.end)}` : "Raw only")}</td><td class="numeric">${group.count}</td></tr>`).join("")}
+  els.coverageTable.innerHTML = `<table><thead><tr><th>Report</th><th>Grains</th><th>Source coverage</th><th>Analysis cutoff</th><th class="numeric">Imports</th></tr></thead><tbody>
+    ${[...grouped.values()].map((group) => `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml([...group.grains].sort().join(", "))}</td><td>${escapeHtml(group.start ? `${formatDayDate(group.start)} – ${formatDayDate(group.end)}` : "Raw only")}</td><td>${escapeHtml(group.run ? `Before ${formatDayDate(group.run)}` : "Unknown")}</td><td class="numeric">${group.count}</td></tr>`).join("")}
   </tbody></table>`;
 }
 
@@ -178,11 +283,34 @@ async function renderImportHistory() {
     els.importHistory.innerHTML = '<p class="empty-state">Nothing imported yet.</p>';
     return;
   }
-  els.importHistory.innerHTML = `<table><thead><tr><th>Imported</th><th>Report</th><th>View</th><th>Coverage</th><th>Program/filter</th><th class="numeric">Rows</th><th>Status</th></tr></thead><tbody>
+  els.importHistory.innerHTML = `<table><thead><tr><th>Imported</th><th>Report</th><th>View</th><th>Coverage</th><th>Run date</th><th>Program/filter</th><th class="numeric">Rows</th><th>Status</th></tr></thead><tbody>
     ${imports.map((item) => {
       const filter = item.selected_program || Object.entries(item.filter_context || {}).map(([key,value]) => `${key}=${value}`).join(", ") || "Unfiltered";
-      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(item.report_type)}</td><td>${escapeHtml(item.grain)}</td><td>${escapeHtml(item.report_start ? `${formatDate(item.report_start)} – ${formatDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
+      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(item.report_type)}</td><td>${escapeHtml(item.grain)}</td><td>${escapeHtml(item.report_start ? `${formatDayDate(item.report_start)} – ${formatDayDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(item.report_run_date ? formatDayDate(item.report_run_date) : "Unknown")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
     }).join("")}
+  </tbody></table>`;
+}
+
+async function renderExplore() {
+  const view = EXPLORE_VIEWS[els.exploreView.value] || EXPLORE_VIEWS["audio-programs"];
+  els.exploreDescription.textContent = view.description;
+  const rows = await loadLatestBreakdown(view.metric, view.dimension);
+  if (!rows.length) {
+    els.explorePeriod.textContent = "";
+    els.exploreChart.innerHTML = '<p class="empty-state">No complete data is available for this exploration yet.</p>';
+    els.exploreTable.innerHTML = "";
+    return;
+  }
+  els.explorePeriod.textContent = formatPeriod(rows[0], rows[0].grain);
+  const sorted = sortBreakdown(rows);
+  const isPercent = rows[0].unit === "percent";
+  renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
+    maxValue: isPercent ? 100 : undefined,
+    formatValue: (value) => formatMetric(value, rows[0].unit),
+    limit: 25
+  });
+  els.exploreTable.innerHTML = `<table><thead><tr><th>Category</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead><tbody>
+    ${sorted.map((row) => `<tr><td>${escapeHtml(row.dimension_value)}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}
   </tbody></table>`;
 }
 
@@ -191,7 +319,7 @@ async function refreshDashboard() {
   state.loading = true;
   els.refreshButton.disabled = true;
   try {
-    await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory()]);
+    await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory(), renderExplore()]);
   } catch (error) {
     console.error(error);
     els.summaryCards.innerHTML = `<p class="empty-state">Could not load analytics: ${escapeHtml(error.message)}</p>`;
@@ -241,6 +369,7 @@ async function processFiles(fileList) {
       row.querySelector(".status").textContent = error.message;
     }
   }
+  invalidateDataCache();
   await refreshDashboard();
 }
 
@@ -282,9 +411,11 @@ function bindEvents() {
     setAuthenticated(false);
   });
 
+  els.printButton.addEventListener("click", () => window.print());
   els.refreshButton.addEventListener("click", refreshDashboard);
   els.trendMetric.addEventListener("change", renderTrend);
   els.trendGrain.addEventListener("change", renderTrend);
+  els.exploreView.addEventListener("change", renderExplore);
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
@@ -310,7 +441,8 @@ function bindEvents() {
         reviewed_by_email: currentUser()?.email || null,
         reviewed_at: new Date().toISOString()
       });
-      await renderAnomalies();
+      invalidateDataCache();
+      await Promise.all([renderAnomalies(), renderSummary(), renderTrend()]);
     } catch (error) {
       console.error(error);
       actionButton.disabled = false;

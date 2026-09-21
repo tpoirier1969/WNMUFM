@@ -17,6 +17,7 @@
     <div class="header-meta">
       <span id="versionBadge" class="version-badge"></span>
       <span id="userBadge" class="user-badge" hidden></span>
+      <button id="printButton" class="secondary-button" type="button" hidden>Print / Save PDF</button>
       <button id="logoutButton" class="secondary-button" type="button" hidden>Sign out</button>
     </div>
   </header>
@@ -51,6 +52,7 @@
           <div>
             <p class="eyebrow">Current picture</p>
             <h2>Station overview</h2>
+            <p class="section-note">Analysis stops before the report run date, so incomplete run-day figures and incomplete current weeks/months are not presented as completed results.</p>
           </div>
           <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
         </div>
@@ -59,11 +61,12 @@
 
         <div class="dashboard-grid two-column">
           <article class="panel-card span-two">
-            <div class="panel-heading">
+            <div class="panel-heading trend-heading">
               <div>
                 <p class="eyebrow">Trend explorer</p>
                 <h3 id="trendTitle">Streaming listeners</h3>
               </div>
+              <p id="trendDescription" class="trend-description"></p>
               <div class="inline-controls">
                 <label>Metric
                   <select id="trendMetric">
@@ -96,13 +99,14 @@
             <p class="eyebrow">On-demand audio</p>
             <h3>Downloads by program</h3>
             <div id="programBars"></div>
-            <p class="panel-note">Program totals are range-level figures. Program drilldowns provide the dated history needed for long-term program comparisons.</p>
+            <p class="panel-note">Program totals are range-level figures. Station Stories is a broad station-content/archive bucket, not a discrete program comparable to Classiclectic.</p>
           </article>
 
           <article class="panel-card">
             <p class="eyebrow">Live stream</p>
             <h3>Device share</h3>
             <div id="deviceBars"></div>
+            <p class="panel-note">These bars use a true 0–100% scale. A 62.8% mobile share now fills 62.8% of its track rather than looking like 100%.</p>
           </article>
 
           <article class="panel-card">
@@ -112,10 +116,10 @@
           </article>
 
           <article class="panel-card">
-            <p class="eyebrow">NPR One</p>
+            <p class="eyebrow">NPR One + WNMU schedule</p>
             <h3>Listening by hour</h3>
-            <div id="nprHourBars"></div>
-            <p class="panel-note">This is NPR One/mobile behavior, not live-stream program audience.</p>
+            <p id="nprHourDescription" class="panel-note"></p>
+            <div id="nprHourTable" class="table-wrap"></div>
           </article>
         </div>
 
@@ -127,6 +131,11 @@
                 <h3>Open anomalies</h3>
               </div>
               <span id="anomalyCount" class="count-badge">0</span>
+            </div>
+            <div class="quality-explainer">
+              <p><strong>What this does:</strong> the app flags patterns that could distort a programming or audience conclusion. A flag is a request to review the data, not a declaration that it is bad.</p>
+              <p><strong>High</strong> means the pattern is large enough to materially distort the story the chart tells. <strong>Warning</strong> means it is unusual enough to investigate but may be legitimate.</p>
+              <p><strong>Expected</strong> closes the flag and keeps the data. <strong>Exclude</strong> closes the flag and removes that flagged date from daily trend/headline analysis when it can be isolated without rewriting the NPR source. <strong>Resolve</strong> closes the flag after review but leaves the data unchanged.</p>
             </div>
             <div id="anomalyList"></div>
           </article>
@@ -142,49 +151,32 @@
       <section class="tab-panel" data-panel="explore" hidden>
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Data inventory</p>
-            <h2>What the reports are good for</h2>
+            <p class="eyebrow">Explore</p>
+            <h2>Dig into the audience</h2>
+            <p class="section-note">Choose a question and inspect the real imported breakdown, rather than a list of things the app might someday do.</p>
           </div>
         </div>
-        <div class="audit-grid">
-          <article class="audit-card useful">
-            <h3>Core long-term series</h3>
-            <p>These deserve Day / Week / Month history because NPR's unique audience counts cannot always be reconstructed from daily rows.</p>
-            <ul>
-              <li>Streaming listeners, sessions, listener-hours and session duration</li>
-              <li>Website active users, pageviews and engagement</li>
-              <li>Audio downloads, users and downloads per user</li>
-              <li>NPR One localized listeners and average minutes</li>
-            </ul>
-          </article>
-          <article class="audit-card useful">
-            <h3>High-value drilldowns</h3>
-            <ul>
-              <li>Audio program → dated downloads/users → player → episode</li>
-              <li>Website traffic channel trends and DMA/country geography</li>
-              <li>Streaming device share</li>
-              <li>NPR One hour-of-day, station audio type, podcast and client/platform</li>
-            </ul>
-          </article>
-          <article class="audit-card caution">
-            <h3>Mostly duplicate or derived</h3>
-            <ul>
-              <li>“Vs previous” scalar cards once historical periods are stored</li>
-              <li>Website traffic-channel share file when the richer channel table is present</li>
-              <li>Aggregate audio player totals when player trend covers the same range</li>
-              <li>Derived ratios such as views/user and sessions/listener are useful checks, not independent audience counts</li>
-            </ul>
-          </article>
-          <article class="audit-card gap">
-            <h3>Still missing</h3>
-            <ul>
-              <li>Live-stream hour/sub-hour detail needed to cross-reference individual scheduled programs</li>
-              <li>Website page/landing-page/referrer detail needed to explain what content drives visits</li>
-              <li>Device-specific website history unless separately filtered exports are collected</li>
-              <li>Audience Leads inventory, if it provides cross-product listener context</li>
-            </ul>
-          </article>
-        </div>
+
+        <article class="panel-card explore-panel">
+          <div class="panel-heading">
+            <label class="explore-select">Explore
+              <select id="exploreView">
+                <option value="audio-programs">On-demand downloads by program</option>
+                <option value="audio-players">On-demand downloads by player</option>
+                <option value="website-channels">Website sessions by traffic channel</option>
+                <option value="website-countries">Website sessions by country</option>
+                <option value="streaming-devices">Live-stream device share</option>
+                <option value="npr-one-podcasts">NPR One station podcast users</option>
+                <option value="npr-one-audio">NPR One listens by station audio type</option>
+                <option value="npr-one-clients">NPR One users by client/content</option>
+              </select>
+            </label>
+            <div class="explore-period"><span>Period</span><strong id="explorePeriod"></strong></div>
+          </div>
+          <p id="exploreDescription" class="explore-description"></p>
+          <div id="exploreChart"></div>
+          <div id="exploreTable" class="table-wrap"></div>
+        </article>
       </section>
 
       <section class="tab-panel" data-panel="imports" hidden>
@@ -224,7 +216,7 @@
             <ol class="priority-list">
               <li><strong>First:</strong> longest available unfiltered Day / Week / Month exports for Streaming, Website, Audio Downloads and NPR One.</li>
               <li><strong>Then:</strong> Audio Program Drilldowns for each real program, especially weekly and monthly user counts.</li>
-              <li><strong>Next:</strong> investigate a finer-grained live-stream source before building program-vs-schedule claims.</li>
+              <li><strong>Next:</strong> investigate a finer-grained live-stream source before making live program-vs-schedule claims.</li>
               <li><strong>Later:</strong> filtered website device exports only if staff decisions actually need the split.</li>
             </ol>
           </article>

@@ -23,9 +23,9 @@ export function renderLineChart(container, points, options = {}) {
     return;
   }
 
-  const width = 900;
-  const height = 300;
-  const margin = { top: 18, right: 22, bottom: 52, left: 72 };
+  const width = 1100;
+  const height = 340;
+  const margin = { top: 18, right: 22, bottom: 64, left: 76 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
@@ -44,6 +44,22 @@ export function renderLineChart(container, points, options = {}) {
     class: "chart-svg"
   });
 
+  const xFor = (index) => margin.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
+  const yFor = (value) => margin.top + ((max - Number(value)) / (max - min)) * plotHeight;
+  const step = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
+
+  points.forEach((point, index) => {
+    if (!point.weekend) return;
+    const x = xFor(index) - step / 2;
+    svg.appendChild(svgElement("rect", {
+      x: Math.max(margin.left, x),
+      y: margin.top,
+      width: Math.min(step, width - margin.right - Math.max(margin.left, x)),
+      height: plotHeight,
+      class: "chart-weekend-band"
+    }));
+  });
+
   for (let i = 0; i <= 4; i += 1) {
     const fraction = i / 4;
     const y = margin.top + plotHeight * fraction;
@@ -54,25 +70,38 @@ export function renderLineChart(container, points, options = {}) {
     svg.appendChild(label);
   }
 
-  const xFor = (index) => margin.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
-  const yFor = (value) => margin.top + ((max - Number(value)) / (max - min)) * plotHeight;
+  points.forEach((point, index) => {
+    const x = xFor(index);
+    svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top, y2: margin.top + plotHeight, class: "chart-v-grid" }));
+    svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top + plotHeight, y2: margin.top + plotHeight + 7, class: "chart-tick" }));
+  });
+
   const path = points.map((point, index) => `${index ? "L" : "M"}${xFor(index).toFixed(1)},${yFor(point.value).toFixed(1)}`).join(" ");
   svg.appendChild(svgElement("path", { d: path, class: "chart-line" }));
 
   points.forEach((point, index) => {
-    const circle = svgElement("circle", { cx: xFor(index), cy: yFor(point.value), r: 3.5, class: "chart-point" });
+    const circle = svgElement("circle", {
+      cx: xFor(index),
+      cy: yFor(point.value),
+      r: 3.8,
+      class: point.weekend ? "chart-point weekend" : "chart-point"
+    });
     const title = svgElement("title");
     title.textContent = `${point.label}: ${compactNumber(point.value)}`;
     circle.appendChild(title);
     svg.appendChild(circle);
   });
 
-  const labelIndexes = new Set([0, points.length - 1]);
-  const desiredTicks = Math.min(6, points.length);
-  for (let i = 1; i < desiredTicks - 1; i += 1) labelIndexes.add(Math.round((i * (points.length - 1)) / (desiredTicks - 1)));
-  [...labelIndexes].sort((a, b) => a - b).forEach((index) => {
-    const label = svgElement("text", { x: xFor(index), y: height - 18, "text-anchor": "middle", class: "chart-axis-label" });
-    label.textContent = points[index].shortLabel || points[index].label;
+  const labelEvery = options.labelEvery || (points.length <= 16 ? 1 : points.length <= 40 ? 2 : Math.ceil(points.length / 16));
+  points.forEach((point, index) => {
+    if (index !== 0 && index !== points.length - 1 && index % labelEvery !== 0) return;
+    const label = svgElement("text", {
+      x: xFor(index),
+      y: height - 22,
+      "text-anchor": "middle",
+      class: point.weekend ? "chart-axis-label weekend" : "chart-axis-label"
+    });
+    label.textContent = point.shortLabel || point.label;
     svg.appendChild(label);
   });
 
@@ -87,7 +116,9 @@ export function renderBarChart(container, rows, options = {}) {
   }
 
   const limited = options.limit ? rows.slice(0, options.limit) : rows;
-  const max = Math.max(...limited.map((row) => Number(row.value) || 0), 1);
+  const max = Number.isFinite(Number(options.maxValue))
+    ? Number(options.maxValue)
+    : Math.max(...limited.map((row) => Number(row.value) || 0), 1);
   const list = document.createElement("div");
   list.className = "bar-chart";
 
@@ -97,11 +128,12 @@ export function renderBarChart(container, rows, options = {}) {
     const name = document.createElement("div");
     name.className = "bar-label";
     name.textContent = row.label;
+    name.title = row.label;
     const track = document.createElement("div");
     track.className = "bar-track";
     const fill = document.createElement("div");
     fill.className = "bar-fill";
-    fill.style.width = `${Math.max(1, (Number(row.value) / max) * 100)}%`;
+    fill.style.width = `${Math.max(1, Math.min(100, (Number(row.value) / max) * 100))}%`;
     track.appendChild(fill);
     const value = document.createElement("div");
     value.className = "bar-value";

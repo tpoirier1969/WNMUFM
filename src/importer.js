@@ -80,7 +80,7 @@ function rawRowsForImport(importId, files) {
 
 function queryForHash(hash) {
   return new URLSearchParams({
-    select: "id,source_filename,report_type,grain,report_start,report_end,selected_program,status,imported_at",
+    select: "id,source_filename,report_type,grain,report_start,report_end,report_run_date,selected_program,status,imported_at",
     source_sha256: `eq.${hash}`,
     limit: "1"
   }).toString();
@@ -147,6 +147,7 @@ export async function importInspectedExport(inspected, userEmail) {
     service_name: CONFIG.serviceName,
     report_start: range.start,
     report_end: range.end,
+    report_run_date: new Date().toISOString().slice(0, 10),
     filter_context: inspected.filterContext || {},
     selected_program: inspected.selectedProgram,
     status,
