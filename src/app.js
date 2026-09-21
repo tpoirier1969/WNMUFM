@@ -4,7 +4,8 @@ import { invalidateDataCache, loadImports, loadLatestBreakdown, loadLatestValues
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, isWeekendDate, shortDayLabel } from "./analysis.js";
-import { buildHourSchedule, fetchComposerSchedule, hourLabel } from "./schedule.js";
+import { buildHourSchedule, hourLabel } from "./schedule.js";
+import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
