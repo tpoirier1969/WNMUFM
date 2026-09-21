@@ -1,4 +1,5 @@
 import { CONFIG } from "./config.js";
+import { hasOAuthCallback, oauthRedirectUrl, parseOAuthFragment } from "./oauth.js";
 
 const SESSION_KEY = "wnmufm.analytics.supabase.session";
 let cachedSession = loadStoredSession();
@@ -36,6 +37,48 @@ export async function signIn(email, password) {
   const data = await authRequest("token?grant_type=password", { email, password });
   const expiresAt = Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
   const session = { ...data, expires_at: expiresAt };
+  storeSession(session);
+  return session;
+}
+
+export function signInWithGitHub() {
+  const redirectTo = oauthRedirectUrl(window.location);
+  const url = new URL(`${CONFIG.supabaseUrl}/auth/v1/authorize`);
+  url.searchParams.set("provider", "github");
+  url.searchParams.set("redirect_to", redirectTo);
+  window.location.assign(url.toString());
+}
+
+export async function consumeOAuthCallback() {
+  if (!hasOAuthCallback(window.location.hash)) return null;
+
+  const callback = parseOAuthFragment(window.location.hash);
+  const cleanUrl = oauthRedirectUrl(window.location);
+  window.history.replaceState(null, document.title, cleanUrl);
+
+  if (callback.error || callback.errorDescription) {
+    throw new Error(callback.errorDescription || callback.error || "GitHub sign in failed.");
+  }
+  if (!callback.accessToken) return null;
+
+  const response = await fetch(`${CONFIG.supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: CONFIG.supabasePublishableKey,
+      Authorization: `Bearer ${callback.accessToken}`
+    }
+  });
+  const user = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(user?.msg || user?.message || `Could not finish GitHub sign in (${response.status}).`);
+
+  const now = Math.floor(Date.now() / 1000);
+  const session = {
+    access_token: callback.accessToken,
+    refresh_token: callback.refreshToken,
+    token_type: callback.tokenType || "bearer",
+    expires_in: callback.expiresIn || 3600,
+    expires_at: callback.expiresAt || now + (callback.expiresIn || 3600),
+    user
+  };
   storeSession(session);
   return session;
 }

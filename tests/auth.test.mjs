@@ -1,0 +1,26 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { hasOAuthCallback, oauthRedirectUrl, parseOAuthFragment } from "../src/oauth.js";
+
+test("OAuth callback parser reads Supabase implicit-flow tokens", () => {
+  const parsed = parseOAuthFragment("#access_token=abc123&refresh_token=def456&token_type=bearer&expires_in=3600");
+  assert.equal(parsed.accessToken, "abc123");
+  assert.equal(parsed.refreshToken, "def456");
+  assert.equal(parsed.tokenType, "bearer");
+  assert.equal(parsed.expiresIn, 3600);
+  assert.equal(hasOAuthCallback("#access_token=abc123"), true);
+});
+
+test("OAuth callback parser preserves provider errors", () => {
+  const parsed = parseOAuthFragment("#error=access_denied&error_description=Not%20authorized");
+  assert.equal(parsed.error, "access_denied");
+  assert.equal(parsed.errorDescription, "Not authorized");
+  assert.equal(hasOAuthCallback("#error=access_denied"), true);
+});
+
+test("OAuth redirect URL keeps the current app path and query but not a fragment", () => {
+  assert.equal(
+    oauthRedirectUrl({ origin:"https://example.com", pathname:"/WNMUFM/", search:"?mode=test", hash:"#ignore" }),
+    "https://example.com/WNMUFM/?mode=test"
+  );
+});

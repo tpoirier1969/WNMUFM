@@ -1,11 +1,11 @@
 import { APP_VERSION } from "./version.js";
-import { currentUser, fetchRole, getSession, signIn, signOut, updateRows } from "./api.js";
+import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
 import { loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
 
 const els = Object.fromEntries([
-  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","userBadge","logoutButton",
+  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton",
   "refreshButton","summaryCards","trendMetric","trendGrain","trendTitle","trendChart","trendTable","programBars",
   "deviceBars","channelBars","nprHourBars","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","versionBadge"
@@ -271,6 +271,11 @@ function bindEvents() {
     }
   });
 
+  els.githubLoginButton.addEventListener("click", () => {
+    showLoginMessage("Opening GitHub sign in…", true);
+    signInWithGitHub();
+  });
+
   els.logoutButton.addEventListener("click", async () => {
     await signOut().catch(() => null);
     state.role = null;
@@ -328,6 +333,11 @@ async function boot() {
   els.versionBadge.textContent = `v${APP_VERSION}`;
   bindTabs();
   bindEvents();
+  try {
+    await consumeOAuthCallback();
+  } catch (error) {
+    showLoginMessage(error.message);
+  }
   const authenticated = await establishAccess();
   if (authenticated) await refreshDashboard();
   setInterval(checkVersion, 5 * 60 * 1000);

@@ -20,7 +20,7 @@ Read `PROJECT_RULES.md` before modifying the application.
 - Production URL: not established yet
 - Persistent storage: existing Supabase project `WNMUProgramming data`
 - FM database ownership: every FM analytics database object uses the `wnmufm_` prefix
-- Authentication/authorization: Supabase Auth plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
+- Authentication/authorization: Supabase Auth via GitHub OAuth or email/password, plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
 - Authoritative application version: `src/version.js`
 
 ## Run locally

@@ -46,6 +46,9 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .panel-card .secondary-button { color: var(--brand); }
 .small-button { min-height: 34px; padding: 5px 9px; background: var(--surface-alt); color: var(--brand-strong); border-color: var(--line); }
 .form-message { min-height: 24px; margin: 0; color: var(--danger); }
+.auth-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+.auth-divider::before, .auth-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.auth-divider span { padding: 0 4px; }
 
 .tab-bar { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 18px; }
 .tab-button { padding: 9px 15px; background: transparent; color: var(--muted); border-color: transparent; white-space: nowrap; }
