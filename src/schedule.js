@@ -1,4 +1,13 @@
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_LOOKUP = new Map([
+  ["sun",0],["sunday",0],["0",0],["7",0],
+  ["mon",1],["monday",1],["1",1],
+  ["tue",2],["tues",2],["tuesday",2],["2",2],
+  ["wed",3],["wednesday",3],["3",3],
+  ["thu",4],["thur",4],["thurs",4],["thursday",4],["4",4],
+  ["fri",5],["friday",5],["5",5],
+  ["sat",6],["saturday",6],["6",6]
+]);
 
 function datePart(value) {
   if (!value) return null;
@@ -83,6 +92,92 @@ export function normalizeComposerEpisodes(payload) {
       if (normalized) output.push(normalized);
     });
   });
+  return output;
+}
+
+function parseRecurrence(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+function parseDays(value) {
+  if (Array.isArray(value)) {
+    return new Set(value.flatMap((item) => [...parseDays(item)]));
+  }
+  if (value === null || value === undefined) return new Set();
+  if (typeof value === "number") {
+    if (value >= 0 && value <= 7) return new Set([value === 7 ? 0 : value]);
+    return new Set();
+  }
+
+  const text = String(value).trim().toLowerCase();
+  if (!text) return new Set();
+  if (text.includes("weekday")) return new Set([1,2,3,4,5]);
+  if (text.includes("weekend")) return new Set([0,6]);
+
+  const found = new Set();
+  text.split(/[\s,;|/]+/).filter(Boolean).forEach((token) => {
+    const cleaned = token.replace(/[^a-z0-9]/g, "");
+    if (DAY_LOOKUP.has(cleaned)) found.add(DAY_LOOKUP.get(cleaned));
+  });
+  return found;
+}
+
+function recurrenceDays(recurrence) {
+  const candidates = [
+    recurrence?.days,
+    recurrence?.day,
+    recurrence?.weekdays,
+    recurrence?.weekday,
+    recurrence?.dow,
+    recurrence?._days,
+    recurrence?.day_of_week
+  ];
+  for (const candidate of candidates) {
+    const days = parseDays(candidate);
+    if (days.size) return days;
+  }
+  return new Set();
+}
+
+function addDays(dateText, amount) {
+  const date = new Date(`${dateText}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + amount);
+  return date.toISOString().slice(0,10);
+}
+
+export function normalizeComposerPrograms(payload, startDate, endDate) {
+  const programs = Array.isArray(payload) ? payload
+    : Array.isArray(payload?.programs) ? payload.programs
+    : Array.isArray(payload?.results) ? payload.results
+    : [];
+  const output = [];
+
+  programs.forEach((program) => {
+    const recurrences = Array.isArray(program?.recurrences) ? program.recurrences : [];
+    recurrences.forEach((rawRecurrence) => {
+      const recurrence = parseRecurrence(rawRecurrence);
+      if (!recurrence) return;
+      const start = timePart(recurrence.start || recurrence._start || recurrence.start_time || recurrence.time);
+      const end = timePart(recurrence.end || recurrence._end || recurrence.end_time);
+      const days = recurrenceDays(recurrence);
+      if (!start || !end || !days.size) return;
+
+      for (let dateText = startDate; dateText <= endDate; dateText = addDays(dateText, 1)) {
+        const date = new Date(`${dateText}T12:00:00Z`);
+        if (!days.has(date.getUTCDay())) continue;
+        output.push({
+          date: dateText,
+          start,
+          end,
+          program: program?.name || program?.title || "Unknown program"
+        });
+      }
+    });
+  });
+
   return output;
 }
 

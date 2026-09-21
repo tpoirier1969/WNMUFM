@@ -187,9 +187,11 @@ async function renderListeningByHour(hours) {
   let scheduleNote = "";
 
   try {
-    const entries = await fetchComposerSchedule(periodStart, periodEnd);
-    schedule = buildHourSchedule(entries);
-    scheduleNote = `Program names are cross-referenced to NPR Composer for ${formatDayDate(periodStart)} through ${formatDayDate(periodEnd)}.`;
+    const scheduleResult = await fetchComposerSchedule(periodStart, periodEnd);
+    schedule = buildHourSchedule(scheduleResult.entries);
+    scheduleNote = scheduleResult.sourceType === "recurrences"
+      ? "Program names are cross-referenced to NPR Composer's public recurring WNMU-FM schedule. This identifies the normal weekly lineup but cannot prove historical preemptions or one-off substitutions."
+      : `Program names are cross-referenced to dated NPR Composer episodes for ${formatDayDate(periodStart)} through ${formatDayDate(periodEnd)}.`;
   } catch (error) {
     scheduleNote = `The NPR One figures are valid, but automatic Composer schedule lookup is currently unavailable in this browser: ${error.message}`;
   }
