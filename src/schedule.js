@@ -1,4 +1,5 @@
 import { CONFIG } from "./config.js";
+import { getSession } from "./api.js";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -143,7 +144,34 @@ async function fetchComposerJson(url) {
   return response.json();
 }
 
+async function fetchComposerViaWnmuProxy(startDate, endDate) {
+  const session = await getSession();
+  if (!session?.access_token) throw new Error("Sign in is required for schedule cross-reference.");
+  const url = new URL(`${CONFIG.supabaseUrl}/functions/v1/wnmufm-composer-schedule`);
+  url.searchParams.set("start", startDate);
+  url.searchParams.set("end", endDate);
+  const response = await fetch(url.toString(), {
+    cache: "no-store",
+    headers: {
+      apikey: CONFIG.supabasePublishableKey,
+      Authorization: `Bearer ${session.access_token}`
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body?.error || `WNMU schedule proxy failed (${response.status}).`);
+  const entries = normalizeComposerEpisodes(body?.payload);
+  if (!entries.length) throw new Error("Composer returned no usable schedule entries for this period.");
+  return entries;
+}
+
 export async function fetchComposerSchedule(startDate, endDate) {
+  let proxyError = null;
+  try {
+    return await fetchComposerViaWnmuProxy(startDate, endDate);
+  } catch (error) {
+    proxyError = error;
+  }
+
   const attempts = [
     new URL(`${CONFIG.composerApiBase}/ucs/${CONFIG.composerUcs}/${startDate},${endDate}/episodes`),
     (() => {
@@ -157,7 +185,7 @@ export async function fetchComposerSchedule(startDate, endDate) {
     })()
   ];
 
-  let lastError = null;
+  let lastError = proxyError;
   for (const url of attempts) {
     try {
       const payload = await fetchComposerJson(url);
