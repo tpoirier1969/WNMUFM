@@ -137,21 +137,38 @@ export function buildHourSchedule(entries) {
   return result;
 }
 
-export async function fetchComposerSchedule(startDate, endDate) {
-  const url = new URL(`${CONFIG.composerApiBase}/episode/search`);
-  url.searchParams.set("ucs", CONFIG.composerUcs);
-  url.searchParams.set("start", startDate);
-  url.searchParams.set("end", endDate);
-  url.searchParams.set("limit", "1000");
-  url.searchParams.set("order", "asc");
-  url.searchParams.set("fields", "lite");
-
+async function fetchComposerJson(url) {
   const response = await fetch(url.toString(), { mode: "cors", cache: "no-store" });
   if (!response.ok) throw new Error(`Composer schedule lookup failed (${response.status}).`);
-  const payload = await response.json();
-  const entries = normalizeComposerEpisodes(payload);
-  if (!entries.length) throw new Error("Composer returned no usable schedule entries for this period.");
-  return entries;
+  return response.json();
+}
+
+export async function fetchComposerSchedule(startDate, endDate) {
+  const attempts = [
+    new URL(`${CONFIG.composerApiBase}/ucs/${CONFIG.composerUcs}/${startDate},${endDate}/episodes`),
+    (() => {
+      const url = new URL(`${CONFIG.composerApiBase}/episode/search`);
+      url.searchParams.set("ucs", CONFIG.composerUcs);
+      url.searchParams.set("start", startDate);
+      url.searchParams.set("end", endDate);
+      url.searchParams.set("limit", "1000");
+      url.searchParams.set("order", "asc");
+      return url;
+    })()
+  ];
+
+  let lastError = null;
+  for (const url of attempts) {
+    try {
+      const payload = await fetchComposerJson(url);
+      const entries = normalizeComposerEpisodes(payload);
+      if (entries.length) return entries;
+      lastError = new Error("Composer returned no usable schedule entries for this period.");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("Composer schedule lookup failed.");
 }
 
 export function hourLabel(hour) {
