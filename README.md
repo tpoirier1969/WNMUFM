@@ -48,6 +48,7 @@ The current test suite focuses on deterministic NPR CSV parsing, report recognit
 See:
 
 - `docs/DATA_AUDIT.md` for the initial audit of the supplied NPR reports and the recommended long-term collection plan.
+- `docs/DATA_COLLECTION_STATUS.md` for the current inventory, coverage ranges, and exact reports still needed.
 - `supabase/migrations/20260921_create_wnmufm_analytics_foundation.sql` for the FM-isolated Supabase schema.
 
 The application deliberately preserves both:

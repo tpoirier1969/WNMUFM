@@ -126,6 +126,23 @@ td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .explore-period strong { color: var(--text); font-size: .95rem; }
 .explore-description { max-width: 960px; margin: 4px 0 18px; }
 
+.collection-table-wrap { margin-top: 14px; }
+.collection-table { min-width: 760px; }
+.collection-table th:nth-child(2),
+.collection-table th:nth-child(3),
+.collection-table th:nth-child(4),
+.collection-table td:nth-child(2),
+.collection-table td:nth-child(3),
+.collection-table td:nth-child(4) { text-align: center; }
+.collection-status { display: inline-flex; align-items: center; justify-content: center; min-width: 84px; padding: 4px 7px; border-radius: 999px; font-size: .74rem; font-weight: 850; white-space: nowrap; }
+.collection-status.good { color: var(--success); background: rgba(36,107,69,.10); }
+.collection-status.partial { color: var(--warning); background: rgba(138,93,0,.10); }
+.collection-status.need { color: var(--danger); background: rgba(157,47,47,.09); }
+.collection-gaps { margin-top: 16px; padding: 13px 15px; background: var(--surface-alt); border-radius: 10px; color: var(--muted); font-size: .86rem; }
+.collection-gaps p { margin: 0 0 7px; color: var(--text); }
+.collection-gaps ul { margin: 0; padding-left: 1.2rem; }
+.collection-gaps li { margin: 6px 0; }
+
 .drop-zone { display: grid; place-items: center; min-height: 180px; padding: 22px; border: 2px dashed #9eb1bd; border-radius: 14px; background: var(--surface-alt); color: var(--muted); cursor: pointer; text-align: center; }
 .drop-zone strong { color: var(--brand-strong); font-size: 1.08rem; }
 .drop-zone.dragging { border-color: var(--brand); background: #e5f1f5; }

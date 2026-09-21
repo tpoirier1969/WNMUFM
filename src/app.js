@@ -12,7 +12,7 @@ const els = Object.fromEntries([
   "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetric","trendGrain","trendTitle","trendDescription","trendChart","trendTable","programBars",
   "deviceBars","channelBars","nprHourTable","nprHourDescription","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = { role: null, loading: false };
@@ -283,6 +283,60 @@ async function renderCoverage() {
   </tbody></table>`;
 }
 
+
+function collectionSpan(imports, reportType, grain) {
+  const rows = imports.filter((item) => item.report_type === reportType && item.grain === grain && item.report_start);
+  if (!rows.length) return null;
+  return {
+    start: rows.reduce((value, item) => !value || item.report_start < value ? item.report_start : value, null),
+    end: rows.reduce((value, item) => !value || item.report_end > value ? item.report_end : value, null)
+  };
+}
+
+function collectionCell(span, targetStart = "2025-09-22") {
+  if (!span) return '<span class="collection-status need">Missing</span>';
+  const fullYear = span.start <= targetStart;
+  return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start, { year:false }))} – ${escapeHtml(formatDayDate(span.end, { year:false }))}</span>`;
+}
+
+async function renderCollectionChecklist() {
+  const imports = await loadImports();
+  const rows = [
+    { type:"station_streaming", label:"Live streaming", next:"Critical: get the longest Day, Week and Month exports. Current daily history is only Aug–Sep 2026." },
+    { type:"station_website", label:"Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
+    { type:"audio_downloads", label:"On-demand audio", next:"Daily year is loaded. Next get full-year Week and Month exports, then longer drilldowns for every available program." },
+    { type:"npr_one", label:"NPR One", next:"Daily year is loaded. Next get full-year Week and Month exports." }
+  ];
+
+  const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
+
+  els.collectionChecklist.innerHTML = `
+    <div class="table-wrap collection-table-wrap">
+      <table class="collection-table">
+        <thead><tr><th>Source</th><th>Day</th><th>Week</th><th>Month</th><th>Next collection target</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `<tr>
+            <td><strong>${escapeHtml(row.label)}</strong></td>
+            <td>${collectionCell(collectionSpan(imports,row.type,"day"))}</td>
+            <td>${collectionCell(collectionSpan(imports,row.type,"week"))}</td>
+            <td>${collectionCell(collectionSpan(imports,row.type,"month"))}</td>
+            <td>${escapeHtml(row.next)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="collection-gaps">
+      <p><strong>Content-first gaps:</strong></p>
+      <ul>
+        <li><strong>Live-stream hour/daypart data:</strong> needed before we can honestly connect live listening to scheduled programs.</li>
+        <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
+        <li><strong>Website content detail:</strong> page/landing-page/referrer exports are needed to learn which stories and topics actually attract people.</li>
+        <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
+        <li><strong>Historical schedule:</strong> the recurring Composer schedule is usable for the normal lineup; exact dated schedule snapshots are still needed for preemptions, substitutions and long-term program attribution.</li>
+      </ul>
+    </div>`;
+}
+
 async function renderImportHistory() {
   const imports = await loadImports();
   if (!imports.length) {
@@ -325,7 +379,7 @@ async function refreshDashboard() {
   state.loading = true;
   els.refreshButton.disabled = true;
   try {
-    await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory(), renderExplore()]);
+    await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory(), renderCollectionChecklist(), renderExplore()]);
   } catch (error) {
     console.error(error);
     els.summaryCards.innerHTML = `<p class="empty-state">Could not load analytics: ${escapeHtml(error.message)}</p>`;
