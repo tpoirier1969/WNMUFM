@@ -1,0 +1,170 @@
+import { CONFIG } from "./config.js";
+
+const SESSION_KEY = "wnmufm.analytics.supabase.session";
+let cachedSession = loadStoredSession();
+
+function loadStoredSession() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    return parsed && parsed.access_token ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeSession(session) {
+  cachedSession = session || null;
+  if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  else localStorage.removeItem(SESSION_KEY);
+}
+
+async function authRequest(path, body) {
+  const response = await fetch(`${CONFIG.supabaseUrl}/auth/v1/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: CONFIG.supabasePublishableKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.msg || data?.message || `Authentication failed (${response.status}).`);
+  return data;
+}
+
+export async function signIn(email, password) {
+  const data = await authRequest("token?grant_type=password", { email, password });
+  const expiresAt = Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
+  const session = { ...data, expires_at: expiresAt };
+  storeSession(session);
+  return session;
+}
+
+export async function signOut() {
+  const session = await getSession();
+  if (session?.access_token) {
+    await fetch(`${CONFIG.supabaseUrl}/auth/v1/logout`, {
+      method: "POST",
+      headers: {
+        apikey: CONFIG.supabasePublishableKey,
+        Authorization: `Bearer ${session.access_token}`
+      }
+    }).catch(() => null);
+  }
+  storeSession(null);
+}
+
+async function refreshSession() {
+  if (!cachedSession?.refresh_token) {
+    storeSession(null);
+    return null;
+  }
+  try {
+    const data = await authRequest("token?grant_type=refresh_token", { refresh_token: cachedSession.refresh_token });
+    const expiresAt = Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
+    const session = { ...data, expires_at: expiresAt };
+    storeSession(session);
+    return session;
+  } catch (error) {
+    storeSession(null);
+    throw error;
+  }
+}
+
+export async function getSession() {
+  if (!cachedSession?.access_token) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if (Number(cachedSession.expires_at || 0) <= now + 60) return refreshSession();
+  return cachedSession;
+}
+
+export function currentUser() {
+  return cachedSession?.user || null;
+}
+
+async function restRequest(table, { method = "GET", query = "", body = null, prefer = "" } = {}) {
+  const session = await getSession();
+  if (!session?.access_token) throw new Error("Sign in is required.");
+  const url = `${CONFIG.supabaseUrl}/rest/v1/${table}${query ? `?${query}` : ""}`;
+  const headers = {
+    apikey: CONFIG.supabasePublishableKey,
+    Authorization: `Bearer ${session.access_token}`,
+    Accept: "application/json"
+  };
+  if (body !== null) headers["Content-Type"] = "application/json";
+  if (prefer) headers.Prefer = prefer;
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: body === null ? undefined : JSON.stringify(body)
+  });
+  if (response.status === 204) return null;
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) {
+    const message = data?.message || data?.hint || data?.details || `${method} ${table} failed (${response.status}).`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+export async function selectRows(table, query) {
+  return restRequest(table, { query });
+}
+
+export async function insertRows(table, rows, { returnRows = false } = {}) {
+  if (!rows?.length) return [];
+  return restRequest(table, {
+    method: "POST",
+    body: rows,
+    prefer: returnRows ? "return=representation" : "return=minimal"
+  });
+}
+
+export async function upsertRows(table, rows, conflictColumns) {
+  if (!rows?.length) return [];
+  const onConflict = encodeURIComponent(conflictColumns.join(","));
+  return restRequest(table, {
+    method: "POST",
+    query: `on_conflict=${onConflict}`,
+    body: rows,
+    prefer: "resolution=merge-duplicates,return=minimal"
+  });
+}
+
+export async function updateRows(table, query, values) {
+  return restRequest(table, {
+    method: "PATCH",
+    query,
+    body: values,
+    prefer: "return=minimal"
+  });
+}
+
+export async function fetchRole() {
+  const user = currentUser();
+  if (!user?.email) return null;
+  const query = new URLSearchParams({
+    select: "email,app_key,role,is_active,display_name",
+    app_key: `eq.${CONFIG.appKey}`,
+    email: `ilike.${user.email}`,
+    is_active: "eq.true",
+    limit: "1"
+  }).toString();
+  const rows = await selectRows("wnmu_app_user_roles", query);
+  return rows?.[0] || null;
+}
+
+export async function batchInsert(table, rows, options = {}) {
+  const size = options.batchSize || 200;
+  for (let i = 0; i < rows.length; i += size) {
+    await insertRows(table, rows.slice(i, i + size), { returnRows: false });
+  }
+}
+
+export async function batchUpsert(table, rows, conflictColumns, batchSize = 200) {
+  for (let i = 0; i < rows.length; i += batchSize) {
+    await upsertRows(table, rows.slice(i, i + batchSize), conflictColumns);
+  }
+}

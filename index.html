@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>WNMU-FM Analytics</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">WNMU-FM</p>
+      <h1>Audience Analytics</h1>
+      <p class="subtitle">NPR reports, turned into station decisions instead of spreadsheet archaeology.</p>
+    </div>
+    <div class="header-meta">
+      <span id="versionBadge" class="version-badge"></span>
+      <span id="userBadge" class="user-badge" hidden></span>
+      <button id="logoutButton" class="secondary-button" type="button" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="authPanel" class="auth-card" aria-labelledby="authTitle">
+      <h2 id="authTitle">Sign in</h2>
+      <p>Use the WNMU Supabase account assigned access to this analytics app.</p>
+      <form id="loginForm" class="form-grid">
+        <label>Email
+          <input id="loginEmail" type="email" autocomplete="username" required>
+        </label>
+        <label>Password
+          <input id="loginPassword" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="primary-button" type="submit">Sign in</button>
+        <p id="loginMessage" class="form-message" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section id="appPanel" hidden>
+      <nav class="tab-bar" aria-label="Analytics sections">
+        <button class="tab-button active" type="button" data-tab="overview">Overview</button>
+        <button class="tab-button" type="button" data-tab="explore">Explore</button>
+        <button class="tab-button" type="button" data-tab="imports">Imports</button>
+      </nav>
+
+      <section class="tab-panel" data-panel="overview">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Current picture</p>
+            <h2>Station overview</h2>
+          </div>
+          <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
+        </div>
+
+        <div id="summaryCards" class="metric-grid" aria-live="polite"></div>
+
+        <div class="dashboard-grid two-column">
+          <article class="panel-card span-two">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Trend explorer</p>
+                <h3 id="trendTitle">Streaming listeners</h3>
+              </div>
+              <div class="inline-controls">
+                <label>Metric
+                  <select id="trendMetric">
+                    <option value="streaming.listeners">Streaming listeners</option>
+                    <option value="streaming.listener_hours">Streaming listener hours</option>
+                    <option value="streaming.sessions">Streaming sessions</option>
+                    <option value="website.active_users">Website active users</option>
+                    <option value="website.pageviews">Website pageviews</option>
+                    <option value="website.engaged_seconds_per_user">Website engaged seconds/user</option>
+                    <option value="audio.downloads">Audio downloads</option>
+                    <option value="audio.users">Audio users</option>
+                    <option value="npr_one.localized_listeners">NPR One localized listeners</option>
+                    <option value="npr_one.average_minutes">NPR One average minutes</option>
+                  </select>
+                </label>
+                <label>View by
+                  <select id="trendGrain">
+                    <option value="day">Day</option>
+                    <option value="week">Week</option>
+                    <option value="month">Month</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div id="trendChart" class="chart-frame"></div>
+            <div id="trendTable" class="table-wrap"></div>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">On-demand audio</p>
+            <h3>Downloads by program</h3>
+            <div id="programBars"></div>
+            <p class="panel-note">Program totals are range-level figures. Program drilldowns provide the dated history needed for long-term program comparisons.</p>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">Live stream</p>
+            <h3>Device share</h3>
+            <div id="deviceBars"></div>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">Website</p>
+            <h3>Traffic channels</h3>
+            <div id="channelBars"></div>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">NPR One</p>
+            <h3>Listening by hour</h3>
+            <div id="nprHourBars"></div>
+            <p class="panel-note">This is NPR One/mobile behavior, not live-stream program audience.</p>
+          </article>
+        </div>
+
+        <div class="dashboard-grid two-column">
+          <article class="panel-card">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Quality control</p>
+                <h3>Open anomalies</h3>
+              </div>
+              <span id="anomalyCount" class="count-badge">0</span>
+            </div>
+            <div id="anomalyList"></div>
+          </article>
+
+          <article class="panel-card">
+            <p class="eyebrow">What we actually have</p>
+            <h3>Data coverage</h3>
+            <div id="coverageTable" class="table-wrap"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="explore" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Data inventory</p>
+            <h2>What the reports are good for</h2>
+          </div>
+        </div>
+        <div class="audit-grid">
+          <article class="audit-card useful">
+            <h3>Core long-term series</h3>
+            <p>These deserve Day / Week / Month history because NPR's unique audience counts cannot always be reconstructed from daily rows.</p>
+            <ul>
+              <li>Streaming listeners, sessions, listener-hours and session duration</li>
+              <li>Website active users, pageviews and engagement</li>
+              <li>Audio downloads, users and downloads per user</li>
+              <li>NPR One localized listeners and average minutes</li>
+            </ul>
+          </article>
+          <article class="audit-card useful">
+            <h3>High-value drilldowns</h3>
+            <ul>
+              <li>Audio program → dated downloads/users → player → episode</li>
+              <li>Website traffic channel trends and DMA/country geography</li>
+              <li>Streaming device share</li>
+              <li>NPR One hour-of-day, station audio type, podcast and client/platform</li>
+            </ul>
+          </article>
+          <article class="audit-card caution">
+            <h3>Mostly duplicate or derived</h3>
+            <ul>
+              <li>“Vs previous” scalar cards once historical periods are stored</li>
+              <li>Website traffic-channel share file when the richer channel table is present</li>
+              <li>Aggregate audio player totals when player trend covers the same range</li>
+              <li>Derived ratios such as views/user and sessions/listener are useful checks, not independent audience counts</li>
+            </ul>
+          </article>
+          <article class="audit-card gap">
+            <h3>Still missing</h3>
+            <ul>
+              <li>Live-stream hour/sub-hour detail needed to cross-reference individual scheduled programs</li>
+              <li>Website page/landing-page/referrer detail needed to explain what content drives visits</li>
+              <li>Device-specific website history unless separately filtered exports are collected</li>
+              <li>Audience Leads inventory, if it provides cross-product listener context</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-panel="imports" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">NPR Analytics</p>
+            <h2>Import reports</h2>
+            <p>Drop the original ZIP exports here. The app keeps raw rows for provenance, deduplicates semantically identical exports, and updates normalized chart data.</p>
+          </div>
+        </div>
+
+        <div class="dashboard-grid two-column">
+          <article class="panel-card">
+            <h3>Upload</h3>
+            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP files">
+              <strong>Drop ZIP reports here</strong>
+              <span>or click to choose files</span>
+              <input id="fileInput" type="file" accept=".zip,application/zip" multiple hidden>
+            </div>
+            <div class="filter-context">
+              <h4>Optional export filter</h4>
+              <p>If this batch was exported with a dashboard filter, record it here. Leave blank for normal unfiltered reports.</p>
+              <div class="inline-controls">
+                <label>Filter name
+                  <input id="filterName" type="text" placeholder="e.g. device_type">
+                </label>
+                <label>Filter value
+                  <input id="filterValue" type="text" placeholder="e.g. Mobile">
+                </label>
+              </div>
+            </div>
+            <div id="importQueue" class="import-queue" aria-live="polite"></div>
+          </article>
+
+          <article class="panel-card">
+            <h3>Collection priorities</h3>
+            <ol class="priority-list">
+              <li><strong>First:</strong> longest available unfiltered Day / Week / Month exports for Streaming, Website, Audio Downloads and NPR One.</li>
+              <li><strong>Then:</strong> Audio Program Drilldowns for each real program, especially weekly and monthly user counts.</li>
+              <li><strong>Next:</strong> investigate a finer-grained live-stream source before building program-vs-schedule claims.</li>
+              <li><strong>Later:</strong> filtered website device exports only if staff decisions actually need the split.</li>
+            </ol>
+          </article>
+        </div>
+
+        <article class="panel-card">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Provenance</p>
+              <h3>Import history</h3>
+            </div>
+          </div>
+          <div id="importHistory" class="table-wrap"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <span>WNMU-FM Audience Analytics</span>
+    <span>Raw NPR exports remain the source evidence.</span>
+  </footer>
+
+  <script src="vendor/jszip.min.js"></script>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
