@@ -100,6 +100,53 @@ function selectedRange() {
   return { startDate:state.startDate, endDate:state.endDate };
 }
 
+function clearTrendZoom({ persist = false } = {}) {
+  state.trendZoomStart="";
+  state.trendZoomEnd="";
+  state.trendZoomMode=false;
+  updateTrendZoomControls();
+  if(persist) persistUiState();
+}
+
+function updateTrendZoomControls() {
+  const hasZoom=Boolean(state.trendZoomStart && state.trendZoomEnd);
+  els.trendZoomButton?.setAttribute("aria-pressed",String(state.trendZoomMode));
+  if(els.trendZoomButton) els.trendZoomButton.textContent=state.trendZoomMode ? "✕ Cancel zoom" : "🔍 Zoom";
+  setHidden(els.trendZoomReset,!hasZoom);
+  if(els.trendZoomStatus) {
+    els.trendZoomStatus.textContent=hasZoom
+      ? `Zoomed: ${formatDayDate(state.trendZoomStart)} – ${formatDayDate(state.trendZoomEnd)}`
+      : (state.trendZoomMode ? "Drag horizontally across the graph to select a date window." : "");
+  }
+}
+
+function zoomedTrendPoints(points) {
+  if(!state.trendZoomStart || !state.trendZoomEnd) return points;
+  const filtered=points.filter((point)=>point.date && point.date>=state.trendZoomStart && point.date<=state.trendZoomEnd);
+  if(filtered.length>=2) return filtered;
+  clearTrendZoom();
+  return points;
+}
+
+function setTrendZoom(firstPoint,lastPoint) {
+  if(!firstPoint?.date || !lastPoint?.date) return;
+  state.trendZoomStart=firstPoint.date < lastPoint.date ? firstPoint.date : lastPoint.date;
+  state.trendZoomEnd=firstPoint.date < lastPoint.date ? lastPoint.date : firstPoint.date;
+  state.trendZoomMode=false;
+  updateTrendZoomControls();
+  persistUiState();
+  void renderTrend();
+}
+
+function renderTrendQuickRanges() {
+  if(!els.trendQuickRangeButtons) return;
+  const presets=buildRangePresets(state.availableRange);
+  els.trendQuickRangeButtons.innerHTML=presets.map((preset)=>{
+    const active=state.startDate===preset.startDate && state.endDate===preset.endDate;
+    return `<button type="button" class="filter-button" data-range-preset="${escapeHtml(preset.key)}" data-start="${escapeHtml(preset.startDate)}" data-end="${escapeHtml(preset.endDate)}" aria-pressed="${active}">${escapeHtml(preset.label)}</button>`;
+  }).join("");
+}
+
 let copyViewStatusTimer = null;
 async function copyCurrentViewLink() {
   persistUiState();
