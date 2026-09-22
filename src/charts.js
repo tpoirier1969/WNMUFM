@@ -106,7 +106,7 @@ export function renderLineChart(container, points, options = {}) {
 
   const width = 1100;
   const hasSecondary = points.some((point)=>Number.isFinite(Number(point.secondaryValue)));
-  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -48 : 0));
+  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
   const margin = { top:(hasSecondary || options.primaryLabel ? 34 : 18), right:58, bottom:(labelAngle ? 92 : 58), left:76 };
   const height = labelAngle ? 390 : 340;
   const plotWidth = width - margin.left - margin.right;
