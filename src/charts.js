@@ -205,7 +205,7 @@ export function renderLineChart(container, points, options = {}) {
       const title=svgElement("title");
       const parts=[point.label + ": " + compactNumber(point.value)];
       if(finiteNumber(point.secondaryValue) !== null) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
-      if(point.contextLabel) parts.push(point.contextLabel);
+      if(point.contextLabel) parts.push("Notable because: " + point.contextLabel);
       title.textContent=parts.join(" · "); circle.appendChild(title);
       if(options.onPointClick) {
         const activate=()=>options.onPointClick(point,index);
@@ -216,7 +216,8 @@ export function renderLineChart(container, points, options = {}) {
     }
     if(finiteNumber(point.secondaryValue) !== null) {
       const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:3.2,class:"chart-secondary-point"});
-      const title=svgElement("title"); title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue);
+      const title=svgElement("title");
+      title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue) + (point.contextLabel ? " · Notable because: " + point.contextLabel : "");
       circle.appendChild(title); svg.appendChild(circle);
     }
   });
@@ -227,6 +228,167 @@ export function renderLineChart(container, points, options = {}) {
     const x=xFor(index), y=margin.top+plotHeight+18;
     const label=svgElement("text",{x,y,"text-anchor":labelAngle ? "end" : "middle",class:(point.weekend ? "chart-axis-label weekend" : "chart-axis-label") + " dense",...(labelAngle ? {transform:"rotate(" + labelAngle + " " + x + " " + y + ")"} : {})});
     label.textContent=point.shortLabel || point.label; svg.appendChild(label);
+  });
+  container.appendChild(svg);
+}
+
+export function renderIndexedMultiLineChart(container, points, options = {}) {
+  clear(container);
+  const series = Array.isArray(options.series) ? options.series : [];
+  if (!points?.length || !series.length) {
+    container.innerHTML = '<p class="empty-state">No comparable observations are available for this view.</p>';
+    return;
+  }
+
+  const width = 1100;
+  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
+  const margin = { top:58, right:58, bottom:(labelAngle ? 92 : 58), left:76 };
+  const height = labelAngle ? 414 : 364;
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const values = points.flatMap((point)=>series.map((item)=>finiteNumber(point.values?.[item.key]))).filter((value)=>value !== null);
+  if (!values.length) {
+    container.innerHTML = '<p class="empty-state">No comparable observations are available for this view.</p>';
+    return;
+  }
+
+  let min = Math.min(...values,100);
+  let max = Math.max(...values,100);
+  if (min === max) { min -= 5; max += 5; }
+  const padding = Math.max(4,(max-min)*0.08);
+  min = Math.max(0,min-padding);
+  max += padding;
+
+  const svg = svgElement("svg",{
+    viewBox:"0 0 " + width + " " + height,
+    role:"img",
+    "aria-label":options.ariaLabel || options.title || "Indexed metric comparison",
+    class:"chart-svg"
+  });
+  const xFor=(index)=>margin.left+(points.length===1 ? plotWidth/2 : (index/(points.length-1))*plotWidth);
+  const yFor=(value)=>margin.top+((max-Number(value))/(max-min))*plotHeight;
+  const step=points.length>1 ? plotWidth/(points.length-1) : plotWidth;
+
+  if (options.grain === "day" && points.some((point)=>point.date)) {
+    let monthStart=0, monthIndex=0;
+    while(monthStart<points.length) {
+      const monthKey=String(points[monthStart].date||"").slice(0,7);
+      let monthEnd=monthStart;
+      while(monthEnd+1<points.length && String(points[monthEnd+1].date||"").slice(0,7)===monthKey) monthEnd+=1;
+      const left=monthStart===0 ? margin.left : (xFor(monthStart-1)+xFor(monthStart))/2;
+      const right=monthEnd===points.length-1 ? width-margin.right : (xFor(monthEnd)+xFor(monthEnd+1))/2;
+      if(monthIndex%2===1) svg.appendChild(svgElement("rect",{x:left,y:margin.top,width:Math.max(0,right-left),height:plotHeight,class:"chart-month-band"}));
+      if(monthStart>0) svg.appendChild(svgElement("line",{x1:xFor(monthStart),x2:xFor(monthStart),y1:margin.top,y2:margin.top+plotHeight,class:"chart-month-line"}));
+      monthStart=monthEnd+1;
+      monthIndex+=1;
+    }
+  }
+
+  if (options.grain === "day") {
+    points.forEach((point,index)=>{
+      if(!point.weekend) return;
+      const x=xFor(index)-step/2;
+      svg.appendChild(svgElement("rect",{x:Math.max(margin.left,x),y:margin.top,width:Math.min(step,width-margin.right-Math.max(margin.left,x)),height:plotHeight,class:"chart-weekend-band"}));
+    });
+  }
+
+  for(let i=0;i<=4;i+=1) {
+    const fraction=i/4;
+    const y=margin.top+plotHeight*fraction;
+    const value=max-(max-min)*fraction;
+    svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:y,y2:y,class:"chart-grid"}));
+    const label=svgElement("text",{x:margin.left-10,y:y+4,"text-anchor":"end",class:"chart-axis-label"});
+    label.textContent=compactNumber(value);
+    svg.appendChild(label);
+  }
+
+  const baselineY=yFor(100);
+  svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:baselineY,y2:baselineY,class:"chart-index-baseline"}));
+  const baselineLabel=svgElement("text",{x:width-margin.right-4,y:baselineY-6,"text-anchor":"end",class:"chart-index-label"});
+  baselineLabel.textContent="Selected-range median = 100";
+  svg.appendChild(baselineLabel);
+
+  let legendX=margin.left;
+  let legendY=18;
+  series.forEach((item,seriesIndex)=>{
+    const estimated=Math.max(126,String(item.label).length*7+54);
+    if(legendX+estimated>width-margin.right) {
+      legendX=margin.left;
+      legendY+=18;
+    }
+    const className="chart-metric-line chart-series-" + (seriesIndex % 8);
+    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+22,y1:legendY,y2:legendY,class:className}));
+    const legend=svgElement("text",{x:legendX+28,y:legendY+4,class:"chart-legend-label"});
+    legend.textContent=item.label;
+    svg.appendChild(legend);
+    legendX+=estimated;
+
+    let path="";
+    let drawing=false;
+    points.forEach((point,index)=>{
+      const value=finiteNumber(point.values?.[item.key]);
+      if(value===null) {
+        drawing=false;
+        return;
+      }
+      path+=(drawing ? " L" : "M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
+      drawing=true;
+    });
+    if(path) svg.appendChild(svgElement("path",{d:path,class:className}));
+
+    points.forEach((point,index)=>{
+      const indexed=finiteNumber(point.values?.[item.key]);
+      if(indexed===null) return;
+      const actual=finiteNumber(point.actualValues?.[item.key]);
+      const circle=svgElement("circle",{
+        cx:xFor(index),
+        cy:yFor(indexed),
+        r:3.2,
+        class:"chart-metric-point chart-series-" + (seriesIndex % 8) + (options.onPointClick ? " clickable" : ""),
+        ...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open " + item.label + " details for " + point.label} : {})
+      });
+      const title=svgElement("title");
+      const parts=[
+        point.label,
+        item.label + ": " + (actual===null ? "—" : formatMetric(actual,item.unit)),
+        "Index: " + indexed.toFixed(1)
+      ];
+      if(point.contextLabel) parts.push("Notable because: " + point.contextLabel);
+      title.textContent=parts.join(" · ");
+      circle.appendChild(title);
+      if(options.onPointClick) {
+        const activate=()=>options.onPointClick(point,item);
+        circle.addEventListener("click",activate);
+        circle.addEventListener("keydown",(event)=>{
+          if(event.key==="Enter"||event.key===" ") {
+            event.preventDefault();
+            activate();
+          }
+        });
+      }
+      svg.appendChild(circle);
+    });
+  });
+
+  const labelIndexes=new Set(selectSpacedLabelIndexes(points,plotWidth,{
+    grain:options.grain,
+    labelEvery:options.labelEvery,
+    labelAngle,
+    minLabelGap:options.minLabelGap
+  }));
+  points.forEach((point,index)=>{
+    if(!labelIndexes.has(index)) return;
+    const x=xFor(index);
+    const y=margin.top+plotHeight+18;
+    const label=svgElement("text",{
+      x,
+      y,
+      "text-anchor":labelAngle ? "end" : "middle",
+      class:(point.weekend ? "chart-axis-label weekend" : "chart-axis-label")+" dense",
+      ...(labelAngle ? {transform:"rotate("+labelAngle+" "+x+" "+y+")"} : {})
+    });
+    label.textContent=point.shortLabel || point.label;
+    svg.appendChild(label);
   });
   container.appendChild(svg);
 }
