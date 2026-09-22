@@ -70,7 +70,7 @@ function dayLabelCandidates(points) {
 export function selectSpacedLabelIndexes(points, plotWidth, options = {}) {
   if (!points?.length) return [];
   const xFor = (index) => points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth;
-  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -48 : 0));
+  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -52 : 0));
   const candidates = options.grain === "day" && points.some((point)=>point.date)
     ? dayLabelCandidates(points)
     : points.map((_,index)=>index).filter((index) => {
