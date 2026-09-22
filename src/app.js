@@ -171,8 +171,10 @@ const DAILY_METRIC_ORDER = [
 
 async function openDateDrilldown(point, metricKey, medianValue) {
   const date = point.date;
-  const holiday = notableDateContext(date);
+  const notable = notableDateContext(date);
+  setBusy(true);
   openDetailDialog(formatDayDate(date), '<p class="empty-state">Loading the day’s context…</p>');
+  els.detailDialog.setAttribute("aria-busy","true");
   try {
     const observations = await loadDateObservations(date);
     const primary = observations.filter((row) => !row.dimension_type);
@@ -185,10 +187,14 @@ async function openDateDrilldown(point, metricKey, medianValue) {
     let scheduleHtml = '<p class="panel-note">Schedule lookup unavailable for this date.</p>';
     try {
       const scheduleResult = await fetchComposerSchedule(date,date);
-      const dayEntries = buildDailySchedule(scheduleResult.entries).get(date) || [];
-      scheduleHtml = dayEntries.length
-        ? `<div class="schedule-list">${dayEntries.map((entry) => `<div class="schedule-item"><span>${escapeHtml(scheduleTime(entry.start))}–${escapeHtml(scheduleTime(entry.end))}</span><strong>${escapeHtml(entry.program)}</strong></div>`).join("")}</div>`
-        : '<p class="panel-note">No schedule entries were returned for this date.</p>';
+      if (scheduleResult.sourceType === "episodes") {
+        const dayEntries = buildDailySchedule(scheduleResult.entries).get(date) || [];
+        scheduleHtml = dayEntries.length
+          ? `<div class="schedule-list">${dayEntries.map((entry) => `<div class="schedule-item"><span>${escapeHtml(scheduleTime(entry.start))}–${escapeHtml(scheduleTime(entry.end))}</span><strong>${escapeHtml(entry.program)}</strong></div>`).join("")}</div>`
+          : '<p class="panel-note">No dated Composer schedule entries were returned for this date.</p>';
+      } else {
+        scheduleHtml = '<p class="source-limit"><strong>Exact dated schedule unavailable.</strong> Composer returned its recurring-program catalog rather than a historical episode schedule. That catalog can contain overlapping or stale recurrences, so the app intentionally does not present those entries as programs that aired on this date.</p>';
+      }
     } catch (error) {
       scheduleHtml = `<p class="panel-note">Schedule lookup unavailable: ${escapeHtml(error.message)}</p>`;
     }
@@ -200,7 +206,7 @@ async function openDateDrilldown(point, metricKey, medianValue) {
       <div class="detail-summary">
         <div><span>Selected metric</span><strong>${selected ? escapeHtml(formatMetric(selected.station_value,selected.unit)) : escapeHtml(point.value)}</strong></div>
         <div><span>Vs selected-range median</span><strong>${escapeHtml(signedPercent(delta))}</strong></div>
-        <div><span>Calendar context</span><strong>${holiday ? escapeHtml(`${holiday.name} (${holiday.delta === 0 ? "holiday" : `${Math.abs(holiday.delta)} day${Math.abs(holiday.delta) === 1 ? "" : "s"} ${holiday.delta < 0 ? "before" : "after"}`})`) : "No major holiday within ±3 days"}</strong></div>
+        <div><span>Notable-date context</span><strong>${notable ? escapeHtml(notableContextLabel(notable)) : "No tagged holiday, election or major civic address context"}</strong></div>
       </div>
       <section class="detail-section">
         <h3>What the reports say that day</h3>
@@ -211,7 +217,7 @@ async function openDateDrilldown(point, metricKey, medianValue) {
       <section class="detail-section">
         <h3>What was scheduled</h3>
         ${scheduleHtml}
-        ${metricKey.startsWith("streaming.") ? '<p class="source-limit">We have daily live-stream totals here, not listener counts by hour or by program. When you add hourly/sub-hourly streaming data, this panel can show the actual audience curve underneath the schedule.</p>' : ""}
+        ${metricKey.startsWith("streaming.") ? '<p class="source-limit">We have daily live-stream totals here, not listener counts by hour or by program. Hourly/sub-hourly streaming data is still required before this app can attribute that audience to individual programs.</p>' : ""}
       </section>
       ${channelRows.length ? '<section class="detail-section"><h3>Website traffic sources that day</h3><div id="detailChannelBars"></div></section>' : ""}
       ${playerRows.length ? '<section class="detail-section"><h3>Audio players that day</h3><div id="detailPlayerBars"></div></section>' : ""}
@@ -220,6 +226,9 @@ async function openDateDrilldown(point, metricKey, medianValue) {
     if (playerRows.length) renderBarChart(document.getElementById("detailPlayerBars"), playerRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
   } catch (error) {
     els.detailDialogBody.innerHTML = `<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
+  } finally {
+    els.detailDialog.removeAttribute("aria-busy");
+    setBusy(false);
   }
 }
 
