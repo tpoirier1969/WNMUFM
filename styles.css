@@ -104,7 +104,7 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .chart-point { fill: var(--brand); stroke: var(--brand); stroke-width: 1.2; }
 .chart-point.weekend { fill: var(--brand); stroke: var(--brand); stroke-width: 1.2; }
 .chart-point.clickable { cursor: pointer; }
-.chart-point.clickable:hover, .chart-point.clickable:focus { r: 5.5; }
+.chart-point.clickable:hover, .chart-point.clickable:focus { r: 3.4; }
 .chart-axis-label { fill: var(--muted); font-size: 11.5px; }
 .chart-axis-label.dense { font-size: 9.5px; }
 .chart-axis-label.weekend { fill: var(--warning); font-weight: 800; }
@@ -123,6 +123,10 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .clickable-bar-row:hover, .clickable-bar-row:focus { background: var(--surface-alt); outline: 2px solid rgba(67,167,203,.28); }
 
 .table-wrap { width: 100%; overflow-x: auto; margin-top: 10px; }
+.trend-data-details { margin-top:12px; border-top:1px solid var(--line); padding-top:10px; }
+.trend-data-details > summary { cursor:pointer; color:var(--brand); font-weight:850; user-select:none; }
+.trend-data-details[open] > summary { margin-bottom:8px; }
+.trend-data-details > summary:hover, .trend-data-details > summary:focus { text-decoration:underline; }
 #trendTable table { width: min(760px, 100%); min-width: 0; }
 #trendTable th:first-child, #trendTable td:first-child { width: 62%; }
 #trendTable th.numeric, #trendTable td.numeric { width: 19%; }
@@ -132,6 +136,11 @@ th { color: var(--muted); font-size: .76rem; text-transform: uppercase; letter-s
 td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .weekend-row { background: var(--weekend); }
 .listening-hour-panel { grid-column: 1 / -1; }
+.listening-hour-panel.compact-empty { min-height:0; padding-top:14px; padding-bottom:14px; }
+.listening-hour-panel.compact-empty .panel-heading { margin-bottom:0; }
+.listening-hour-panel.compact-empty .hour-chart,
+.listening-hour-panel.compact-empty #nprHourTable { display:none !important; }
+.source-range-warning { display:block; margin:0 0 8px; padding:9px 11px; border-left:4px solid var(--warning); background:rgba(217,162,27,.10); border-radius:7px; color:var(--text); }
 .schedule-program-filter { min-width: min(320px, 100%); }
 .hour-section { margin-top: 18px; }
 .hour-section h4 { margin: 0 0 8px; }
@@ -156,16 +165,12 @@ td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .severity.warning { color: var(--warning); }
 .anomaly-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.explore-panel { min-height: 520px; }
+.explore-panel { min-height: 0; }
 .explore-heading { align-items: flex-start; }
 .explore-button-strip { max-width: 980px; }
 .explore-period { display: grid; gap: 3px; color: var(--muted); font-size: .8rem; }
 .explore-period strong { color: var(--text); font-size: .95rem; }
 .explore-description { max-width: 960px; margin: 4px 0 18px; }
-.explore-insights { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:0 0 18px; }
-.explore-insights > div { padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-alt); }
-.explore-insights span, .explore-insights small { display:block; color:var(--muted); font-size:.76rem; }
-.explore-insights strong { display:block; margin:3px 0; font-size:.98rem; }
 
 .collection-table-wrap { margin-top: 14px; }
 .collection-table { min-width: 760px; }
@@ -325,7 +330,7 @@ body.app-busy * {
 .chart-metric-line { fill:none; stroke-width:1.8; stroke-linejoin:round; stroke-linecap:round; }
 .chart-metric-point { stroke-width:1.1; }
 .chart-metric-point.clickable { cursor:pointer; }
-.chart-metric-point.clickable:hover, .chart-metric-point.clickable:focus { r:4.8; }
+.chart-metric-point.clickable:hover, .chart-metric-point.clickable:focus { r:3.2; }
 .chart-series-0 { stroke:var(--brand); fill:var(--brand); }
 .chart-series-1 { stroke:var(--accent); fill:var(--accent); }
 .chart-series-2 { stroke:var(--success); fill:var(--success); }
@@ -365,9 +370,6 @@ body.app-busy * {
   .chart-frame { width:100%; break-inside:avoid; }
 }
 
-@media (max-width: 780px) {
-  .explore-insights { grid-template-columns:1fr; }
-}
 
 .available-range-label { flex-basis:100%; text-align:right; color:var(--muted); font-size:.75rem; }
 .range-change-notice { padding:12px 14px; border-left:4px solid var(--accent); background:var(--surface-alt); border-radius:8px; }

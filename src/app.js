@@ -11,9 +11,9 @@ import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -42,6 +42,7 @@ let trendRequestId = 0;
 let exploreRequestId = 0;
 let breakdownRequestId = 0;
 let listeningHourContext = null;
+let listeningHourNoticeKey = "";
 
 function persistUiState() {
   try {
@@ -279,10 +280,10 @@ const EXPLORE_VIEWS = {
     description: "Shows which player/client requested WNMU-FM audio. This is especially useful for separating broad audience changes from browser-driven or automated-looking download bursts."
   },
   "website-channels": {
-    title: "Website sessions by traffic channel",
+    title: "Website sessions by traffic source",
     metric: "website.sessions_by_channel",
     dimension: "traffic_channel",
-    description: "Shows how visitors reached wnmufm.org: direct, search, social, referral, newsletters and other channels. Use it to evaluate acquisition, not just raw pageviews."
+    description: "Shows how visitors reached wnmufm.org. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The current NPR export does not identify Google, Bing, or other engines separately."
   },
   "website-countries": {
     title: "Website sessions by country",
@@ -319,7 +320,7 @@ const EXPLORE_VIEWS = {
 const EXPLORE_ORDER = [
   ["audio-programs","Downloads by program"],
   ["audio-players","Downloads by player"],
-  ["website-channels","Website channels"],
+  ["website-channels","Website traffic sources"],
   ["website-countries","Website countries"],
   ["streaming-devices","Stream devices"],
   ["npr-one-podcasts","NPR One podcasts"],
@@ -415,6 +416,17 @@ function validateAndStoreRange() {
   state.rangeMode="custom";
   persistUiState();
   return true;
+}
+
+function renderTrendDataTable(html, rowCount) {
+  els.trendTable.innerHTML = html || "";
+  const hasRows = Number(rowCount || 0) > 0;
+  setHidden(els.trendDataDetails, !hasRows);
+  if (!hasRows) {
+    els.trendDataDetails.open = false;
+    return;
+  }
+  els.trendDataSummary.textContent = `Show period-by-period data (${Number(rowCount).toLocaleString()} rows)`;
 }
 
 function renderTrendPrintDetail(rows, grain, medianValue) {
@@ -626,18 +638,18 @@ async function renderTrend() {
     });
 
     if (!filteredRows.length) {
-      els.trendTable.innerHTML = "";
+      renderTrendDataTable("",0);
       els.trendPrintColumns.innerHTML = "";
       return;
     }
-    els.trendTable.innerHTML = `<table class="trend-data-table">
+    renderTrendDataTable(`<table class="trend-data-table">
       <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
       <tbody>${filteredRows.map((row)=>{
         const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
         const notable = grain === "day" ? notableDateContext(row.period_start) : null;
         return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
       }).join("")}</tbody>
-    </table>`;
+    </table>`, filteredRows.length);
     renderTrendPrintDetail(filteredRows,grain,medianValue);
     return;
   }
@@ -651,7 +663,7 @@ async function renderTrend() {
 
   if(!comparable.length) {
     els.trendChart.innerHTML='<p class="empty-state">The selected metrics do not have comparable observations in this range.</p>';
-    els.trendTable.innerHTML="";
+    renderTrendDataTable("",0);
     els.trendPrintColumns.innerHTML="";
     return;
   }
@@ -692,14 +704,14 @@ async function renderTrend() {
   });
 
   if(!points.length) {
-    els.trendTable.innerHTML="";
+    renderTrendDataTable("",0);
     els.trendPrintColumns.innerHTML="";
     return;
   }
-  els.trendTable.innerHTML=`<table class="trend-data-table multi-metric-table">
+  renderTrendDataTable(`<table class="trend-data-table multi-metric-table">
     <thead><tr><th>Period</th>${seriesDefs.map((item)=>`<th class="numeric">${escapeHtml(item.label)}</th>`).join("")}</tr></thead>
     <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.contextLabel ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
-  </table>`;
+  </table>`, points.length);
   els.trendPrintColumns.classList.add("single");
   els.trendPrintColumns.innerHTML='<p class="print-trend-note"><strong>Multi-metric comparison:</strong> the printed chart uses each selected metric\'s median as index 100. Actual values remain available in the on-screen table and hover details.</p>';
 }
@@ -707,54 +719,18 @@ async function renderTrend() {
 function sortBreakdown(rows) {
   return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
 }
-function renderExploreInsights(rows) {
-  if (!rows.length) {
-    els.exploreInsights.innerHTML = "";
-    return;
-  }
-  const numeric = sortBreakdown(rows).filter((row) => row.station_value !== null && Number.isFinite(Number(row.station_value)));
-  if (!numeric.length) {
-    els.exploreInsights.innerHTML = "";
-    return;
-  }
 
-  const unit = numeric[0].unit;
-  const top = numeric[0];
-  const total = numeric.reduce((sum,row)=>sum+Number(row.station_value),0);
-  const topShare = unit === "percent"
-    ? Number(top.station_value)
-    : total > 0 ? (Number(top.station_value) / total) * 100 : null;
-  const topThree = numeric.slice(0,3).reduce((sum,row)=>sum+Number(row.station_value),0);
-  const topThreeShare = unit === "percent"
-    ? topThree
-    : total > 0 ? (topThree / total) * 100 : null;
-
-  const benchmarkRows = numeric.filter((row) => row.benchmark_value !== null && Number.isFinite(Number(row.benchmark_value)));
-  const insights = [
-    `<div><span>Largest category</span><strong>${escapeHtml(top.dimension_value)}</strong><small>${escapeHtml(formatMetric(top.station_value,top.unit))}${topShare === null ? "" : ` · ${topShare.toFixed(1)}% of shown total`}</small></div>`
-  ];
-
-  if (numeric.length >= 3 && topThreeShare !== null) {
-    insights.push(`<div><span>Top-three concentration</span><strong>${topThreeShare.toFixed(1)}%</strong><small>Share of the shown total in the three largest categories</small></div>`);
-  }
-
-  if (benchmarkRows.length) {
-    const above = benchmarkRows.filter((row)=>Number(row.station_value)>Number(row.benchmark_value)).length;
-    const comparable = benchmarkRows.length;
-    const largestGap = [...benchmarkRows].sort((a,b) =>
-      Math.abs(Number(b.station_value)-Number(b.benchmark_value)) -
-      Math.abs(Number(a.station_value)-Number(a.benchmark_value))
-    )[0];
-    const gap = Number(largestGap.station_value)-Number(largestGap.benchmark_value);
-    const gapText = unit === "percent"
-      ? `${gap > 0 ? "+" : ""}${gap.toFixed(1)} percentage points`
-      : `${gap > 0 ? "+" : ""}${formatMetric(gap,unit)}`;
-    insights.push(`<div><span>Benchmark context</span><strong>${above} of ${comparable} above benchmark</strong><small>Largest absolute gap: ${escapeHtml(largestGap.dimension_value)} · ${escapeHtml(gapText)}</small></div>`);
-  }
-
-  els.exploreInsights.innerHTML = insights.join("");
+function exploreDimensionLabel(viewKey, value) {
+  if (viewKey !== "website-channels") return value;
+  return ({
+    "Direct":"Direct / unknown referrer",
+    "Search":"Search engines",
+    "Social":"Social media",
+    "Referral":"Links from other websites",
+    "Email & Newsletters":"Email / newsletters",
+    "Other":"Other / unclassified"
+  })[value] || value;
 }
-
 function titlesForHour(entries,day,hour) {
   const startMinute = hour * 60;
   const endMinute = startMinute + 60;
@@ -777,14 +753,19 @@ function programLines(names) {
 }
 
 function renderListeningHourContext(context) {
-  const { hours, entries, scheduleNote, periodStart, periodEnd } = context;
+  const { hours, entries, scheduleNote, periodStart, periodEnd, rangeMismatch = false } = context;
   const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
   const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const previous=state.scheduleProgram;
   els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
   if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
+  setHidden(els.scheduleProgramFilterControl, names.length === 0);
+  els.listeningHourPanel.classList.remove("compact-empty");
 
-  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
+  const rangeWarning = rangeMismatch
+    ? `<span class="source-range-warning"><strong>Source range differs from Analysis Range.</strong> NPR supplies this hour-of-day profile only as a whole-report aggregate, so it is shown intact rather than clipped or estimated.</span> `
+    : "";
+  els.nprHourDescription.innerHTML=`${rangeWarning}NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
 
   const hourPoints=[];
   const weekdayRows=[];
@@ -815,20 +796,43 @@ function renderListeningHourContext(context) {
     labelEvery:2,
     minLabelGap:12
   });
-  els.nprHourTable.innerHTML=`
+  els.nprHourTable.innerHTML=entries.length ? `
     <section class="hour-section"><h4>Monday–Friday schedule against weekday hourly average</h4><div class="table-wrap"><table class="hour-table weekday-hour-table"><thead><tr><th>Hour</th><th>Weekday<br>avg.</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th></tr></thead><tbody>${weekdayRows.join("") || '<tr><td colspan="7">No hours match this program filter.</td></tr>'}</tbody></table></div></section>
-    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>`;
+    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>` : "";
 }
 
-async function renderListeningByHour(hours, requestId = breakdownRequestId) {
+async function renderListeningByHour(hours, requestId = breakdownRequestId, { rangeMismatch = false } = {}) {
   if (!hours.length) {
     listeningHourContext=null;
-    els.nprHourChart.innerHTML="";
-    els.nprHourTable.innerHTML='<p class="empty-state">No NPR One hour-of-day source period fits completely inside the selected analysis range.</p>';
+    state.scheduleProgram="";
+    els.listeningHourPanel.classList.add("compact-empty");
+    setHidden(els.scheduleProgramFilterControl,true);
+    setHidden(els.nprHourChart,true);
+    els.nprHourTable.innerHTML="";
+    els.nprHourDescription.innerHTML='<span class="source-range-warning"><strong>Listening by Hour unavailable.</strong> No imported NPR One hour-of-day profile is available.</span>';
+    const noticeKey="missing-hour-profile";
+    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
+      listeningHourNoticeKey=noticeKey;
+      openDetailDialog("Listening by Hour unavailable", "<p>No imported NPR One hour-of-day profile is available, so this panel has been collapsed rather than leaving a large empty area.</p>", "Data availability");
+    }
     return;
   }
+  setHidden(els.nprHourChart,false);
   const periodStart=hours[0].period_start;
   const periodEnd=hours[0].period_end;
+
+  if(rangeMismatch) {
+    const noticeKey=`${state.startDate}|${state.endDate}|${periodStart}|${periodEnd}`;
+    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
+      listeningHourNoticeKey=noticeKey;
+      openDetailDialog(
+        "Listening by Hour uses a different source period",
+        `<p>The selected Analysis Range is <strong>${escapeHtml(formatDayDate(state.startDate))} – ${escapeHtml(formatDayDate(state.endDate))}</strong>, but NPR's available hour-of-day profile covers <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>.</p><p>This profile is a whole-report aggregate. It cannot be honestly trimmed to the selected dates, so the app is showing the complete source profile instead of estimating or leaving the panel blank.</p>`,
+        "Source range notice"
+      );
+    }
+  }
+
   let entries=[];
   let scheduleNote="";
   try {
@@ -836,13 +840,14 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId) {
     if(requestId !== breakdownRequestId) return;
     entries=result.entries;
     scheduleNote=result.sourceType==="recurrences"
-      ? "Schedule context comes from Composer\'s recurring-program catalog, not a dated historical log; overlapping or stale recurrences may appear."
+      ? "Exact dated schedule entries were unavailable; the program filter is hidden rather than using overlapping recurring definitions as if they were a historical log."
       : "Schedule context comes from dated Composer episodes for this report period.";
+    if(result.sourceType==="recurrences") entries=[];
   } catch(error) {
     if(requestId !== breakdownRequestId) return;
     scheduleNote=`Schedule lookup unavailable: ${error.message}`;
   }
-  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd};
+  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd,rangeMismatch};
   renderListeningHourContext(listeningHourContext);
 }
 
@@ -862,21 +867,29 @@ async function renderStreamingWeekpart() {
 
 async function renderBreakdowns() {
   const requestId = ++breakdownRequestId;
-  const [programs, devices, channels, hours] = await Promise.all([
+  const [programs, devices, channels, rangedHours] = await Promise.all([
     loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
     loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
     loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
     loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
   ]);
   if (requestId !== breakdownRequestId) return;
+
+  let hours=rangedHours;
+  let hourRangeMismatch=false;
+  if(!hours.length) {
+    hours=await loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart");
+    if (requestId !== breakdownRequestId) return;
+    hourRangeMismatch=hours.length>0;
+  }
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
   renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
     maxValue: 100,
     formatValue: (value) => `${Number(value).toFixed(1)}%`,
     onBarClick:(row)=>openBreakdownDrilldown("Live-stream device share",row,devices[0] ? formatPeriod(devices[0],devices[0].grain) : "")
   });
-  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
-  await Promise.all([renderListeningByHour(hours,requestId),renderStreamingWeekpart()]);
+  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: exploreDimensionLabel("website-channels",row.dimension_value), value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
+  await Promise.all([renderListeningByHour(hours,requestId,{rangeMismatch:hourRangeMismatch}),renderStreamingWeekpart()]);
 }
 
 async function renderAnomalies() {
@@ -996,32 +1009,31 @@ async function renderImportHistory() {
 
 async function renderExplore() {
   const requestId = ++exploreRequestId;
-  const view = EXPLORE_VIEWS[state.exploreView] || EXPLORE_VIEWS["audio-programs"];
+  const viewKey = state.exploreView;
+  const view = EXPLORE_VIEWS[viewKey] || EXPLORE_VIEWS["audio-programs"];
   els.exploreViewButtons.querySelectorAll("[data-explore-view]").forEach((button) => {
-    button.setAttribute("aria-pressed",String(button.dataset.exploreView===state.exploreView));
+    button.setAttribute("aria-pressed",String(button.dataset.exploreView===viewKey));
   });
   els.exploreDescription.textContent = view.description;
   const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", selectedRange());
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreInsights.innerHTML = "";
-    els.exploreChart.innerHTML = '<p class="empty-state">No complete source breakdown fits inside the selected analysis range.</p>';
-    els.exploreTable.innerHTML = "";
+    els.exploreChart.innerHTML = '<p class="empty-state compact">No complete source breakdown fits inside the selected analysis range.</p>';
     return;
   }
   els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
   const sorted = sortBreakdown(rows);
-  renderExploreInsights(sorted);
   const isPercent = rows[0].unit === "percent";
-  renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
+  renderBarChart(els.exploreChart, sorted.map((row) => ({
+    label: exploreDimensionLabel(viewKey,row.dimension_value),
+    value: row.station_value,
+    formattedValue: formatMetric(row.station_value,row.unit)
+  })), {
     maxValue: isPercent ? 100 : undefined,
     formatValue: (value) => formatMetric(value, rows[0].unit),
     limit: 25
   });
-  els.exploreTable.innerHTML = `<table><thead><tr><th>Category</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead><tbody>
-    ${sorted.map((row) => `<tr><td>${escapeHtml(row.dimension_value)}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}
-  </tbody></table>`;
 }
 
 async function refreshDashboard() {
