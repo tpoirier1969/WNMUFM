@@ -13,7 +13,7 @@ const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -524,6 +524,53 @@ async function renderTrend() {
 function sortBreakdown(rows) {
   return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
 }
+function renderExploreInsights(rows) {
+  if (!rows.length) {
+    els.exploreInsights.innerHTML = "";
+    return;
+  }
+  const numeric = sortBreakdown(rows).filter((row) => row.station_value !== null && Number.isFinite(Number(row.station_value)));
+  if (!numeric.length) {
+    els.exploreInsights.innerHTML = "";
+    return;
+  }
+
+  const unit = numeric[0].unit;
+  const top = numeric[0];
+  const total = numeric.reduce((sum,row)=>sum+Number(row.station_value),0);
+  const topShare = unit === "percent"
+    ? Number(top.station_value)
+    : total > 0 ? (Number(top.station_value) / total) * 100 : null;
+  const topThree = numeric.slice(0,3).reduce((sum,row)=>sum+Number(row.station_value),0);
+  const topThreeShare = unit === "percent"
+    ? topThree
+    : total > 0 ? (topThree / total) * 100 : null;
+
+  const benchmarkRows = numeric.filter((row) => row.benchmark_value !== null && Number.isFinite(Number(row.benchmark_value)));
+  const insights = [
+    `<div><span>Largest category</span><strong>${escapeHtml(top.dimension_value)}</strong><small>${escapeHtml(formatMetric(top.station_value,top.unit))}${topShare === null ? "" : ` · ${topShare.toFixed(1)}% of shown total`}</small></div>`
+  ];
+
+  if (numeric.length >= 3 && topThreeShare !== null) {
+    insights.push(`<div><span>Top-three concentration</span><strong>${topThreeShare.toFixed(1)}%</strong><small>Share of the shown total in the three largest categories</small></div>`);
+  }
+
+  if (benchmarkRows.length) {
+    const above = benchmarkRows.filter((row)=>Number(row.station_value)>Number(row.benchmark_value)).length;
+    const comparable = benchmarkRows.length;
+    const largestGap = [...benchmarkRows].sort((a,b) =>
+      Math.abs(Number(b.station_value)-Number(b.benchmark_value)) -
+      Math.abs(Number(a.station_value)-Number(a.benchmark_value))
+    )[0];
+    const gap = Number(largestGap.station_value)-Number(largestGap.benchmark_value);
+    const gapText = unit === "percent"
+      ? `${gap > 0 ? "+" : ""}${gap.toFixed(1)} percentage points`
+      : `${gap > 0 ? "+" : ""}${formatMetric(gap,unit)}`;
+    insights.push(`<div><span>Benchmark context</span><strong>${above} of ${comparable} above benchmark</strong><small>Largest absolute gap: ${escapeHtml(largestGap.dimension_value)} · ${escapeHtml(gapText)}</small></div>`);
+  }
+
+  els.exploreInsights.innerHTML = insights.join("");
+}
 
 function titlesForHour(entries,day,hour) {
   const startMinute = hour * 60;
@@ -775,12 +822,14 @@ async function renderExplore() {
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
+    els.exploreInsights.innerHTML = "";
     els.exploreChart.innerHTML = '<p class="empty-state">No complete source breakdown fits inside the selected analysis range.</p>';
     els.exploreTable.innerHTML = "";
     return;
   }
   els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
   const sorted = sortBreakdown(rows);
+  renderExploreInsights(sorted);
   const isPercent = rows[0].unit === "percent";
   renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
     maxValue: isPercent ? 100 : undefined,
