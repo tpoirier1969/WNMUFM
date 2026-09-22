@@ -184,7 +184,7 @@
             <div class="quality-explainer">
               <p><strong>What this does:</strong> the app flags patterns that could distort a programming or audience conclusion. A flag is a request to review the data, not a declaration that it is bad.</p>
               <p><strong>High</strong> means the pattern is large enough to materially distort the story the chart tells. <strong>Warning</strong> means it is unusual enough to investigate but may be legitimate.</p>
-              <p><strong>Expected</strong> closes the flag and keeps the data. <strong>Exclude</strong> closes the flag and removes that flagged date from daily trend/headline analysis when it can be isolated without rewriting the NPR source. <strong>Resolve</strong> closes the flag after review but leaves the data unchanged.</p>
+              <p id="anomalyEditHelp"><strong>Expected</strong> closes the flag and keeps the data. <strong>Exclude</strong> closes the flag and removes that flagged date from daily trend/headline analysis when it can be isolated without rewriting the NPR source. <strong>Resolve</strong> closes the flag after review but leaves the data unchanged.</p>
             </div>
             <div id="anomalyList"></div>
           </article>
@@ -224,12 +224,12 @@
           <div>
             <p class="eyebrow">NPR Analytics</p>
             <h2>Import reports</h2>
-            <p>Drop the original ZIP exports here. The app keeps raw rows for provenance, deduplicates semantically identical exports, and updates normalized chart data.</p>
+            <p id="importSectionDescription">Drop the original ZIP exports here. The app keeps raw rows for provenance, deduplicates semantically identical exports, and updates normalized chart data.</p>
           </div>
         </div>
 
         <div class="dashboard-grid two-column">
-          <article class="panel-card">
+          <article id="importUploadPanel" class="panel-card">
             <h3>Upload</h3>
             <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP files">
               <strong>Drop ZIP reports here</strong>
@@ -251,7 +251,7 @@
             <div id="importQueue" class="import-queue" aria-live="polite"></div>
           </article>
 
-          <article class="panel-card">
+          <article id="collectionStatusPanel" class="panel-card">
             <p class="eyebrow">Collection status</p>
             <h3>What we have and what to get next</h3>
             <p class="panel-note">This checklist updates from the imports already stored in WNMU-FM Analytics. “Year+” means the source reaches back to at least Sept. 22, 2025; “Short” means we have the report, but not enough history yet.</p>
