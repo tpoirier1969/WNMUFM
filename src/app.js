@@ -546,6 +546,7 @@ function validateAndStoreRange() {
   state.rangeMode="custom";
   state.rangeNoticeArmed=true;
   clearTrendZoom();
+  renderTrendQuickRanges();
   persistUiState();
   return true;
 }
