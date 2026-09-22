@@ -130,24 +130,10 @@ export async function loadLatestBreakdown(metricKey, dimensionType, filterSignat
 }
 
 
-export async function loadLongestBreakdown(metricKey, dimensionType, filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
-  const params = applyDateRange(new URLSearchParams({
-    select: "dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
-    metric_key: `eq.${metricKey}`,
-    dimension_type: `eq.${dimensionType}`,
-    filter_signature: `eq.${filterSignature}`,
-    order: "period_start.asc",
-    limit: "2000"
-  }), range);
-  const [rows, context] = await Promise.all([
-    selectRows("wnmufm_analytics_observations", params.toString()),
-    loadAnalysisContext()
-  ]);
-  const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
-  if (!usable.length) return [];
-
+export function selectLongestBreakdownRows(rows) {
+  if (!rows?.length) return [];
   const groups = new Map();
-  usable.forEach((row) => {
+  rows.forEach((row) => {
     const id = Number(row.source_import_id);
     if (!groups.has(id)) groups.set(id, []);
     groups.get(id).push(row);
@@ -164,7 +150,26 @@ export async function loadLongestBreakdown(metricKey, dimensionType, filterSigna
     spanDays(b) - spanDays(a) ||
     String(b[0]?.period_end || "").localeCompare(String(a[0]?.period_end || ""))
   );
-  return candidates[0].map((row) => withBreakdownStatus(row, context));
+  return candidates[0] || [];
+}
+
+export async function loadLongestBreakdown(metricKey, dimensionType, filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
+  const params = applyDateRange(new URLSearchParams({
+    select: "dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
+    metric_key: `eq.${metricKey}`,
+    dimension_type: `eq.${dimensionType}`,
+    filter_signature: `eq.${filterSignature}`,
+    order: "period_start.asc",
+    limit: "2000"
+  }), range);
+  const [rows, context] = await Promise.all([
+    selectRows("wnmufm_analytics_observations", params.toString()),
+    loadAnalysisContext()
+  ]);
+  const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
+  if (!usable.length) return [];
+
+  return selectLongestBreakdownRows(usable).map((row) => withBreakdownStatus(row, context));
 }
 
 export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
