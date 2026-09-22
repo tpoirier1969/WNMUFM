@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { notableDateContext, notableDatesForYear } from "../src/notable-dates.js";
 
 test("2026 federal Election Day is identified as notable context", () => {
-  const election=notableDatesForYear(2026).find((item)=>item.kind==="election");
+  const election=notableDatesForYear(2026).find((item)=>item.name==="Federal Election Day");
   assert.equal(election.date.toISOString().slice(0,10),"2026-11-03");
   assert.equal(notableDateContext("2026-11-03")?.name,"Federal Election Day");
 });
