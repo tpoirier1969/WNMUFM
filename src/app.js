@@ -687,6 +687,7 @@ async function renderTrend() {
   setHidden(els.trendNotableControls, grain !== "day");
   setHidden(els.trendProgramControl, !programCapable);
   refreshTrendControlState();
+  updateTrendZoomControls();
 
   const selectedProgram = programCapable ? state.trendProgram : "";
   const filterSignature = selectedProgram ? JSON.stringify({ selected_program:selectedProgram }) : "{}";
@@ -764,15 +765,20 @@ async function renderTrend() {
         value:Number(row.station_value),
         secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
         weekend:grain === "day" && isWeekendDate(row.period_start),
-        contextLabel:context ? notableContextLabel(context) : ""
+        contextLabel:context ? notableContextLabel(context) : "",
+        notableExact:context?.delta === 0
       };
     });
-    renderLineChart(els.trendChart,points,{
+    const chartPoints=zoomedTrendPoints(points);
+    updateTrendZoomControls();
+    renderLineChart(els.trendChart,chartPoints,{
       title:label,
       ariaLabel:`${label} by ${grain}`,
       grain,
       primaryLabel:"WNMU-FM",
       secondaryLabel:benchmarkLabel,
+      zoomMode:state.trendZoomMode,
+      onZoomSelect:setTrendZoom,
       onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
     });
 
@@ -786,7 +792,7 @@ async function renderTrend() {
       <tbody>${filteredRows.map((row)=>{
         const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
         const notable = grain === "day" ? notableDateContext(row.period_start) : null;
-        return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+        return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable?.delta === 0 ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
       }).join("")}</tbody>
     </table>`, filteredRows.length);
     renderTrendPrintDetail(filteredRows,grain,medianValue);
@@ -829,16 +835,21 @@ async function renderTrend() {
       shortLabel:grain === "day" ? shortDayLabel(date) : grain === "week" ? `Wk ${shortDayLabel(date)}` : shortMonthLabel(date),
       weekend:grain === "day" && isWeekendDate(date),
       contextLabel:context ? notableContextLabel(context) : "",
+      notableExact:context?.delta === 0,
       values,
       actualValues
     };
   }).filter((point)=>Object.keys(point.values).length);
 
-  renderIndexedMultiLineChart(els.trendChart,points,{
+  const chartPoints=zoomedTrendPoints(points);
+  updateTrendZoomControls();
+  renderIndexedMultiLineChart(els.trendChart,chartPoints,{
     title:"Metric comparison",
     ariaLabel:`Indexed comparison of ${seriesDefs.map((item)=>item.label).join(", ")} by ${grain}`,
     grain,
     series:seriesDefs,
+    zoomMode:state.trendZoomMode,
+    onZoomSelect:setTrendZoom,
     onPointClick:grain === "day" ? (point,item)=>openDateDrilldown({date:point.date,value:point.actualValues[item.key]},item.key,item.median) : null
   });
 
@@ -849,7 +860,7 @@ async function renderTrend() {
   }
   renderTrendDataTable(`<table class="trend-data-table multi-metric-table">
     <thead><tr><th>Period</th>${seriesDefs.map((item)=>`<th class="numeric">${escapeHtml(item.label)}</th>`).join("")}</tr></thead>
-    <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.contextLabel ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
+    <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.notableExact ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
   </table>`, points.length);
   els.trendPrintColumns.classList.add("single");
   els.trendPrintColumns.innerHTML='<p class="print-trend-note"><strong>Multi-metric comparison:</strong> the printed chart uses each selected metric\'s median as index 100. Actual values remain available in the on-screen table and hover details.</p>';
