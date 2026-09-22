@@ -631,7 +631,6 @@ async function renderTrend() {
       title:label,
       ariaLabel:`${label} by ${grain}`,
       grain,
-      median:medianValue,
       primaryLabel:"WNMU-FM",
       secondaryLabel:benchmarkLabel,
       onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
