@@ -40,3 +40,21 @@ test("hidden state always wins over component display styles", async () => {
   const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css,/\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
 });
+
+
+test("startup visibility does not depend on the hidden attribute alone", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source,/function setHidden\(/);
+  assert.match(source,/element\.style\.display = hidden \? "none" : ""/);
+  assert.match(source,/setHidden\(els\.startupPanel, true\)/);
+});
+
+test("Supabase requests have real abort timeouts and stale refreshes are guarded", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../src/api.js", import.meta.url), "utf8");
+  assert.match(source,/AbortController\(\)/);
+  assert.match(source,/sessionGeneration/);
+  assert.match(source,/generationAtStart !== sessionGeneration/);
+  assert.match(source,/storeSession\(null\);\s*if \(session\?\.access_token\)/s);
+});
