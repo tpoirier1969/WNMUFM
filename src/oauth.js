@@ -23,6 +23,5 @@ export function hasOAuthCallback(fragment = "") {
 export function oauthRedirectUrl(locationLike) {
   const origin = String(locationLike?.origin || "");
   const pathname = String(locationLike?.pathname || "/");
-  const search = String(locationLike?.search || "");
-  return `${origin}${pathname}${search}`;
+  return `${origin}${pathname}`;
 }

@@ -18,10 +18,10 @@ test("OAuth callback parser preserves provider errors", () => {
   assert.equal(hasOAuthCallback("#error=access_denied"), true);
 });
 
-test("OAuth redirect URL keeps the current app path and query but not a fragment", () => {
+test("OAuth redirect URL uses the exact app path without query or fragment", () => {
   assert.equal(
     oauthRedirectUrl({ origin:"https://example.com", pathname:"/WNMUFM/", search:"?mode=test", hash:"#ignore" }),
-    "https://example.com/WNMUFM/?mode=test"
+    "https://example.com/WNMUFM/"
   );
 });
 
