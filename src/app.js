@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -13,7 +13,7 @@ const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -30,6 +30,10 @@ const state = {
   scheduleProgram:"",
   startDate:restoredUi.startDate || "",
   endDate:restoredUi.endDate || "",
+  rangeMode:restoredUi.rangeMode === "custom" || restoredUi.rangeMode === "all"
+    ? restoredUi.rangeMode
+    : (restoredUi.startDate || restoredUi.endDate ? "custom" : "all"),
+  availableRange:{ startDate:"", endDate:"" },
   activeTab:["overview","explore","imports"].includes(restoredUi.activeTab) ? restoredUi.activeTab : "overview",
   exploreView:restoredUi.exploreView || "audio-programs"
 };
@@ -45,6 +49,7 @@ function persistUiState() {
       activeTab:state.activeTab,
       startDate:state.startDate,
       endDate:state.endDate,
+      rangeMode:state.rangeMode,
       exploreView:state.exploreView,
       trendMetrics:state.trendMetrics
     }));
@@ -336,9 +341,54 @@ function activateTab(tab, persist = true) {
   if (persist) persistUiState();
 }
 
+function formattedRange(range) {
+  if (!range?.startDate || !range?.endDate) return "No dated imported data";
+  return `${formatDayDate(range.startDate)} – ${formatDayDate(range.endDate)}`;
+}
+
 function applyRangeControls() {
   els.globalStartDate.value = state.startDate;
   els.globalEndDate.value = state.endDate;
+
+  const available=state.availableRange;
+  const hasAvailable=Boolean(available.startDate && available.endDate);
+  for(const input of [els.globalStartDate,els.globalEndDate]) {
+    input.min=hasAvailable ? available.startDate : "";
+    input.max=hasAvailable ? available.endDate : "";
+  }
+  els.availableRangeLabel.textContent=hasAvailable
+    ? `Available imported data: ${formattedRange(available)}`
+    : "No dated imported data is available yet.";
+}
+
+function rangeChanged(a,b) {
+  return String(a?.startDate || "") !== String(b?.startDate || "") ||
+    String(a?.endDate || "") !== String(b?.endDate || "");
+}
+
+async function syncAvailableDataRange() {
+  const previous={ ...state.availableRange };
+  const next=await loadAvailableDataRange();
+  const availableChanged=Boolean(previous.startDate || previous.endDate) && rangeChanged(previous,next);
+  state.availableRange={ ...next };
+
+  let selectionChanged=false;
+  if(state.rangeMode === "all" || (!state.startDate && !state.endDate)) {
+    if(state.startDate !== next.startDate || state.endDate !== next.endDate) selectionChanged=true;
+    state.startDate=next.startDate;
+    state.endDate=next.endDate;
+    state.rangeMode="all";
+  } else if(next.startDate && next.endDate) {
+    const clampedStart=state.startDate && state.startDate < next.startDate ? next.startDate : state.startDate;
+    const clampedEnd=state.endDate && state.endDate > next.endDate ? next.endDate : state.endDate;
+    if(clampedStart !== state.startDate || clampedEnd !== state.endDate) selectionChanged=true;
+    state.startDate=clampedStart;
+    state.endDate=clampedEnd;
+  }
+
+  applyRangeControls();
+  persistUiState();
+  return { previous, next:{ ...next }, availableChanged, selectionChanged };
 }
 
 async function refreshAnalysisViews() {
@@ -356,6 +406,7 @@ function validateAndStoreRange() {
   els.globalEndDate.setCustomValidity("");
   state.startDate=startDate;
   state.endDate=endDate;
+  state.rangeMode="custom";
   persistUiState();
   return true;
 }
@@ -1010,6 +1061,8 @@ async function processFiles(fileList) {
   let errorCount = 0;
   let observationCount = 0;
   let anomalyCount = 0;
+  const availableRangeBeforeImport={ ...state.availableRange };
+  let importRangeChange=null;
 
   await withBusy(async () => {
     for (const file of files) {
@@ -1036,6 +1089,7 @@ async function processFiles(fileList) {
       }
     }
     invalidateDataCache();
+    importRangeChange=await syncAvailableDataRange();
     await renderProgramFilterOptions();
     await refreshDashboard();
   });
@@ -1044,9 +1098,18 @@ async function processFiles(fileList) {
   if (importedCount > 0) {
     const reportWord = importedCount === 1 ? "report" : "reports";
     const observationWord = observationCount === 1 ? "observation" : "observations";
+    const rangeWasChanged=rangeChanged(availableRangeBeforeImport,importRangeChange?.next || {}) &&
+      Boolean(importRangeChange?.next?.startDate || importRangeChange?.next?.endDate);
+    const rangeNotice=rangeWasChanged && importRangeChange?.next?.startDate
+      ? `<p class="range-change-notice"><strong>Imported data changed the available analytics range to:</strong><br>${escapeHtml(formattedRange(importRangeChange.next))}</p>` +
+        (state.rangeMode === "all"
+          ? `<p>Your Analysis Range was updated to match the full imported range.</p>`
+          : `<p>Your custom Analysis Range remains ${escapeHtml(formattedRange({startDate:state.startDate,endDate:state.endDate}))}.</p>`)
+      : "";
     const messages = [
       `<p><strong>Data added to the app.</strong></p>`,
       `<p>${importedCount} ${reportWord} imported with ${observationCount.toLocaleString()} ${observationWord}. The dashboard has been refreshed.</p>`,
+      rangeNotice,
       anomalyCount ? `<p>${anomalyCount} data-quality ${anomalyCount === 1 ? "flag was" : "flags were"} created for review.</p>` : "",
       duplicateCount ? `<p>${duplicateCount} ${duplicateCount === 1 ? "file was" : "files were"} already imported.</p>` : "",
       errorCount ? `<p>${errorCount} ${errorCount === 1 ? "file could not" : "files could not"} be imported. See the import queue for details.</p>` : ""
@@ -1152,8 +1215,9 @@ function bindEvents() {
   els.globalStartDate.addEventListener("change",rangeChanged);
   els.globalEndDate.addEventListener("change",rangeChanged);
   els.clearDateRange.addEventListener("click",()=>{
-    state.startDate="";
-    state.endDate="";
+    state.rangeMode="all";
+    state.startDate=state.availableRange.startDate;
+    state.endDate=state.availableRange.endDate;
     applyRangeControls();
     persistUiState();
     void withBusy(()=>refreshAnalysisViews());
@@ -1220,6 +1284,7 @@ async function boot() {
     }
     const authenticated = await establishAccess();
     if (authenticated) {
+      await syncAvailableDataRange();
       await renderProgramFilterOptions();
       await refreshDashboard();
     }
