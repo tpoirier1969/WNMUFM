@@ -34,7 +34,7 @@ test("shareable view query encodes spaces and punctuation safely", () => {
     trendProgram:"Ask Me Another: UP Edition",
     trendMetrics:["audio.downloads"]
   });
-  assert.match(search,/program=Ask+Me+Another%3A+UP+Edition/);
+  assert.match(search,/program=Ask\\+Me\\+Another%3A\\+UP\\+Edition/);
   assert.equal(parseViewState(search).trendProgram,"Ask Me Another: UP Edition");
 });
 
@@ -43,6 +43,6 @@ test("app exposes a copy-view control and initializes full state after password 
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   const html = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html,/id="copyViewButton"/);
-  assert.match(app,/await syncAvailableDataRange();s*await renderProgramFilterOptions();s*await refreshDashboard();/s);
-  assert.match(app,/buildViewSearch(viewStateSnapshot())/);
+  assert.match(app,/await syncAvailableDataRange\\(\\);\\s*await renderProgramFilterOptions\\(\\);\\s*await refreshDashboard\\(\\);/s);
+  assert.match(app,/buildViewSearch\\(viewStateSnapshot\\(\\)\\)/);
 });
