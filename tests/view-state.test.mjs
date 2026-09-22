@@ -46,3 +46,10 @@ test("app exposes a copy-view control and initializes full state after password 
   assert.match(app,/await syncAvailableDataRange\\(\\);\\s*await renderProgramFilterOptions\\(\\);\\s*await refreshDashboard\\(\\);/s);
   assert.match(app,/buildViewSearch\\(viewStateSnapshot\\(\\)\\)/);
 });
+
+
+test("GitHub sign-in preserves shared state before leaving the app", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/githubLoginButton\.addEventListener[\s\S]*persistUiState\(\);[\s\S]*signInWithGitHub\(\);/);
+});
