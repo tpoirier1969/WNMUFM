@@ -280,7 +280,7 @@ const EXPLORE_VIEWS = {
     description: "Shows which player/client requested WNMU-FM audio. This is especially useful for separating broad audience changes from browser-driven or automated-looking download bursts."
   },
   "website-channels": {
-    title: "Website sessions by traffic channel",
+    title: "Website sessions by traffic source",
     metric: "website.sessions_by_channel",
     dimension: "traffic_channel",
     description: "Shows how visitors reached wnmufm.org. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The current NPR export does not identify Google, Bing, or other engines separately."
@@ -320,7 +320,7 @@ const EXPLORE_VIEWS = {
 const EXPLORE_ORDER = [
   ["audio-programs","Downloads by program"],
   ["audio-players","Downloads by player"],
-  ["website-channels","Website channels"],
+  ["website-channels","Website traffic sources"],
   ["website-countries","Website countries"],
   ["streaming-devices","Stream devices"],
   ["npr-one-podcasts","NPR One podcasts"],
