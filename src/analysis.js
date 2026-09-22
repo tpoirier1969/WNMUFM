@@ -92,3 +92,10 @@ export function percentFromMedian(value, medianValue) {
   return ((number - baseline) / baseline) * 100;
 }
 
+export function indexToMedian(value, medianValue) {
+  const number = Number(value);
+  const baseline = Number(medianValue);
+  if (!Number.isFinite(number) || !Number.isFinite(baseline) || baseline === 0) return null;
+  return (number / baseline) * 100;
+}
+
