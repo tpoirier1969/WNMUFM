@@ -23,6 +23,20 @@ export async function loadImports() {
   return selectRows("wnmufm_analytics_imports", query);
 }
 
+export function selectAvailableObservationRange(rows) {
+  const dated = (rows || []).filter((row) =>
+    row?.period_start &&
+    row?.period_end &&
+    row.station_value !== null &&
+    row.station_value !== undefined
+  );
+  if (!dated.length) return { startDate:"", endDate:"" };
+  return {
+    startDate:dated.reduce((earliest,row) => !earliest || row.period_start < earliest ? row.period_start : earliest, ""),
+    endDate:dated.reduce((latest,row) => !latest || row.period_end > latest ? row.period_end : latest, "")
+  };
+}
+
 export async function loadOpenAnomalies() {
   const query = new URLSearchParams({
     select: "id,import_id,anomaly_key,severity,status,title,detail,evidence,detected_at,reviewed_by_email,reviewed_at",
@@ -83,6 +97,24 @@ function withBreakdownStatus(row, context) {
     analysis_tail_incomplete: Boolean(runDate && row.period_end >= runDate),
     report_run_date: runDate || null
   };
+}
+
+export async function loadAvailableDataRange() {
+  const context = await loadAnalysisContext();
+  const query = (order) => new URLSearchParams({
+    select:"period_start,period_end,station_value,source_import_id",
+    dimension_type:"eq.",
+    filter_signature:`eq.${DEFAULT_FILTER_SIGNATURE}`,
+    order,
+    limit:"500"
+  }).toString();
+
+  const [earlyRows, lateRows] = await Promise.all([
+    selectRows("wnmufm_analytics_observations", query("period_start.asc")),
+    selectRows("wnmufm_analytics_observations", query("period_end.desc"))
+  ]);
+  const usable = [...earlyRows,...lateRows].filter((row) => rowIsUsable(row,context));
+  return selectAvailableObservationRange(usable);
 }
 
 export async function loadTimeSeries(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
