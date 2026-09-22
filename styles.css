@@ -161,6 +161,10 @@ td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .explore-period { display: grid; gap: 3px; color: var(--muted); font-size: .8rem; }
 .explore-period strong { color: var(--text); font-size: .95rem; }
 .explore-description { max-width: 960px; margin: 4px 0 18px; }
+.explore-insights { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:0 0 18px; }
+.explore-insights > div { padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-alt); }
+.explore-insights span, .explore-insights small { display:block; color:var(--muted); font-size:.76rem; }
+.explore-insights strong { display:block; margin:3px 0; font-size:.98rem; }
 
 .collection-table-wrap { margin-top: 14px; }
 .collection-table { min-width: 760px; }
@@ -343,4 +347,8 @@ body.app-busy * {
   .panel-card { align-self:start; break-inside:auto; }
   .metric-card { break-inside:avoid; }
   .chart-frame { width:100%; break-inside:avoid; }
+}
+
+@media (max-width: 780px) {
+  .explore-insights { grid-template-columns:1fr; }
 }
