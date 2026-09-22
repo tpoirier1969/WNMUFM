@@ -24,3 +24,12 @@ test("OAuth redirect URL keeps the current app path and query but not a fragment
     "https://example.com/WNMUFM/?mode=test"
   );
 });
+
+
+test("session restoration has a timeout fail-safe", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source,/withTimeout\(/);
+  assert.match(source,/Session restoration timed out/);
+  assert.match(source,/setAuthenticated\(false\)/);
+});
