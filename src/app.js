@@ -395,24 +395,51 @@ function showLoginMessage(message, success = false) {
   els.loginMessage.style.color = success ? "var(--success)" : "var(--danger)";
 }
 
-async function establishAccess() {
-  const session = await getSession().catch(() => null);
-  if (!session?.access_token) {
+function withTimeout(promise, timeoutMs, message) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    })
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function establishAccess({ timeoutMs = 10000 } = {}) {
+  try {
+    const session = await withTimeout(
+      getSession().catch(() => null),
+      timeoutMs,
+      "Session restoration timed out."
+    );
+    if (!session?.access_token) {
+      setAuthenticated(false);
+      return false;
+    }
+
+    const role = await withTimeout(
+      fetchRole(),
+      timeoutMs,
+      "Account access lookup timed out."
+    );
+    if (!role) {
+      await signOut().catch(() => null);
+      showLoginMessage("This account is valid, but it has not been assigned WNMU-FM Analytics access.");
+      setAuthenticated(false);
+      return false;
+    }
+
+    state.role = role;
+    const user = currentUser();
+    els.userBadge.textContent = role.display_name || user?.email || "Signed in";
+    setAuthenticated(true);
+    return true;
+  } catch (error) {
+    console.error("Could not restore WNMU-FM session", error);
+    showLoginMessage("Could not restore the saved session. Please sign in again.");
     setAuthenticated(false);
     return false;
   }
-  const role = await fetchRole();
-  if (!role) {
-    await signOut().catch(() => null);
-    showLoginMessage("This account is valid, but it has not been assigned WNMU-FM Analytics access.");
-    setAuthenticated(false);
-    return false;
-  }
-  state.role = role;
-  const user = currentUser();
-  els.userBadge.textContent = role.display_name || user?.email || "Signed in";
-  setAuthenticated(true);
-  return true;
 }
 
 function metricCard(title, row) {
@@ -1197,7 +1224,12 @@ async function boot() {
       await refreshDashboard();
     }
     setInterval(checkVersion, 5 * 60 * 1000);
+  } catch (error) {
+    console.error("WNMU-FM boot failed", error);
+    showLoginMessage("The app could not finish loading. Please sign in again or reload the page.");
+    setAuthenticated(false);
   } finally {
+    if (!els.startupPanel.hidden && els.authPanel.hidden && els.appPanel.hidden) setAuthenticated(false);
     setBusy(false);
   }
 }
