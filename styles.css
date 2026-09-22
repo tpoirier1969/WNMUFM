@@ -68,10 +68,10 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .metric-value { font-size: clamp(1.55rem, 2.5vw, 2.25rem); font-weight: 850; letter-spacing: -.03em; }
 .metric-sub { margin-top: 3px; color: var(--muted); font-size: .78rem; }
 
-.dashboard-grid { display: grid; gap: 16px; margin-bottom: 16px; }
+.dashboard-grid { display: grid; gap: 16px; margin-bottom: 16px; align-items: start; }
 .two-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .span-two { grid-column: 1 / -1; }
-.panel-card { padding: 20px; min-width: 0; }
+.panel-card { padding: 20px; min-width: 0; align-self: start; }
 .panel-note, .quality-explainer, .explore-description { color: var(--muted); font-size: .86rem; }
 .panel-note { margin: 12px 0; }
 .inline-controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
@@ -156,7 +156,8 @@ td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 .anomaly-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .explore-panel { min-height: 520px; }
-.explore-select { min-width: min(460px, 100%); }
+.explore-heading { align-items: flex-start; }
+.explore-button-strip { max-width: 980px; }
 .explore-period { display: grid; gap: 3px; color: var(--muted); font-size: .8rem; }
 .explore-period strong { color: var(--text); font-size: .95rem; }
 .explore-description { max-width: 960px; margin: 4px 0 18px; }
@@ -296,4 +297,50 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px
 body.app-busy,
 body.app-busy * {
   cursor: progress !important;
+}
+
+
+.startup-card { display:flex; align-items:center; gap:12px; min-height:92px; }
+.startup-spinner { width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--brand); border-radius:50%; animation:wnmu-spin .8s linear infinite; }
+@keyframes wnmu-spin { to { transform:rotate(360deg); } }
+
+.app-toolbar { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:4px 0 18px; }
+.app-toolbar .tab-bar { padding:0; flex:1 1 auto; }
+.global-date-range { display:flex; align-items:end; justify-content:flex-end; gap:8px; flex-wrap:wrap; flex:0 1 auto; }
+.global-date-range > .control-label { align-self:center; margin:0 4px 0 0; }
+.global-date-range label { display:grid; grid-template-columns:auto minmax(132px,165px); align-items:center; gap:6px; font-size:.78rem; }
+.global-date-range input { min-height:36px; padding:6px 8px; }
+.global-date-range .small-button { min-height:36px; }
+
+.chart-secondary-line { fill:none; stroke:var(--accent); stroke-width:2.6; stroke-dasharray:8 5; stroke-linejoin:round; stroke-linecap:round; }
+.chart-secondary-point { fill:var(--surface); stroke:var(--accent); stroke-width:2.2; }
+.chart-legend-label { fill:var(--muted); font-size:11px; font-weight:800; }
+.hour-chart { min-height:300px; margin:6px 0 12px; }
+.print-trend-columns { display:none; }
+
+@media (max-width: 980px) {
+  .app-toolbar { flex-direction:column; }
+  .global-date-range { width:100%; justify-content:flex-start; }
+}
+
+@media (max-width: 640px) {
+  .global-date-range { display:grid; grid-template-columns:1fr 1fr; }
+  .global-date-range > .control-label { grid-column:1 / -1; }
+  .global-date-range label { grid-template-columns:1fr; }
+  .global-date-range .small-button { align-self:end; }
+}
+
+@media print {
+  @page { size: letter portrait; margin: .45in; }
+  .app-toolbar, .startup-card { display:none !important; }
+  #trendTable { display:none !important; }
+  .print-trend-columns { display:grid !important; grid-template-columns:1fr 1fr; gap:16px; margin-top:10px; }
+  .print-trend-columns.single { grid-template-columns:1fr; }
+  .print-trend-columns table { min-width:0; font-size:7.5pt; }
+  .print-trend-columns th, .print-trend-columns td { padding:4px 5px; }
+  .print-trend-note { grid-column:1 / -1; padding:8px 10px; border:1px solid #bbb; font-size:8pt; }
+  .dashboard-grid { align-items:start; }
+  .panel-card { align-self:start; break-inside:auto; }
+  .metric-card { break-inside:avoid; }
+  .chart-frame { width:100%; break-inside:avoid; }
 }
