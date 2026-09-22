@@ -116,7 +116,10 @@
             </div>
             <div id="trendMedianSummary" class="trend-stat-strip"></div>
             <div id="trendChart" class="chart-frame"></div>
-            <div id="trendTable" class="table-wrap"></div>
+            <details id="trendDataDetails" class="trend-data-details">
+              <summary id="trendDataSummary">Show period-by-period data</summary>
+              <div id="trendTable" class="table-wrap"></div>
+            </details>
             <div id="trendPrintColumns" class="print-trend-columns"></div>
           </article>
 
@@ -153,7 +156,7 @@
                 <p class="eyebrow">NPR One + WNMU schedule</p>
                 <h3>Listening by hour</h3>
               </div>
-              <label class="schedule-program-filter">Filter schedule by program
+              <label id="scheduleProgramFilterControl" class="schedule-program-filter">Filter schedule by program
                 <select id="scheduleProgramFilter">
                   <option value="">All programs</option>
                 </select>
@@ -208,9 +211,7 @@
             <div class="explore-period"><span>Period</span><strong id="explorePeriod"></strong></div>
           </div>
           <p id="exploreDescription" class="explore-description"></p>
-          <div id="exploreInsights" class="explore-insights" aria-live="polite"></div>
           <div id="exploreChart"></div>
-          <div id="exploreTable" class="table-wrap"></div>
         </article>
       </section>
 
