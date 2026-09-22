@@ -33,3 +33,10 @@ test("session restoration has a timeout fail-safe", async () => {
   assert.match(source,/Session restoration timed out/);
   assert.match(source,/setAuthenticated\(false\)/);
 });
+
+
+test("hidden state always wins over component display styles", async () => {
+  const fs = await import("node:fs/promises");
+  const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css,/\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
