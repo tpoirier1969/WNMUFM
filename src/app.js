@@ -11,9 +11,9 @@ import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -415,6 +415,17 @@ function validateAndStoreRange() {
   state.rangeMode="custom";
   persistUiState();
   return true;
+}
+
+function renderTrendDataTable(html, rowCount) {
+  els.trendTable.innerHTML = html || "";
+  const hasRows = Number(rowCount || 0) > 0;
+  setHidden(els.trendDataDetails, !hasRows);
+  if (!hasRows) {
+    els.trendDataDetails.open = false;
+    return;
+  }
+  els.trendDataSummary.textContent = `Show period-by-period data (${Number(rowCount).toLocaleString()} rows)`;
 }
 
 function renderTrendPrintDetail(rows, grain, medianValue) {
