@@ -8,34 +8,45 @@ import { matchesNotableDateMode, notableContextLabel, notableDateContext } from 
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
+import { buildViewSearch, parseViewState } from "./view-state.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
 const restoredUi = (() => {
   try { return JSON.parse(sessionStorage.getItem(UI_STATE_KEY) || "{}"); } catch { return {}; }
 })();
+const sharedView = parseViewState(window.location.search);
+const validDateKey = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "";
+const validChoice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
+const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
+const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
+const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
+const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","custom"], (initialStartDate || initialEndDate) ? "custom" : "all");
+const initialMetrics = Array.isArray(sharedView.trendMetrics) && sharedView.trendMetrics.length
+  ? sharedView.trendMetrics
+  : (Array.isArray(restoredUi.trendMetrics) && restoredUi.trendMetrics.length ? restoredUi.trendMetrics : ["streaming.listeners"]);
+
 const state = {
   role:null,
   loading:false,
-  trendMetrics:Array.isArray(restoredUi.trendMetrics) && restoredUi.trendMetrics.length ? restoredUi.trendMetrics : ["streaming.listeners"],
-  trendWeekpart:"all",
-  trendNotable:"all",
-  trendProgram:"",
+  trendMetrics:initialMetrics,
+  trendGrain:validChoice(sharedOrRestored("trendGrain","day"), ["day","week","month"], "day"),
+  trendWeekpart:sharedOrRestored("trendWeekpart","all"),
+  trendNotable:sharedOrRestored("trendNotable","all"),
+  trendProgram:sharedOrRestored("trendProgram",""),
   scheduleProgram:"",
-  startDate:restoredUi.startDate || "",
-  endDate:restoredUi.endDate || "",
-  rangeMode:restoredUi.rangeMode === "custom" || restoredUi.rangeMode === "all"
-    ? restoredUi.rangeMode
-    : (restoredUi.startDate || restoredUi.endDate ? "custom" : "all"),
+  startDate:initialStartDate,
+  endDate:initialEndDate,
+  rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
-  activeTab:["overview","explore","imports"].includes(restoredUi.activeTab) ? restoredUi.activeTab : "overview",
-  exploreView:restoredUi.exploreView || "audio-programs"
+  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","explore","imports"], "overview"),
+  exploreView:sharedOrRestored("exploreView","audio-programs")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
@@ -44,23 +55,67 @@ let breakdownRequestId = 0;
 let listeningHourContext = null;
 let listeningHourNoticeKey = "";
 
+function viewStateSnapshot() {
+  return {
+    activeTab:state.activeTab,
+    startDate:state.startDate,
+    endDate:state.endDate,
+    rangeMode:state.rangeMode,
+    exploreView:state.exploreView,
+    trendMetrics:state.trendMetrics,
+    trendGrain:state.trendGrain,
+    trendWeekpart:state.trendWeekpart,
+    trendNotable:state.trendNotable,
+    trendProgram:state.trendProgram
+  };
+}
+
+function syncViewUrl() {
+  const search = buildViewSearch(viewStateSnapshot());
+  const next = `${window.location.pathname}${search}`;
+  window.history.replaceState(null, document.title, next);
+}
+
 function persistUiState() {
   try {
-    sessionStorage.setItem(UI_STATE_KEY,JSON.stringify({
-      activeTab:state.activeTab,
-      startDate:state.startDate,
-      endDate:state.endDate,
-      rangeMode:state.rangeMode,
-      exploreView:state.exploreView,
-      trendMetrics:state.trendMetrics
-    }));
+    sessionStorage.setItem(UI_STATE_KEY,JSON.stringify(viewStateSnapshot()));
   } catch {
     // Session persistence is convenience state, not analytics data.
   }
+  syncViewUrl();
 }
 
 function selectedRange() {
   return { startDate:state.startDate, endDate:state.endDate };
+}
+
+let copyViewStatusTimer = null;
+async function copyCurrentViewLink() {
+  persistUiState();
+  const url = window.location.href.split("#")[0];
+  let copied = false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      copied = true;
+    }
+  } catch {
+    copied = false;
+  }
+  if (!copied) {
+    const field = document.createElement("textarea");
+    field.value = url;
+    field.setAttribute("readonly","");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    copied = document.execCommand("copy");
+    field.remove();
+  }
+  els.copyViewStatus.textContent = copied ? "View link copied" : "Could not copy automatically";
+  if (copyViewStatusTimer) window.clearTimeout(copyViewStatusTimer);
+  copyViewStatusTimer = window.setTimeout(() => { els.copyViewStatus.textContent = ""; }, 2600);
 }
 
 function setBusy(isBusy) {
@@ -560,7 +615,8 @@ async function renderTrend() {
 
   const metricKeys = [...state.trendMetrics];
   const multiple = metricKeys.length > 1;
-  const grain = els.trendGrain.value;
+  const grain = state.trendGrain;
+  if (els.trendGrain.value !== grain) els.trendGrain.value = grain;
   const programCapable = metricKeys.every((key)=>key === "audio.downloads" || key === "audio.users");
   setHidden(els.trendWeekpartControls, grain !== "day");
   setHidden(els.trendNotableControls, grain !== "day");
@@ -1219,16 +1275,19 @@ function bindEvents() {
     const button = event.target.closest("[data-weekpart]");
     if (!button) return;
     state.trendWeekpart = button.dataset.weekpart;
+    persistUiState();
     void withBusy(() => renderTrend());
   });
   els.trendNotableButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-notable-mode]");
     if (!button) return;
     state.trendNotable = button.dataset.notableMode;
+    persistUiState();
     void withBusy(() => renderTrend());
   });
   els.trendProgramSelect.addEventListener("change", () => {
     state.trendProgram = els.trendProgramSelect.value;
+    persistUiState();
     void withBusy(() => renderTrend());
   });
   els.scheduleProgramFilter.addEventListener("change", () => {
@@ -1236,7 +1295,11 @@ function bindEvents() {
     if (listeningHourContext) renderListeningHourContext(listeningHourContext);
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
-  els.trendGrain.addEventListener("change", () => void withBusy(() => renderTrend()));
+  els.trendGrain.addEventListener("change", () => {
+    state.trendGrain = els.trendGrain.value;
+    persistUiState();
+    void withBusy(() => renderTrend());
+  });
   els.exploreViewButtons.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-explore-view]");
     if(!button) return;
@@ -1258,6 +1321,7 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>refreshAnalysisViews());
   });
+  els.copyViewButton.addEventListener("click", () => void copyCurrentViewLink());
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
@@ -1309,6 +1373,7 @@ async function boot() {
     els.versionBadge.textContent = `v${APP_VERSION}`;
     renderTrendControlButtons();
     renderExploreControlButtons();
+    els.trendGrain.value = state.trendGrain;
     applyRangeControls();
     activateTab(state.activeTab,false);
     bindTabs();
