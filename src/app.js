@@ -753,14 +753,19 @@ function programLines(names) {
 }
 
 function renderListeningHourContext(context) {
-  const { hours, entries, scheduleNote, periodStart, periodEnd } = context;
+  const { hours, entries, scheduleNote, periodStart, periodEnd, rangeMismatch = false } = context;
   const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
   const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const previous=state.scheduleProgram;
   els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
   if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
+  setHidden(els.scheduleProgramFilterControl, names.length === 0);
+  els.listeningHourPanel.classList.remove("compact-empty");
 
-  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
+  const rangeWarning = rangeMismatch
+    ? `<span class="source-range-warning"><strong>Source range differs from Analysis Range.</strong> NPR supplies this hour-of-day profile only as a whole-report aggregate, so it is shown intact rather than clipped or estimated.</span> `
+    : "";
+  els.nprHourDescription.innerHTML=`${rangeWarning}NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
 
   const hourPoints=[];
   const weekdayRows=[];
@@ -791,20 +796,43 @@ function renderListeningHourContext(context) {
     labelEvery:2,
     minLabelGap:12
   });
-  els.nprHourTable.innerHTML=`
+  els.nprHourTable.innerHTML=entries.length ? `
     <section class="hour-section"><h4>Monday–Friday schedule against weekday hourly average</h4><div class="table-wrap"><table class="hour-table weekday-hour-table"><thead><tr><th>Hour</th><th>Weekday<br>avg.</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th></tr></thead><tbody>${weekdayRows.join("") || '<tr><td colspan="7">No hours match this program filter.</td></tr>'}</tbody></table></div></section>
-    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>`;
+    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>` : "";
 }
 
-async function renderListeningByHour(hours, requestId = breakdownRequestId) {
+async function renderListeningByHour(hours, requestId = breakdownRequestId, { rangeMismatch = false } = {}) {
   if (!hours.length) {
     listeningHourContext=null;
-    els.nprHourChart.innerHTML="";
-    els.nprHourTable.innerHTML='<p class="empty-state">No NPR One hour-of-day source period fits completely inside the selected analysis range.</p>';
+    state.scheduleProgram="";
+    els.listeningHourPanel.classList.add("compact-empty");
+    setHidden(els.scheduleProgramFilterControl,true);
+    setHidden(els.nprHourChart,true);
+    els.nprHourTable.innerHTML="";
+    els.nprHourDescription.innerHTML='<span class="source-range-warning"><strong>Listening by Hour unavailable.</strong> No imported NPR One hour-of-day profile is available.</span>';
+    const noticeKey="missing-hour-profile";
+    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
+      listeningHourNoticeKey=noticeKey;
+      openDetailDialog("Listening by Hour unavailable", "<p>No imported NPR One hour-of-day profile is available, so this panel has been collapsed rather than leaving a large empty area.</p>", "Data availability");
+    }
     return;
   }
+  setHidden(els.nprHourChart,false);
   const periodStart=hours[0].period_start;
   const periodEnd=hours[0].period_end;
+
+  if(rangeMismatch) {
+    const noticeKey=`${state.startDate}|${state.endDate}|${periodStart}|${periodEnd}`;
+    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
+      listeningHourNoticeKey=noticeKey;
+      openDetailDialog(
+        "Listening by Hour uses a different source period",
+        `<p>The selected Analysis Range is <strong>${escapeHtml(formatDayDate(state.startDate))} – ${escapeHtml(formatDayDate(state.endDate))}</strong>, but NPR's available hour-of-day profile covers <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>.</p><p>This profile is a whole-report aggregate. It cannot be honestly trimmed to the selected dates, so the app is showing the complete source profile instead of estimating or leaving the panel blank.</p>`,
+        "Source range notice"
+      );
+    }
+  }
+
   let entries=[];
   let scheduleNote="";
   try {
@@ -812,13 +840,14 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId) {
     if(requestId !== breakdownRequestId) return;
     entries=result.entries;
     scheduleNote=result.sourceType==="recurrences"
-      ? "Schedule context comes from Composer\'s recurring-program catalog, not a dated historical log; overlapping or stale recurrences may appear."
+      ? "Exact dated schedule entries were unavailable; the program filter is hidden rather than using overlapping recurring definitions as if they were a historical log."
       : "Schedule context comes from dated Composer episodes for this report period.";
+    if(result.sourceType==="recurrences") entries=[];
   } catch(error) {
     if(requestId !== breakdownRequestId) return;
     scheduleNote=`Schedule lookup unavailable: ${error.message}`;
   }
-  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd};
+  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd,rangeMismatch};
   renderListeningHourContext(listeningHourContext);
 }
 
@@ -838,21 +867,29 @@ async function renderStreamingWeekpart() {
 
 async function renderBreakdowns() {
   const requestId = ++breakdownRequestId;
-  const [programs, devices, channels, hours] = await Promise.all([
+  const [programs, devices, channels, rangedHours] = await Promise.all([
     loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
     loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
     loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
     loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
   ]);
   if (requestId !== breakdownRequestId) return;
+
+  let hours=rangedHours;
+  let hourRangeMismatch=false;
+  if(!hours.length) {
+    hours=await loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart");
+    if (requestId !== breakdownRequestId) return;
+    hourRangeMismatch=hours.length>0;
+  }
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
   renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
     maxValue: 100,
     formatValue: (value) => `${Number(value).toFixed(1)}%`,
     onBarClick:(row)=>openBreakdownDrilldown("Live-stream device share",row,devices[0] ? formatPeriod(devices[0],devices[0].grain) : "")
   });
-  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
-  await Promise.all([renderListeningByHour(hours,requestId),renderStreamingWeekpart()]);
+  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: exploreDimensionLabel("website-channels",row.dimension_value), value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
+  await Promise.all([renderListeningByHour(hours,requestId,{rangeMismatch:hourRangeMismatch}),renderStreamingWeekpart()]);
 }
 
 async function renderAnomalies() {
