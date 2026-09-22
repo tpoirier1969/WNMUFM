@@ -495,6 +495,7 @@ function applyRangeControls() {
   els.availableRangeLabel.textContent=hasAvailable
     ? `Available imported data: ${formattedRange(available)}`
     : "No dated imported data is available yet.";
+  renderTrendQuickRanges();
 }
 
 function rangeChanged(a,b) {
@@ -543,6 +544,8 @@ function validateAndStoreRange() {
   state.startDate=startDate;
   state.endDate=endDate;
   state.rangeMode="custom";
+  state.rangeNoticeArmed=true;
+  clearTrendZoom();
   persistUiState();
   return true;
 }
@@ -957,7 +960,7 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId, { ra
   const periodStart=hours[0].period_start;
   const periodEnd=hours[0].period_end;
 
-  if(rangeMismatch) {
+  if(rangeMismatch && state.rangeNoticeArmed) {
     const noticeKey=`${state.startDate}|${state.endDate}|${periodStart}|${periodEnd}`;
     if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
       listeningHourNoticeKey=noticeKey;
