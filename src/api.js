@@ -3,6 +3,7 @@ import { hasOAuthCallback, oauthRedirectUrl, parseOAuthFragment } from "./oauth.
 
 const SESSION_KEY = "wnmufm.analytics.supabase.session";
 let cachedSession = loadStoredSession();
+let sessionGeneration = 0;
 
 function loadStoredSession() {
   try {
@@ -14,20 +15,34 @@ function loadStoredSession() {
 }
 
 function storeSession(session) {
+  sessionGeneration += 1;
   cachedSession = session || null;
   if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   else localStorage.removeItem(SESSION_KEY);
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal:controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("Network request timed out.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function authRequest(path, body) {
-  const response = await fetch(`${CONFIG.supabaseUrl}/auth/v1/${path}`, {
+  const response = await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/${path}`, {
     method: "POST",
     headers: {
       apikey: CONFIG.supabasePublishableKey,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(body)
-  });
+  }, 8000);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.msg || data?.message || `Authentication failed (${response.status}).`);
   return data;
@@ -61,12 +76,12 @@ export async function consumeOAuthCallback() {
   }
   if (!callback.accessToken) return null;
 
-  const response = await fetch(`${CONFIG.supabaseUrl}/auth/v1/user`, {
+  const response = await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/user`, {
     headers: {
       apikey: CONFIG.supabasePublishableKey,
       Authorization: `Bearer ${callback.accessToken}`
     }
-  });
+  }, 8000);
   const user = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(user?.msg || user?.message || `Could not finish GitHub sign in (${response.status}).`);
 
@@ -84,17 +99,17 @@ export async function consumeOAuthCallback() {
 }
 
 export async function signOut() {
-  const session = await getSession();
+  const session = cachedSession;
+  storeSession(null);
   if (session?.access_token) {
-    await fetch(`${CONFIG.supabaseUrl}/auth/v1/logout`, {
+    await fetchWithTimeout(`${CONFIG.supabaseUrl}/auth/v1/logout`, {
       method: "POST",
       headers: {
         apikey: CONFIG.supabasePublishableKey,
         Authorization: `Bearer ${session.access_token}`
       }
-    }).catch(() => null);
+    }, 5000).catch(() => null);
   }
-  storeSession(null);
 }
 
 async function refreshSession() {
@@ -102,14 +117,17 @@ async function refreshSession() {
     storeSession(null);
     return null;
   }
+  const refreshToken = cachedSession.refresh_token;
+  const generationAtStart = sessionGeneration;
   try {
-    const data = await authRequest("token?grant_type=refresh_token", { refresh_token: cachedSession.refresh_token });
+    const data = await authRequest("token?grant_type=refresh_token", { refresh_token: refreshToken });
+    if (generationAtStart !== sessionGeneration) return cachedSession;
     const expiresAt = Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
     const session = { ...data, expires_at: expiresAt };
     storeSession(session);
     return session;
   } catch (error) {
-    storeSession(null);
+    if (generationAtStart === sessionGeneration) storeSession(null);
     throw error;
   }
 }
@@ -137,11 +155,11 @@ async function restRequest(table, { method = "GET", query = "", body = null, pre
   if (body !== null) headers["Content-Type"] = "application/json";
   if (prefer) headers.Prefer = prefer;
 
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method,
     headers,
     body: body === null ? undefined : JSON.stringify(body)
-  });
+  }, 30000);
   if (response.status === 204) return null;
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;

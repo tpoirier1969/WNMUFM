@@ -333,11 +333,17 @@ function renderExploreControlButtons() {
   ).join("");
 }
 
+function setHidden(element, hidden) {
+  if (!element) return;
+  element.hidden = Boolean(hidden);
+  element.style.display = hidden ? "none" : "";
+}
+
 function activateTab(tab, persist = true) {
   const target = ["overview","explore","imports"].includes(tab) ? tab : "overview";
   state.activeTab = target;
   document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
-  document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = panel.dataset.panel !== target; });
+  document.querySelectorAll(".tab-panel").forEach((panel) => setHidden(panel, panel.dataset.panel !== target));
   if (persist) persistUiState();
 }
 
@@ -433,12 +439,12 @@ function escapeHtml(value) {
 }
 
 function setAuthenticated(isAuthenticated) {
-  els.startupPanel.hidden = true;
-  els.authPanel.hidden = isAuthenticated;
-  els.appPanel.hidden = !isAuthenticated;
-  els.logoutButton.hidden = !isAuthenticated;
-  els.printButton.hidden = !isAuthenticated;
-  els.userBadge.hidden = !isAuthenticated;
+  setHidden(els.startupPanel, true);
+  setHidden(els.authPanel, isAuthenticated);
+  setHidden(els.appPanel, !isAuthenticated);
+  setHidden(els.logoutButton, !isAuthenticated);
+  setHidden(els.printButton, !isAuthenticated);
+  setHidden(els.userBadge, !isAuthenticated);
 }
 
 function showLoginMessage(message, success = false) {
@@ -474,9 +480,9 @@ async function establishAccess({ timeoutMs = 10000 } = {}) {
       "Account access lookup timed out."
     );
     if (!role) {
-      await signOut().catch(() => null);
       showLoginMessage("This account is valid, but it has not been assigned WNMU-FM Analytics access.");
       setAuthenticated(false);
+      void withTimeout(signOut().catch(() => null), 3000, "Sign out timed out.").catch(() => null);
       return false;
     }
 
@@ -532,9 +538,9 @@ async function renderTrend() {
   const multiple = metricKeys.length > 1;
   const grain = els.trendGrain.value;
   const programCapable = metricKeys.every((key)=>key === "audio.downloads" || key === "audio.users");
-  els.trendWeekpartControls.hidden = grain !== "day";
-  els.trendNotableControls.hidden = grain !== "day";
-  els.trendProgramControl.hidden = !programCapable;
+  setHidden(els.trendWeekpartControls, grain !== "day");
+  setHidden(els.trendNotableControls, grain !== "day");
+  setHidden(els.trendProgramControl, !programCapable);
   refreshTrendControlState();
 
   const selectedProgram = programCapable ? state.trendProgram : "";
@@ -1159,9 +1165,9 @@ function bindEvents() {
   });
 
   els.logoutButton.addEventListener("click", async () => {
-    await signOut().catch(() => null);
     state.role = null;
     setAuthenticated(false);
+    await withTimeout(signOut().catch(() => null), 3000, "Sign out timed out.").catch(() => null);
   });
 
   els.printButton.addEventListener("click", () => window.print());
@@ -1278,7 +1284,11 @@ async function boot() {
     bindTabs();
     bindEvents();
     try {
-      await consumeOAuthCallback();
+      await withTimeout(
+        consumeOAuthCallback(),
+        10000,
+        "GitHub sign-in completion timed out."
+      );
     } catch (error) {
       showLoginMessage(error.message);
     }
