@@ -1098,10 +1098,8 @@ async function processFiles(fileList) {
   if (importedCount > 0) {
     const reportWord = importedCount === 1 ? "report" : "reports";
     const observationWord = observationCount === 1 ? "observation" : "observations";
-    const rangeWasChanged=importRangeChange?.availableChanged || (
-      rangeChanged(availableRangeBeforeImport,importRangeChange?.next || {}) &&
-      Boolean(availableRangeBeforeImport.startDate || availableRangeBeforeImport.endDate)
-    );
+    const rangeWasChanged=rangeChanged(availableRangeBeforeImport,importRangeChange?.next || {}) &&
+      Boolean(importRangeChange?.next?.startDate || importRangeChange?.next?.endDate);
     const rangeNotice=rangeWasChanged && importRangeChange?.next?.startDate
       ? `<p class="range-change-notice"><strong>Imported data changed the available analytics range to:</strong><br>${escapeHtml(formattedRange(importRangeChange.next))}</p>` +
         (state.rangeMode === "all"
