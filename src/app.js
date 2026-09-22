@@ -37,8 +37,8 @@ const state = {
   loading:false,
   trendMetrics:initialMetrics,
   trendGrain:validChoice(sharedOrRestored("trendGrain","day"), ["day","week","month"], "day"),
-  trendWeekpart:sharedOrRestored("trendWeekpart","all"),
-  trendNotable:sharedOrRestored("trendNotable","all"),
+  trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
+  trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
   trendProgram:sharedOrRestored("trendProgram",""),
   scheduleProgram:"",
   startDate:initialStartDate,
@@ -46,7 +46,7 @@ const state = {
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
   activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","explore","imports"], "overview"),
-  exploreView:sharedOrRestored("exploreView","audio-programs")
+  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
@@ -110,7 +110,7 @@ async function copyCurrentViewLink() {
     field.style.opacity = "0";
     document.body.appendChild(field);
     field.select();
-    copied = document.execCommand("copy");
+    copied = typeof document.execCommand === "function" ? document.execCommand("copy") : false;
     field.remove();
   }
   els.copyViewStatus.textContent = copied ? "View link copied" : "Could not copy automatically";
@@ -228,8 +228,12 @@ async function renderProgramFilterOptions() {
   const names = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort((a,b) => a.localeCompare(b));
   els.trendProgramSelect.innerHTML = '<option value="">All on-demand audio</option>' +
     names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-  if (state.trendProgram && names.includes(state.trendProgram)) els.trendProgramSelect.value = state.trendProgram;
-  else state.trendProgram = "";
+  if (state.trendProgram && names.includes(state.trendProgram)) {
+    els.trendProgramSelect.value = state.trendProgram;
+  } else if (state.trendProgram) {
+    state.trendProgram = "";
+    persistUiState();
+  }
 }
 
 function openDetailDialog(title, html, eyebrow = "Deeper dive") {
@@ -1238,6 +1242,8 @@ function bindEvents() {
       if (allowed) {
         els.loginPassword.value = "";
         showLoginMessage("");
+        await syncAvailableDataRange();
+        await renderProgramFilterOptions();
         await refreshDashboard();
       }
     } catch (error) {
