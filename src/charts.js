@@ -16,12 +16,18 @@ function clear(container) {
   while (container.firstChild) container.removeChild(container.firstChild);
 }
 
+function finiteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function linePath(points, key, xFor, yFor) {
   let path = "";
   let drawing = false;
   points.forEach((point,index) => {
-    const value = Number(point[key]);
-    if (!Number.isFinite(value)) { drawing = false; return; }
+    const value = finiteNumber(point[key]);
+    if (value === null) { drawing = false; return; }
     path += (drawing ? " L" : "M") + xFor(index).toFixed(1) + "," + yFor(value).toFixed(1);
     drawing = true;
   });
@@ -105,13 +111,13 @@ export function renderLineChart(container, points, options = {}) {
   }
 
   const width = 1100;
-  const hasSecondary = points.some((point)=>Number.isFinite(Number(point.secondaryValue)));
+  const hasSecondary = points.some((point)=>finiteNumber(point.secondaryValue) !== null);
   const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
   const margin = { top:(hasSecondary || options.primaryLabel ? 34 : 18), right:58, bottom:(labelAngle ? 92 : 58), left:76 };
   const height = labelAngle ? 390 : 340;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const values = points.flatMap((point)=>[point.value,point.secondaryValue]).map(Number).filter(Number.isFinite);
+  const values = points.flatMap((point)=>[point.value,point.secondaryValue]).map(finiteNumber).filter((value)=>value !== null);
   let min = Math.min(...values);
   let max = Math.max(...values);
   if (min === max) { min = Math.max(0,min-1); max += 1; }
@@ -153,7 +159,7 @@ export function renderLineChart(container, points, options = {}) {
     const baselineY=yFor(min);
     const barWidth=Math.max(1.2,Math.min(13,step*.62));
     points.forEach((point,index)=>{
-      if(!Number.isFinite(Number(point.value))) return;
+      if(finiteNumber(point.value) === null) return;
       const y=yFor(point.value);
       svg.appendChild(svgElement("rect",{x:xFor(index)-barWidth/2,y,width:barWidth,height:Math.max(0,baselineY-y),class:point.weekend ? "chart-background-bar weekend" : "chart-background-bar"}));
     });
@@ -194,11 +200,11 @@ export function renderLineChart(container, points, options = {}) {
   }
 
   points.forEach((point,index)=>{
-    if(Number.isFinite(Number(point.value))) {
+    if(finiteNumber(point.value) !== null) {
       const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:3.8,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
       const title=svgElement("title");
       const parts=[point.label + ": " + compactNumber(point.value)];
-      if(Number.isFinite(Number(point.secondaryValue))) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
+      if(finiteNumber(point.secondaryValue) !== null) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
       if(point.contextLabel) parts.push(point.contextLabel);
       title.textContent=parts.join(" · "); circle.appendChild(title);
       if(options.onPointClick) {
@@ -208,7 +214,7 @@ export function renderLineChart(container, points, options = {}) {
       }
       svg.appendChild(circle);
     }
-    if(Number.isFinite(Number(point.secondaryValue))) {
+    if(finiteNumber(point.secondaryValue) !== null) {
       const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:3.2,class:"chart-secondary-point"});
       const title=svgElement("title"); title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue);
       circle.appendChild(title); svg.appendChild(circle);
