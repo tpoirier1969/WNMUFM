@@ -129,6 +129,44 @@ export async function loadLatestBreakdown(metricKey, dimensionType, filterSignat
   return latest.filter((row) => row.period_start === latestStart).map((row) => withBreakdownStatus(row, context));
 }
 
+
+export async function loadLongestBreakdown(metricKey, dimensionType, filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
+  const params = applyDateRange(new URLSearchParams({
+    select: "dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
+    metric_key: `eq.${metricKey}`,
+    dimension_type: `eq.${dimensionType}`,
+    filter_signature: `eq.${filterSignature}`,
+    order: "period_start.asc",
+    limit: "2000"
+  }), range);
+  const [rows, context] = await Promise.all([
+    selectRows("wnmufm_analytics_observations", params.toString()),
+    loadAnalysisContext()
+  ]);
+  const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
+  if (!usable.length) return [];
+
+  const groups = new Map();
+  usable.forEach((row) => {
+    const id = Number(row.source_import_id);
+    if (!groups.has(id)) groups.set(id, []);
+    groups.get(id).push(row);
+  });
+  const spanDays = (rowsForImport) => {
+    const first = rowsForImport[0];
+    const start = new Date(`${first.period_start}T12:00:00Z`);
+    const end = new Date(`${first.period_end}T12:00:00Z`);
+    return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
+      ? Math.max(0, (end - start) / 86400000)
+      : -1;
+  };
+  const candidates = [...groups.values()].sort((a,b) =>
+    spanDays(b) - spanDays(a) ||
+    String(b[0]?.period_end || "").localeCompare(String(a[0]?.period_end || ""))
+  );
+  return candidates[0].map((row) => withBreakdownStatus(row, context));
+}
+
 export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
   const context = await loadAnalysisContext();
   const output = {};
