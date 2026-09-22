@@ -23,7 +23,12 @@
   </header>
 
   <main>
-    <section id="authPanel" class="auth-card" aria-labelledby="authTitle">
+    <section id="startupPanel" class="auth-card startup-card" aria-live="polite">
+      <div class="startup-spinner" aria-hidden="true"></div>
+      <strong>Restoring your WNMU-FM session…</strong>
+    </section>
+
+    <section id="authPanel" class="auth-card" aria-labelledby="authTitle" hidden>
       <h2 id="authTitle">Sign in</h2>
       <p>Use the WNMU Supabase account assigned access to this analytics app.</p>
       <form id="loginForm" class="form-grid">
@@ -41,11 +46,23 @@
     </section>
 
     <section id="appPanel" hidden>
-      <nav class="tab-bar" aria-label="Analytics sections">
-        <button class="tab-button active" type="button" data-tab="overview">Overview</button>
-        <button class="tab-button" type="button" data-tab="explore">Explore</button>
-        <button class="tab-button" type="button" data-tab="imports">Imports</button>
-      </nav>
+      <div class="app-toolbar">
+        <nav class="tab-bar" aria-label="Analytics sections">
+          <button class="tab-button active" type="button" data-tab="overview">Overview</button>
+          <button class="tab-button" type="button" data-tab="explore">Explore</button>
+          <button class="tab-button" type="button" data-tab="imports">Imports</button>
+        </nav>
+        <div class="global-date-range" aria-label="Analysis date range">
+          <span class="control-label">Analysis range</span>
+          <label>Start
+            <input id="globalStartDate" type="date">
+          </label>
+          <label>End
+            <input id="globalEndDate" type="date">
+          </label>
+          <button id="clearDateRange" class="small-button" type="button">All data</button>
+        </div>
+      </div>
 
       <section class="tab-panel" data-panel="overview">
         <div class="section-heading">
@@ -85,7 +102,7 @@
                     <div id="trendWeekpartButtons" class="button-strip weekpart-button-strip" role="group" aria-label="Week-part filter"></div>
                   </div>
                   <div id="trendHolidayControls">
-                    <span class="control-label">Holiday context</span>
+                    <span class="control-label">Notable-date context</span>
                     <div id="trendHolidayButtons" class="button-strip" role="group" aria-label="Holiday filter"></div>
                   </div>
                   <label id="trendProgramControl" hidden>Program
@@ -99,6 +116,7 @@
             <div id="trendMedianSummary" class="trend-stat-strip"></div>
             <div id="trendChart" class="chart-frame"></div>
             <div id="trendTable" class="table-wrap"></div>
+            <div id="trendPrintColumns" class="print-trend-columns"></div>
           </article>
 
           <article class="panel-card">
@@ -141,6 +159,7 @@
               </label>
             </div>
             <p id="nprHourDescription" class="panel-note"></p>
+            <div id="nprHourChart" class="chart-frame hour-chart"></div>
             <div id="nprHourTable"></div>
           </article>
         </div>
@@ -180,19 +199,11 @@
         </div>
 
         <article class="panel-card explore-panel">
-          <div class="panel-heading">
-            <label class="explore-select">Explore
-              <select id="exploreView">
-                <option value="audio-programs">On-demand downloads by program</option>
-                <option value="audio-players">On-demand downloads by player</option>
-                <option value="website-channels">Website sessions by traffic channel</option>
-                <option value="website-countries">Website sessions by country</option>
-                <option value="streaming-devices">Live-stream device share</option>
-                <option value="npr-one-podcasts">NPR One station podcast users</option>
-                <option value="npr-one-audio">NPR One listens by station audio type</option>
-                <option value="npr-one-clients">NPR One users by client/content</option>
-              </select>
-            </label>
+          <div class="panel-heading explore-heading">
+            <div>
+              <span class="control-label">Explore</span>
+              <div id="exploreViewButtons" class="button-strip explore-button-strip" role="group" aria-label="Explore audience view"></div>
+            </div>
             <div class="explore-period"><span>Period</span><strong id="explorePeriod"></strong></div>
           </div>
           <p id="exploreDescription" class="explore-description"></p>
