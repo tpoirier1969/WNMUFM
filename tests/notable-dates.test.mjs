@@ -13,3 +13,8 @@ test("major 2026 civic addresses are exact-date context", () => {
   assert.equal(notableDateContext("2026-02-25")?.name,"Michigan State of the State");
   assert.notEqual(notableDateContext("2026-02-23")?.name,"State of the Union");
 });
+
+test("verified Michigan election dates are tagged without implying schedule changes", () => {
+  assert.equal(notableDateContext("2025-11-04")?.name,"Michigan local election day");
+  assert.equal(notableDateContext("2026-08-04")?.name,"Michigan primary election");
+});
