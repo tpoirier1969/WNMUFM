@@ -637,18 +637,18 @@ async function renderTrend() {
     });
 
     if (!filteredRows.length) {
-      els.trendTable.innerHTML = "";
+      renderTrendDataTable("",0);
       els.trendPrintColumns.innerHTML = "";
       return;
     }
-    els.trendTable.innerHTML = `<table class="trend-data-table">
+    renderTrendDataTable(`<table class="trend-data-table">
       <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
       <tbody>${filteredRows.map((row)=>{
         const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
         const notable = grain === "day" ? notableDateContext(row.period_start) : null;
         return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
       }).join("")}</tbody>
-    </table>`;
+    </table>`, filteredRows.length);
     renderTrendPrintDetail(filteredRows,grain,medianValue);
     return;
   }
@@ -662,7 +662,7 @@ async function renderTrend() {
 
   if(!comparable.length) {
     els.trendChart.innerHTML='<p class="empty-state">The selected metrics do not have comparable observations in this range.</p>';
-    els.trendTable.innerHTML="";
+    renderTrendDataTable("",0);
     els.trendPrintColumns.innerHTML="";
     return;
   }
@@ -707,10 +707,10 @@ async function renderTrend() {
     els.trendPrintColumns.innerHTML="";
     return;
   }
-  els.trendTable.innerHTML=`<table class="trend-data-table multi-metric-table">
+  renderTrendDataTable(`<table class="trend-data-table multi-metric-table">
     <thead><tr><th>Period</th>${seriesDefs.map((item)=>`<th class="numeric">${escapeHtml(item.label)}</th>`).join("")}</tr></thead>
     <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.contextLabel ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
-  </table>`;
+  </table>`, points.length);
   els.trendPrintColumns.classList.add("single");
   els.trendPrintColumns.innerHTML='<p class="print-trend-note"><strong>Multi-metric comparison:</strong> the printed chart uses each selected metric\'s median as index 100. Actual values remain available in the on-screen table and hover details.</p>';
 }
