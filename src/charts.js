@@ -174,13 +174,6 @@ export function renderLineChart(container, points, options = {}) {
     label.textContent=compactNumber(value); svg.appendChild(label);
   }
 
-  if (Number.isFinite(Number(options.median))) {
-    const medianY=yFor(Number(options.median));
-    svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:medianY,y2:medianY,class:"chart-median-line"}));
-    const medianLabel=svgElement("text",{x:width-margin.right-4,y:medianY-6,"text-anchor":"end",class:"chart-median-label"});
-    medianLabel.textContent="Median " + compactNumber(options.median); svg.appendChild(medianLabel);
-  }
-
   const primaryPath=linePath(points,"value",xFor,yFor);
   if(primaryPath) svg.appendChild(svgElement("path",{d:primaryPath,class:"chart-line"}));
   const secondaryPath=linePath(points,"secondaryValue",xFor,yFor);
