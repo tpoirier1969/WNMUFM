@@ -54,6 +54,8 @@ let exploreRequestId = 0;
 let breakdownRequestId = 0;
 let listeningHourContext = null;
 let listeningHourNoticeKey = "";
+let rangeEditPending = false;
+let rangeBlurCommitTimer = null;
 
 function viewStateSnapshot() {
   return {
@@ -1314,13 +1316,45 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>renderExplore());
   });
-  const rangeChanged=()=>{
+  const rangeInputs=[els.globalStartDate,els.globalEndDate];
+  const commitRangeEdit=()=>{
+    if(rangeBlurCommitTimer) {
+      window.clearTimeout(rangeBlurCommitTimer);
+      rangeBlurCommitTimer=null;
+    }
+    if(!rangeEditPending) return;
     if(!validateAndStoreRange()) return;
+    rangeEditPending=false;
     void withBusy(()=>refreshAnalysisViews());
   };
-  els.globalStartDate.addEventListener("change",rangeChanged);
-  els.globalEndDate.addEventListener("change",rangeChanged);
+  const markRangeEdit=()=>{
+    rangeEditPending=true;
+  };
+  const commitRangeAfterLeavingControls=()=>{
+    if(rangeBlurCommitTimer) window.clearTimeout(rangeBlurCommitTimer);
+    rangeBlurCommitTimer=window.setTimeout(()=>{
+      rangeBlurCommitTimer=null;
+      if(rangeInputs.includes(document.activeElement)) return;
+      commitRangeEdit();
+    },0);
+  };
+  rangeInputs.forEach((input)=>{
+    input.addEventListener("input",markRangeEdit);
+    input.addEventListener("blur",commitRangeAfterLeavingControls);
+    input.addEventListener("keydown",(event)=>{
+      if(event.key !== "Enter") return;
+      event.preventDefault();
+      rangeEditPending=true;
+      commitRangeEdit();
+      input.blur();
+    });
+  });
   els.clearDateRange.addEventListener("click",()=>{
+    if(rangeBlurCommitTimer) {
+      window.clearTimeout(rangeBlurCommitTimer);
+      rangeBlurCommitTimer=null;
+    }
+    rangeEditPending=false;
     state.rangeMode="all";
     state.startDate=state.availableRange.startDate;
     state.endDate=state.availableRange.endDate;
