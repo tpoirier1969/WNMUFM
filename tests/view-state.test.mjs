@@ -43,8 +43,12 @@ test("app exposes a copy-view control and initializes full state after password 
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   const html = await fs.readFile(new URL("../index.html", import.meta.url), "utf8");
   assert.match(html,/id="copyViewButton"/);
-  assert.equal(app.split("await syncAvailableDataRange();").length - 1, 2);
-  assert.equal(app.split("await renderProgramFilterOptions();").length - 1, 2);
+  const loginStart = app.indexOf('els.loginForm.addEventListener');
+  const loginEnd = app.indexOf('els.githubLoginButton.addEventListener');
+  const loginHandler = app.slice(loginStart, loginEnd);
+  assert.ok(loginHandler.includes("await syncAvailableDataRange();"));
+  assert.ok(loginHandler.includes("await renderProgramFilterOptions();"));
+  assert.ok(loginHandler.includes("await refreshDashboard();"));
   assert.ok(app.includes("buildViewSearch(viewStateSnapshot())"));
 });
 
