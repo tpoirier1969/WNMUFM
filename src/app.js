@@ -1,22 +1,60 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
-import { formatDayDate, formatPeriod, holidayContext, isWeekendDate, matchesHolidayMode, matchesWeekpart, median, percentFromMedian, shortDayLabel } from "./analysis.js";
+import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
+import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
-  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendHolidayControls","trendHolidayButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
+  "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","exploreInsights","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange"
 ].map((id) => [id, document.getElementById(id)]));
 
-const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all", trendHoliday: "all", trendProgram: "", scheduleProgram: "" };
+const UI_STATE_KEY = "wnmufm.analytics.ui";
+const restoredUi = (() => {
+  try { return JSON.parse(sessionStorage.getItem(UI_STATE_KEY) || "{}"); } catch { return {}; }
+})();
+const state = {
+  role:null,
+  loading:false,
+  trendMetric:"streaming.listeners",
+  trendWeekpart:"all",
+  trendNotable:"all",
+  trendProgram:"",
+  scheduleProgram:"",
+  startDate:restoredUi.startDate || "",
+  endDate:restoredUi.endDate || "",
+  activeTab:["overview","explore","imports"].includes(restoredUi.activeTab) ? restoredUi.activeTab : "overview",
+  exploreView:restoredUi.exploreView || "audio-programs"
+};
 let busyDepth = 0;
+let trendRequestId = 0;
+let exploreRequestId = 0;
+let breakdownRequestId = 0;
+let listeningHourContext = null;
+
+function persistUiState() {
+  try {
+    sessionStorage.setItem(UI_STATE_KEY,JSON.stringify({
+      activeTab:state.activeTab,
+      startDate:state.startDate,
+      endDate:state.endDate,
+      exploreView:state.exploreView
+    }));
+  } catch {
+    // Session persistence is convenience state, not analytics data.
+  }
+}
+
+function selectedRange() {
+  return { startDate:state.startDate, endDate:state.endDate };
+}
 
 function setBusy(isBusy) {
   busyDepth = Math.max(0, busyDepth + (isBusy ? 1 : -1));
@@ -52,7 +90,7 @@ const WEEKPARTS = [
   ["all","All days"],["weekday","Mon–Fri"],["weekend","Weekend"],
   ["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"],["sat","Sat"],["sun","Sun"]
 ];
-const HOLIDAY_MODES = [["all","All dates"],["exclude","Exclude holiday weeks"],["only","Holiday weeks only"]];
+const NOTABLE_MODES = [["all","All dates"],["exclude","Exclude notable dates"],["only","Notable dates only"]];
 
 function trendMetricLabel(key) {
   return TREND_METRICS.find((item) => item.key === key)?.label || key;
@@ -65,8 +103,8 @@ function renderTrendControlButtons() {
   els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
     `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
   ).join("");
-  els.trendHolidayButtons.innerHTML = HOLIDAY_MODES.map(([key,label]) =>
-    `<button type="button" class="filter-button" data-holiday-mode="${key}" aria-pressed="${key === state.trendHoliday}">${label}</button>`
+  els.trendNotableButtons.innerHTML = NOTABLE_MODES.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-notable-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
   ).join("");
 }
 
@@ -77,8 +115,8 @@ function refreshTrendControlState() {
   els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
   });
-  els.trendHolidayButtons.querySelectorAll("[data-holiday-mode]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.holidayMode === state.trendHoliday));
+  els.trendNotableButtons.querySelectorAll("[data-notable-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.notableMode === state.trendNotable));
   });
 }
 
@@ -137,8 +175,10 @@ const DAILY_METRIC_ORDER = [
 
 async function openDateDrilldown(point, metricKey, medianValue) {
   const date = point.date;
-  const holiday = holidayContext(date);
+  const notable = notableDateContext(date);
+  setBusy(true);
   openDetailDialog(formatDayDate(date), '<p class="empty-state">Loading the day’s context…</p>');
+  els.detailDialog.setAttribute("aria-busy","true");
   try {
     const observations = await loadDateObservations(date);
     const primary = observations.filter((row) => !row.dimension_type);
@@ -151,10 +191,14 @@ async function openDateDrilldown(point, metricKey, medianValue) {
     let scheduleHtml = '<p class="panel-note">Schedule lookup unavailable for this date.</p>';
     try {
       const scheduleResult = await fetchComposerSchedule(date,date);
-      const dayEntries = buildDailySchedule(scheduleResult.entries).get(date) || [];
-      scheduleHtml = dayEntries.length
-        ? `<div class="schedule-list">${dayEntries.map((entry) => `<div class="schedule-item"><span>${escapeHtml(scheduleTime(entry.start))}–${escapeHtml(scheduleTime(entry.end))}</span><strong>${escapeHtml(entry.program)}</strong></div>`).join("")}</div>`
-        : '<p class="panel-note">No schedule entries were returned for this date.</p>';
+      if (scheduleResult.sourceType === "episodes") {
+        const dayEntries = buildDailySchedule(scheduleResult.entries).get(date) || [];
+        scheduleHtml = dayEntries.length
+          ? `<div class="schedule-list">${dayEntries.map((entry) => `<div class="schedule-item"><span>${escapeHtml(scheduleTime(entry.start))}–${escapeHtml(scheduleTime(entry.end))}</span><strong>${escapeHtml(entry.program)}</strong></div>`).join("")}</div>`
+          : '<p class="panel-note">No dated Composer schedule entries were returned for this date.</p>';
+      } else {
+        scheduleHtml = '<p class="source-limit"><strong>Exact dated schedule unavailable.</strong> Composer returned its recurring-program catalog rather than a historical episode schedule. That catalog can contain overlapping or stale recurrences, so the app intentionally does not present those entries as programs that aired on this date.</p>';
+      }
     } catch (error) {
       scheduleHtml = `<p class="panel-note">Schedule lookup unavailable: ${escapeHtml(error.message)}</p>`;
     }
@@ -166,7 +210,7 @@ async function openDateDrilldown(point, metricKey, medianValue) {
       <div class="detail-summary">
         <div><span>Selected metric</span><strong>${selected ? escapeHtml(formatMetric(selected.station_value,selected.unit)) : escapeHtml(point.value)}</strong></div>
         <div><span>Vs selected-range median</span><strong>${escapeHtml(signedPercent(delta))}</strong></div>
-        <div><span>Calendar context</span><strong>${holiday ? escapeHtml(`${holiday.name} (${holiday.delta === 0 ? "holiday" : `${Math.abs(holiday.delta)} day${Math.abs(holiday.delta) === 1 ? "" : "s"} ${holiday.delta < 0 ? "before" : "after"}`})`) : "No major holiday within ±3 days"}</strong></div>
+        <div><span>Notable-date context</span><strong>${notable ? escapeHtml(notableContextLabel(notable)) : "No tagged holiday, election or major civic address context"}</strong></div>
       </div>
       <section class="detail-section">
         <h3>What the reports say that day</h3>
@@ -177,7 +221,7 @@ async function openDateDrilldown(point, metricKey, medianValue) {
       <section class="detail-section">
         <h3>What was scheduled</h3>
         ${scheduleHtml}
-        ${metricKey.startsWith("streaming.") ? '<p class="source-limit">We have daily live-stream totals here, not listener counts by hour or by program. When you add hourly/sub-hourly streaming data, this panel can show the actual audience curve underneath the schedule.</p>' : ""}
+        ${metricKey.startsWith("streaming.") ? '<p class="source-limit">We have daily live-stream totals here, not listener counts by hour or by program. Hourly/sub-hourly streaming data is still required before this app can attribute that audience to individual programs.</p>' : ""}
       </section>
       ${channelRows.length ? '<section class="detail-section"><h3>Website traffic sources that day</h3><div id="detailChannelBars"></div></section>' : ""}
       ${playerRows.length ? '<section class="detail-section"><h3>Audio players that day</h3><div id="detailPlayerBars"></div></section>' : ""}
@@ -186,6 +230,9 @@ async function openDateDrilldown(point, metricKey, medianValue) {
     if (playerRows.length) renderBarChart(document.getElementById("detailPlayerBars"), playerRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
   } catch (error) {
     els.detailDialogBody.innerHTML = `<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
+  } finally {
+    els.detailDialog.removeAttribute("aria-busy");
+    setBusy(false);
   }
 }
 
@@ -263,11 +310,78 @@ const EXPLORE_VIEWS = {
   }
 };
 
+const EXPLORE_ORDER = [
+  ["audio-programs","Downloads by program"],
+  ["audio-players","Downloads by player"],
+  ["website-channels","Website channels"],
+  ["website-countries","Website countries"],
+  ["streaming-devices","Stream devices"],
+  ["npr-one-podcasts","NPR One podcasts"],
+  ["npr-one-audio","NPR One audio"],
+  ["npr-one-clients","NPR One clients"]
+];
+
+function renderExploreControlButtons() {
+  els.exploreViewButtons.innerHTML = EXPLORE_ORDER.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-explore-view="${key}" aria-pressed="${key === state.exploreView}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
+function activateTab(tab, persist = true) {
+  const target = ["overview","explore","imports"].includes(tab) ? tab : "overview";
+  state.activeTab = target;
+  document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
+  document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = panel.dataset.panel !== target; });
+  if (persist) persistUiState();
+}
+
+function applyRangeControls() {
+  els.globalStartDate.value = state.startDate;
+  els.globalEndDate.value = state.endDate;
+}
+
+async function refreshAnalysisViews() {
+  await Promise.all([renderSummary(),renderTrend(),renderBreakdowns(),renderExplore()]);
+}
+
+function validateAndStoreRange() {
+  const startDate=els.globalStartDate.value;
+  const endDate=els.globalEndDate.value;
+  if(startDate && endDate && startDate>endDate) {
+    els.globalEndDate.setCustomValidity("End date must be on or after the start date.");
+    els.globalEndDate.reportValidity();
+    return false;
+  }
+  els.globalEndDate.setCustomValidity("");
+  state.startDate=startDate;
+  state.endDate=endDate;
+  persistUiState();
+  return true;
+}
+
+function renderTrendPrintDetail(rows, grain, medianValue) {
+  const MAX_PRINT_DETAIL_ROWS=120;
+  if(!rows.length) { els.trendPrintColumns.innerHTML=""; return; }
+  if(rows.length>MAX_PRINT_DETAIL_ROWS) {
+    els.trendPrintColumns.classList.add("single");
+    els.trendPrintColumns.innerHTML=`<p class="print-trend-note"><strong>Detailed rows omitted from this long-range report.</strong> ${rows.length} source periods are selected. The chart and summary statistics remain in the report; use a shorter analysis range when row-by-row detail is needed.</p>`;
+    return;
+  }
+  els.trendPrintColumns.classList.remove("single");
+  const midpoint=Math.ceil(rows.length/2);
+  const tableFor=(subset)=>`<table><thead><tr><th>Period</th><th class="numeric">WNMU</th><th class="numeric">Vs med.</th></tr></thead><tbody>${subset.map((row)=>{
+    const delta=medianValue===null ? null : percentFromMedian(row.station_value,medianValue);
+    return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td></tr>`;
+  }).join("")}</tbody></table>`;
+  els.trendPrintColumns.innerHTML=tableFor(rows.slice(0,midpoint))+tableFor(rows.slice(midpoint));
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
 }
 
 function setAuthenticated(isAuthenticated) {
+  els.startupPanel.hidden = true;
   els.authPanel.hidden = isAuthenticated;
   els.appPanel.hidden = !isAuthenticated;
   els.logoutButton.hidden = !isAuthenticated;
@@ -304,7 +418,7 @@ function metricCard(title, row) {
   return `<article class="metric-card">
     <h3>${escapeHtml(title)}</h3>
     <div class="metric-value">${row ? escapeHtml(formatMetric(row.station_value, row.unit)) : "—"}</div>
-    <div class="metric-sub">${row ? escapeHtml(formatPeriod(row, "day")) : "No complete imported day yet"}</div>
+    <div class="metric-sub">${row ? `Latest complete day · ${escapeHtml(formatDayDate(row.period_start))}` : "No complete imported day in this range"}</div>
   </article>`;
 }
 
@@ -315,7 +429,7 @@ async function renderSummary() {
     "website.active_users",
     "audio.downloads",
     "npr_one.localized_listeners"
-  ], "day");
+  ], "day", selectedRange());
   els.summaryCards.innerHTML = [
     ["Streaming listeners", values["streaming.listeners"]],
     ["Listener hours", values["streaming.listener_hours"]],
@@ -330,12 +444,13 @@ function rowClass(row, grain) {
 }
 
 async function renderTrend() {
+  const requestId = ++trendRequestId;
   const metricKey = state.trendMetric;
   const grain = els.trendGrain.value;
   const label = trendMetricLabel(metricKey);
   const programCapable = metricKey === "audio.downloads" || metricKey === "audio.users";
   els.trendWeekpartControls.hidden = grain !== "day";
-  els.trendHolidayControls.hidden = grain !== "day";
+  els.trendNotableControls.hidden = grain !== "day";
   els.trendProgramControl.hidden = !programCapable;
   refreshTrendControlState();
 
@@ -344,15 +459,21 @@ async function renderTrend() {
   els.trendTitle.textContent = selectedProgram ? `${label}: ${selectedProgram}` : label;
   const filterNotes = [];
   if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
-  if (grain === "day" && state.trendHoliday !== "all") filterNotes.push(HOLIDAY_MODES.find(([key]) => key === state.trendHoliday)?.[1]);
+  if (grain === "day" && state.trendNotable !== "all") filterNotes.push(NOTABLE_MODES.find(([key]) => key === state.trendNotable)?.[1]);
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
+  if (state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
   els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
 
-  const rows = await loadTimeSeries(metricKey, grain, filterSignature);
+  const rows = await loadTimeSeries(metricKey, grain, filterSignature, selectedRange());
+  if (requestId !== trendRequestId) return;
   const filteredRows = grain === "day"
-    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesHolidayMode(row.period_start,state.trendHoliday))
+    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
     : rows;
   const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value !== null && Number.isFinite(Number(value)));
+  if (numericValues.length > 0 && numericValues.length < 3) {
+    const unitName = grain === "day" ? "days" : grain === "week" ? "weeks" : "months";
+    els.trendDescription.textContent += ` Only ${numericValues.length} complete source ${unitName} are available for this selection.`;
+  }
   const medianValue = median(numericValues);
   const latest = [...filteredRows].reverse().find((row)=>row.station_value !== null);
   els.trendMedianSummary.innerHTML = medianValue === null ? "" :
@@ -360,37 +481,95 @@ async function renderTrend() {
     (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
     `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
 
-  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => ({
-    date: row.period_start,
-    label: formatPeriod(row,grain),
-    shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row,grain),
-    value: Number(row.station_value),
-    weekend: grain === "day" && isWeekendDate(row.period_start)
-  }));
+  const benchmarkLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
+  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => {
+    const context=grain === "day" ? notableDateContext(row.period_start) : null;
+    return {
+      date:row.period_start,
+      label:formatPeriod(row,grain),
+      shortLabel:grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : shortMonthLabel(row.period_start),
+      value:Number(row.station_value),
+      secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
+      weekend:grain === "day" && isWeekendDate(row.period_start),
+      contextLabel:context ? notableContextLabel(context) : ""
+    };
+  });
   renderLineChart(els.trendChart,points,{
     title:label,
     ariaLabel:`${label} by ${grain}`,
     grain,
     median:medianValue,
-    onPointClick: grain === "day" ? (point) => openDateDrilldown(point,metricKey,medianValue) : null
+    primaryLabel:"WNMU-FM",
+    secondaryLabel:benchmarkLabel,
+    onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
   });
+
 
   if (!filteredRows.length) {
     els.trendTable.innerHTML = "";
+    els.trendPrintColumns.innerHTML = "";
     return;
   }
   els.trendTable.innerHTML = `<table class="trend-data-table">
     <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
     <tbody>${filteredRows.map((row) => {
       const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
-      const holiday = grain === "day" ? holidayContext(row.period_start) : null;
-      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${holiday ? ` <span class="holiday-tag">${escapeHtml(holiday.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+      const notable = grain === "day" ? notableDateContext(row.period_start) : null;
+      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
     }).join("")}</tbody>
   </table>`;
+  renderTrendPrintDetail(filteredRows,grain,medianValue);
 }
 
 function sortBreakdown(rows) {
   return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
+}
+function renderExploreInsights(rows) {
+  if (!rows.length) {
+    els.exploreInsights.innerHTML = "";
+    return;
+  }
+  const numeric = sortBreakdown(rows).filter((row) => row.station_value !== null && Number.isFinite(Number(row.station_value)));
+  if (!numeric.length) {
+    els.exploreInsights.innerHTML = "";
+    return;
+  }
+
+  const unit = numeric[0].unit;
+  const top = numeric[0];
+  const total = numeric.reduce((sum,row)=>sum+Number(row.station_value),0);
+  const topShare = unit === "percent"
+    ? Number(top.station_value)
+    : total > 0 ? (Number(top.station_value) / total) * 100 : null;
+  const topThree = numeric.slice(0,3).reduce((sum,row)=>sum+Number(row.station_value),0);
+  const topThreeShare = unit === "percent"
+    ? topThree
+    : total > 0 ? (topThree / total) * 100 : null;
+
+  const benchmarkRows = numeric.filter((row) => row.benchmark_value !== null && Number.isFinite(Number(row.benchmark_value)));
+  const insights = [
+    `<div><span>Largest category</span><strong>${escapeHtml(top.dimension_value)}</strong><small>${escapeHtml(formatMetric(top.station_value,top.unit))}${topShare === null ? "" : ` · ${topShare.toFixed(1)}% of shown total`}</small></div>`
+  ];
+
+  if (numeric.length >= 3 && topThreeShare !== null) {
+    insights.push(`<div><span>Top-three concentration</span><strong>${topThreeShare.toFixed(1)}%</strong><small>Share of the shown total in the three largest categories</small></div>`);
+  }
+
+  if (benchmarkRows.length) {
+    const above = benchmarkRows.filter((row)=>Number(row.station_value)>Number(row.benchmark_value)).length;
+    const comparable = benchmarkRows.length;
+    const largestGap = [...benchmarkRows].sort((a,b) =>
+      Math.abs(Number(b.station_value)-Number(b.benchmark_value)) -
+      Math.abs(Number(a.station_value)-Number(a.benchmark_value))
+    )[0];
+    const gap = Number(largestGap.station_value)-Number(largestGap.benchmark_value);
+    const gapText = unit === "percent"
+      ? `${gap > 0 ? "+" : ""}${gap.toFixed(1)} percentage points`
+      : `${gap > 0 ? "+" : ""}${formatMetric(gap,unit)}`;
+    insights.push(`<div><span>Benchmark context</span><strong>${above} of ${comparable} above benchmark</strong><small>Largest absolute gap: ${escapeHtml(largestGap.dimension_value)} · ${escapeHtml(gapText)}</small></div>`);
+  }
+
+  els.exploreInsights.innerHTML = insights.join("");
 }
 
 function titlesForHour(entries,day,hour) {
@@ -414,33 +593,17 @@ function programLines(names) {
   return filtered.length ? filtered.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("") : '<span class="program-line muted">—</span>';
 }
 
-async function renderListeningByHour(hours) {
-  if (!hours.length) {
-    els.nprHourTable.innerHTML = '<p class="empty-state">No NPR One hour-of-day data is available.</p>';
-    return;
-  }
-  const periodStart=hours[0].period_start;
-  const periodEnd=hours[0].period_end;
+function renderListeningHourContext(context) {
+  const { hours, entries, scheduleNote, periodStart, periodEnd } = context;
   const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
-  let entries=[];
-  let scheduleNote="";
-  try {
-    const result=await fetchComposerSchedule(periodStart,periodEnd);
-    entries=result.entries;
-    scheduleNote=result.sourceType==="recurrences"
-      ? "Program titles use the normal recurring WNMU-FM Composer schedule; one-off substitutions may differ."
-      : "Program titles use dated Composer episodes for this report period.";
-  } catch(error) {
-    scheduleNote=`Schedule lookup unavailable: ${error.message}`;
-  }
-
   const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const previous=state.scheduleProgram;
   els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
   if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
 
-  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour, not seven separate daily audience counts. The table therefore breaks the <em>schedule</em> out by day while keeping the audience number at the source's actual weekday/weekend level. ${escapeHtml(scheduleNote)}`;
+  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
 
+  const hourPoints=[];
   const weekdayRows=[];
   const weekendRows=[];
   for(let hour=0;hour<24;hour+=1){
@@ -450,16 +613,58 @@ async function renderListeningByHour(hours) {
     const dayTitles=[0,1,2,3,4,5,6].map((day)=>titlesForHour(entries,day,hour));
     const matchesWeekday=!state.scheduleProgram || [1,2,3,4,5].some((day)=>dayTitles[day].includes(state.scheduleProgram));
     const matchesWeekend=!state.scheduleProgram || [6,0].some((day)=>dayTitles[day].includes(state.scheduleProgram));
+    hourPoints.push({
+      label:hourLabel(hour),
+      shortLabel:hourLabel(hour).replace(":00",""),
+      value:weekday ? Number(weekday.station_value) : null,
+      secondaryValue:weekend ? Number(weekend.station_value) : null
+    });
     if(matchesWeekday) weekdayRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekday ? escapeHtml(formatMetric(weekday.station_value,weekday.unit)) : "—"}</td><td>${programLines(dayTitles[1])}</td><td>${programLines(dayTitles[2])}</td><td>${programLines(dayTitles[3])}</td><td>${programLines(dayTitles[4])}</td><td>${programLines(dayTitles[5])}</td></tr>`);
     if(matchesWeekend) weekendRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekend ? escapeHtml(formatMetric(weekend.station_value,weekend.unit)) : "—"}</td><td>${programLines(dayTitles[6])}</td><td>${programLines(dayTitles[0])}</td></tr>`);
   }
+  renderLineChart(els.nprHourChart,hourPoints,{
+    title:"NPR One listening by hour",
+    ariaLabel:"Average NPR One hourly listeners, weekdays compared with weekends",
+    primaryLabel:"Weekday",
+    secondaryLabel:"Weekend",
+    showBars:false,
+    labelAngle:0,
+    labelEvery:2,
+    minLabelGap:12
+  });
   els.nprHourTable.innerHTML=`
     <section class="hour-section"><h4>Monday–Friday schedule against weekday hourly average</h4><div class="table-wrap"><table class="hour-table weekday-hour-table"><thead><tr><th>Hour</th><th>Weekday<br>avg.</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th></tr></thead><tbody>${weekdayRows.join("") || '<tr><td colspan="7">No hours match this program filter.</td></tr>'}</tbody></table></div></section>
     <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>`;
 }
 
+async function renderListeningByHour(hours, requestId = breakdownRequestId) {
+  if (!hours.length) {
+    listeningHourContext=null;
+    els.nprHourChart.innerHTML="";
+    els.nprHourTable.innerHTML='<p class="empty-state">No NPR One hour-of-day source period fits completely inside the selected analysis range.</p>';
+    return;
+  }
+  const periodStart=hours[0].period_start;
+  const periodEnd=hours[0].period_end;
+  let entries=[];
+  let scheduleNote="";
+  try {
+    const result=await fetchComposerSchedule(periodStart,periodEnd);
+    if(requestId !== breakdownRequestId) return;
+    entries=result.entries;
+    scheduleNote=result.sourceType==="recurrences"
+      ? "Schedule context comes from Composer\'s recurring-program catalog, not a dated historical log; overlapping or stale recurrences may appear."
+      : "Schedule context comes from dated Composer episodes for this report period.";
+  } catch(error) {
+    if(requestId !== breakdownRequestId) return;
+    scheduleNote=`Schedule lookup unavailable: ${error.message}`;
+  }
+  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd};
+  renderListeningHourContext(listeningHourContext);
+}
+
 async function renderStreamingWeekpart() {
-  const rows=await loadTimeSeries("streaming.listeners","day");
+  const rows=await loadTimeSeries("streaming.listeners","day","{}",selectedRange());
   const groups={weekday:[],weekend:[]};
   rows.forEach((row)=>{ if(row.station_value!==null) groups[isWeekendDate(row.period_start) ? "weekend" : "weekday"].push(Number(row.station_value)); });
   const average=(values)=>values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
@@ -473,12 +678,14 @@ async function renderStreamingWeekpart() {
 }
 
 async function renderBreakdowns() {
+  const requestId = ++breakdownRequestId;
   const [programs, devices, channels, hours] = await Promise.all([
-    loadLatestBreakdown("audio.downloads_by_program", "program"),
-    loadLatestBreakdown("streaming.device_share_pct", "device"),
-    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel"),
-    loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart")
+    loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
+    loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
+    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
+    loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
   ]);
+  if (requestId !== breakdownRequestId) return;
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
   renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
     maxValue: 100,
@@ -486,7 +693,7 @@ async function renderBreakdowns() {
     onBarClick:(row)=>openBreakdownDrilldown("Live-stream device share",row,devices[0] ? formatPeriod(devices[0],devices[0].grain) : "")
   });
   renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
-  await Promise.all([renderListeningByHour(hours),renderStreamingWeekpart()]);
+  await Promise.all([renderListeningByHour(hours,requestId),renderStreamingWeekpart()]);
 }
 
 async function renderAnomalies() {
@@ -549,7 +756,7 @@ function collectionSpan(imports, reportType, grain) {
 function collectionCell(span, targetStart = "2025-09-22") {
   if (!span) return '<span class="collection-status need">Missing</span>';
   const fullYear = span.start <= targetStart;
-  return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start, { year:false }))} – ${escapeHtml(formatDayDate(span.end, { year:false }))}</span>`;
+  return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start))} – ${escapeHtml(formatDayDate(span.end))}</span>`;
 }
 
 async function renderCollectionChecklist() {
@@ -605,17 +812,24 @@ async function renderImportHistory() {
 }
 
 async function renderExplore() {
-  const view = EXPLORE_VIEWS[els.exploreView.value] || EXPLORE_VIEWS["audio-programs"];
+  const requestId = ++exploreRequestId;
+  const view = EXPLORE_VIEWS[state.exploreView] || EXPLORE_VIEWS["audio-programs"];
+  els.exploreViewButtons.querySelectorAll("[data-explore-view]").forEach((button) => {
+    button.setAttribute("aria-pressed",String(button.dataset.exploreView===state.exploreView));
+  });
   els.exploreDescription.textContent = view.description;
-  const rows = await loadLatestBreakdown(view.metric, view.dimension);
+  const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", selectedRange());
+  if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreChart.innerHTML = '<p class="empty-state">No complete data is available for this exploration yet.</p>';
+    els.exploreInsights.innerHTML = "";
+    els.exploreChart.innerHTML = '<p class="empty-state">No complete source breakdown fits inside the selected analysis range.</p>';
     els.exploreTable.innerHTML = "";
     return;
   }
   els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
   const sorted = sortBreakdown(rows);
+  renderExploreInsights(sorted);
   const isPercent = rows[0].unit === "percent";
   renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
     maxValue: isPercent ? 100 : undefined,
@@ -729,11 +943,7 @@ async function processFiles(fileList) {
 
 function bindTabs() {
   document.querySelectorAll(".tab-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      const tab = button.dataset.tab;
-      document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item === button));
-      document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = panel.dataset.panel !== tab; });
-    });
+    button.addEventListener("click", () => activateTab(button.dataset.tab));
   });
 }
 
@@ -779,10 +989,10 @@ function bindEvents() {
     state.trendWeekpart = button.dataset.weekpart;
     void withBusy(() => renderTrend());
   });
-  els.trendHolidayButtons.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-holiday-mode]");
+  els.trendNotableButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-notable-mode]");
     if (!button) return;
-    state.trendHoliday = button.dataset.holidayMode;
+    state.trendNotable = button.dataset.notableMode;
     void withBusy(() => renderTrend());
   });
   els.trendProgramSelect.addEventListener("change", () => {
@@ -791,11 +1001,30 @@ function bindEvents() {
   });
   els.scheduleProgramFilter.addEventListener("change", () => {
     state.scheduleProgram = els.scheduleProgramFilter.value;
-    void withBusy(() => renderBreakdowns());
+    if (listeningHourContext) renderListeningHourContext(listeningHourContext);
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
   els.trendGrain.addEventListener("change", () => void withBusy(() => renderTrend()));
-  els.exploreView.addEventListener("change", () => void withBusy(() => renderExplore()));
+  els.exploreViewButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-explore-view]");
+    if(!button) return;
+    state.exploreView=button.dataset.exploreView;
+    persistUiState();
+    void withBusy(()=>renderExplore());
+  });
+  const rangeChanged=()=>{
+    if(!validateAndStoreRange()) return;
+    void withBusy(()=>refreshAnalysisViews());
+  };
+  els.globalStartDate.addEventListener("change",rangeChanged);
+  els.globalEndDate.addEventListener("change",rangeChanged);
+  els.clearDateRange.addEventListener("click",()=>{
+    state.startDate="";
+    state.endDate="";
+    applyRangeControls();
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
+  });
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
@@ -846,6 +1075,9 @@ async function boot() {
   try {
     els.versionBadge.textContent = `v${APP_VERSION}`;
     renderTrendControlButtons();
+    renderExploreControlButtons();
+    applyRangeControls();
+    activateTab(state.activeTab,false);
     bindTabs();
     bindEvents();
     try {
