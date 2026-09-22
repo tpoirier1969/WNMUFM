@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {}
 };
 
-const { selectLongestBreakdownRows } = await import("../src/data.js");
+const { selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
 
 test("range profiles prefer the longest available source period", () => {
   const rows = [
@@ -19,4 +19,13 @@ test("range profiles prefer the longest available source period", () => {
   const selected = selectLongestBreakdownRows(rows);
   assert.equal(selected.length, 2);
   assert.ok(selected.every((row) => row.source_import_id === 17));
+});
+
+test("available analysis range uses earliest and latest usable observation dates", () => {
+  const range=selectAvailableObservationRange([
+    {period_start:"2025-09-12",period_end:"2025-09-12",station_value:10},
+    {period_start:"2026-09-20",period_end:"2026-09-20",station_value:20},
+    {period_start:"2026-09-21",period_end:"2026-09-21",station_value:null}
+  ]);
+  assert.deepEqual(range,{startDate:"2025-09-12",endDate:"2026-09-20"});
 });
