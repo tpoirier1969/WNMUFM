@@ -3,20 +3,54 @@ import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signI
 import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
-import { formatDayDate, formatPeriod, holidayContext, isWeekendDate, matchesHolidayMode, matchesWeekpart, median, percentFromMedian, shortDayLabel } from "./analysis.js";
+import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
+import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
-  "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendHolidayControls","trendHolidayButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
+  "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","trendPrintColumns","programBars",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","exploreTable","globalStartDate","globalEndDate","clearDateRange"
 ].map((id) => [id, document.getElementById(id)]));
 
-const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all", trendHoliday: "all", trendProgram: "", scheduleProgram: "" };
+const UI_STATE_KEY = "wnmufm.analytics.ui";
+const restoredUi = (() => {
+  try { return JSON.parse(sessionStorage.getItem(UI_STATE_KEY) || "{}"); } catch { return {}; }
+})();
+const state = {
+  role:null,
+  loading:false,
+  trendMetric:"streaming.listeners",
+  trendWeekpart:"all",
+  trendNotable:"all",
+  trendProgram:"",
+  scheduleProgram:"",
+  startDate:restoredUi.startDate || "",
+  endDate:restoredUi.endDate || "",
+  activeTab:["overview","explore","imports"].includes(restoredUi.activeTab) ? restoredUi.activeTab : "overview",
+  exploreView:restoredUi.exploreView || "audio-programs"
+};
 let busyDepth = 0;
+
+function persistUiState() {
+  try {
+    sessionStorage.setItem(UI_STATE_KEY,JSON.stringify({
+      activeTab:state.activeTab,
+      startDate:state.startDate,
+      endDate:state.endDate,
+      exploreView:state.exploreView
+    }));
+  } catch {
+    // Session persistence is convenience state, not analytics data.
+  }
+}
+
+function selectedRange() {
+  return { startDate:state.startDate, endDate:state.endDate };
+}
 
 function setBusy(isBusy) {
   busyDepth = Math.max(0, busyDepth + (isBusy ? 1 : -1));
@@ -52,7 +86,7 @@ const WEEKPARTS = [
   ["all","All days"],["weekday","Mon–Fri"],["weekend","Weekend"],
   ["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"],["sat","Sat"],["sun","Sun"]
 ];
-const HOLIDAY_MODES = [["all","All dates"],["exclude","Exclude holiday weeks"],["only","Holiday weeks only"]];
+const NOTABLE_MODES = [["all","All dates"],["exclude","Exclude notable dates"],["only","Notable dates only"]];
 
 function trendMetricLabel(key) {
   return TREND_METRICS.find((item) => item.key === key)?.label || key;
@@ -65,8 +99,8 @@ function renderTrendControlButtons() {
   els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
     `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
   ).join("");
-  els.trendHolidayButtons.innerHTML = HOLIDAY_MODES.map(([key,label]) =>
-    `<button type="button" class="filter-button" data-holiday-mode="${key}" aria-pressed="${key === state.trendHoliday}">${label}</button>`
+  els.trendNotableButtons.innerHTML = NOTABLE_MODES.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-holiday-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
   ).join("");
 }
 
@@ -77,8 +111,8 @@ function refreshTrendControlState() {
   els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
   });
-  els.trendHolidayButtons.querySelectorAll("[data-holiday-mode]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.holidayMode === state.trendHoliday));
+  els.trendNotableButtons.querySelectorAll("[data-holiday-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.holidayMode === state.trendNotable));
   });
 }
 
@@ -137,7 +171,7 @@ const DAILY_METRIC_ORDER = [
 
 async function openDateDrilldown(point, metricKey, medianValue) {
   const date = point.date;
-  const holiday = holidayContext(date);
+  const holiday = notableDateContext(date);
   openDetailDialog(formatDayDate(date), '<p class="empty-state">Loading the day’s context…</p>');
   try {
     const observations = await loadDateObservations(date);
@@ -268,6 +302,7 @@ function escapeHtml(value) {
 }
 
 function setAuthenticated(isAuthenticated) {
+  els.startupPanel.hidden = true;
   els.authPanel.hidden = isAuthenticated;
   els.appPanel.hidden = !isAuthenticated;
   els.logoutButton.hidden = !isAuthenticated;
@@ -304,7 +339,7 @@ function metricCard(title, row) {
   return `<article class="metric-card">
     <h3>${escapeHtml(title)}</h3>
     <div class="metric-value">${row ? escapeHtml(formatMetric(row.station_value, row.unit)) : "—"}</div>
-    <div class="metric-sub">${row ? escapeHtml(formatPeriod(row, "day")) : "No complete imported day yet"}</div>
+    <div class="metric-sub">${row ? `Latest complete day · ${escapeHtml(formatDayDate(row.period_start))}` : "No complete imported day in this range"}</div>
   </article>`;
 }
 
@@ -315,7 +350,7 @@ async function renderSummary() {
     "website.active_users",
     "audio.downloads",
     "npr_one.localized_listeners"
-  ], "day");
+  ], "day", selectedRange());
   els.summaryCards.innerHTML = [
     ["Streaming listeners", values["streaming.listeners"]],
     ["Listener hours", values["streaming.listener_hours"]],
@@ -335,7 +370,7 @@ async function renderTrend() {
   const label = trendMetricLabel(metricKey);
   const programCapable = metricKey === "audio.downloads" || metricKey === "audio.users";
   els.trendWeekpartControls.hidden = grain !== "day";
-  els.trendHolidayControls.hidden = grain !== "day";
+  els.trendNotableControls.hidden = grain !== "day";
   els.trendProgramControl.hidden = !programCapable;
   refreshTrendControlState();
 
@@ -344,13 +379,13 @@ async function renderTrend() {
   els.trendTitle.textContent = selectedProgram ? `${label}: ${selectedProgram}` : label;
   const filterNotes = [];
   if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
-  if (grain === "day" && state.trendHoliday !== "all") filterNotes.push(HOLIDAY_MODES.find(([key]) => key === state.trendHoliday)?.[1]);
+  if (grain === "day" && state.trendNotable !== "all") filterNotes.push(NOTABLE_MODES.find(([key]) => key === state.trendNotable)?.[1]);
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
   els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
 
   const rows = await loadTimeSeries(metricKey, grain, filterSignature);
   const filteredRows = grain === "day"
-    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesHolidayMode(row.period_start,state.trendHoliday))
+    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
     : rows;
   const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value !== null && Number.isFinite(Number(value)));
   const medianValue = median(numericValues);
@@ -383,7 +418,7 @@ async function renderTrend() {
     <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
     <tbody>${filteredRows.map((row) => {
       const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
-      const holiday = grain === "day" ? holidayContext(row.period_start) : null;
+      const holiday = grain === "day" ? notableDateContext(row.period_start) : null;
       return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${holiday ? ` <span class="holiday-tag">${escapeHtml(holiday.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
     }).join("")}</tbody>
   </table>`;
@@ -779,10 +814,10 @@ function bindEvents() {
     state.trendWeekpart = button.dataset.weekpart;
     void withBusy(() => renderTrend());
   });
-  els.trendHolidayButtons.addEventListener("click", (event) => {
+  els.trendNotableButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-holiday-mode]");
     if (!button) return;
-    state.trendHoliday = button.dataset.holidayMode;
+    state.trendNotable = button.dataset.holidayMode;
     void withBusy(() => renderTrend());
   });
   els.trendProgramSelect.addEventListener("change", () => {
