@@ -178,6 +178,11 @@ export function normalizeComposerPrograms(payload, startDate, endDate) {
     });
   });
 
+  output.sort((a,b) =>
+    String(a.date).localeCompare(String(b.date)) ||
+    String(a.start).localeCompare(String(b.start)) ||
+    String(a.program).localeCompare(String(b.program))
+  );
   return output;
 }
 
