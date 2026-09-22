@@ -1350,6 +1350,18 @@ function bindEvents() {
     persistUiState();
     void withBusy(() => renderTrend());
   });
+  els.trendQuickRangeButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-range-preset]");
+    if(!button) return;
+    state.startDate=button.dataset.start || state.availableRange.startDate;
+    state.endDate=button.dataset.end || state.availableRange.endDate;
+    state.rangeMode=button.dataset.rangePreset === "full" ? "all" : "custom";
+    state.rangeNoticeArmed=true;
+    clearTrendZoom();
+    applyRangeControls();
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
+  });
   els.trendWeekpartButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-weekpart]");
     if (!button) return;
@@ -1374,6 +1386,15 @@ function bindEvents() {
     if (listeningHourContext) renderListeningHourContext(listeningHourContext);
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
+  els.trendZoomButton.addEventListener("click",()=>{
+    state.trendZoomMode=!state.trendZoomMode;
+    updateTrendZoomControls();
+    void renderTrend();
+  });
+  els.trendZoomReset.addEventListener("click",()=>{
+    clearTrendZoom({persist:true});
+    void renderTrend();
+  });
   els.trendGrain.addEventListener("change", () => {
     state.trendGrain = els.trendGrain.value;
     persistUiState();
@@ -1426,6 +1447,8 @@ function bindEvents() {
     }
     rangeEditPending=false;
     state.rangeMode="all";
+    state.rangeNoticeArmed=true;
+    clearTrendZoom();
     state.startDate=state.availableRange.startDate;
     state.endDate=state.availableRange.endDate;
     applyRangeControls();
