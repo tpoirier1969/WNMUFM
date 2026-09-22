@@ -3,6 +3,7 @@ import { hasOAuthCallback, oauthRedirectUrl, parseOAuthFragment } from "./oauth.
 
 const SESSION_KEY = "wnmufm.analytics.supabase.session";
 let cachedSession = loadStoredSession();
+let sessionGeneration = 0;
 
 function loadStoredSession() {
   try {
@@ -14,6 +15,7 @@ function loadStoredSession() {
 }
 
 function storeSession(session) {
+  sessionGeneration += 1;
   cachedSession = session || null;
   if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   else localStorage.removeItem(SESSION_KEY);
@@ -115,14 +117,17 @@ async function refreshSession() {
     storeSession(null);
     return null;
   }
+  const refreshToken = cachedSession.refresh_token;
+  const generationAtStart = sessionGeneration;
   try {
-    const data = await authRequest("token?grant_type=refresh_token", { refresh_token: cachedSession.refresh_token });
+    const data = await authRequest("token?grant_type=refresh_token", { refresh_token: refreshToken });
+    if (generationAtStart !== sessionGeneration) return cachedSession;
     const expiresAt = Math.floor(Date.now() / 1000) + Number(data.expires_in || 3600);
     const session = { ...data, expires_at: expiresAt };
     storeSession(session);
     return session;
   } catch (error) {
-    storeSession(null);
+    if (generationAtStart === sessionGeneration) storeSession(null);
     throw error;
   }
 }
