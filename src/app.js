@@ -13,8 +13,8 @@ import { buildViewSearch, parseViewState } from "./view-state.js";
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","anomalyEditHelp","coverageTable","dropZone","fileInput",
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","importUploadPanel","collectionStatusPanel","importSectionDescription","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -521,6 +521,27 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
 }
 
+function roleCanEdit() {
+  return ["editor","admin"].includes(String(state.role?.role || "").toLowerCase());
+}
+
+function roleLabel() {
+  const role=String(state.role?.role || "").toLowerCase();
+  return role ? role.charAt(0).toUpperCase() + role.slice(1) : "";
+}
+
+function applyRoleUi() {
+  const editable=roleCanEdit();
+  setHidden(els.importUploadPanel,!editable);
+  setHidden(els.anomalyEditHelp,!editable);
+  els.collectionStatusPanel?.classList.toggle("span-two",!editable);
+  if(els.importSectionDescription) {
+    els.importSectionDescription.textContent=editable
+      ? "Drop the original ZIP exports here. The app keeps raw rows for provenance, deduplicates semantically identical exports, and updates normalized chart data."
+      : "Read-only access. You can review collection status and import provenance; an Editor or Admin can add NPR Analytics exports.";
+  }
+}
+
 function setAuthenticated(isAuthenticated) {
   setHidden(els.startupPanel, true);
   setHidden(els.authPanel, isAuthenticated);
@@ -571,8 +592,10 @@ async function establishAccess({ timeoutMs = 10000 } = {}) {
 
     state.role = role;
     const user = currentUser();
-    els.userBadge.textContent = role.display_name || user?.email || "Signed in";
+    const who = role.display_name || user?.email || "Signed in";
+    els.userBadge.textContent = `${who}${roleLabel() ? ` · ${roleLabel()}` : ""}`;
     setAuthenticated(true);
+    applyRoleUi();
     return true;
   } catch (error) {
     console.error("Could not restore WNMU-FM session", error);
@@ -977,14 +1000,17 @@ async function renderAnomalies() {
     els.anomalyList.innerHTML = '<p class="empty-state">No open anomaly flags.</p>';
     return;
   }
+  const actions = roleCanEdit()
+    ? `<div class="anomaly-actions">
+        <button class="small-button" type="button" data-anomaly-action="expected">Expected</button>
+        <button class="small-button" type="button" data-anomaly-action="excluded">Exclude</button>
+        <button class="small-button" type="button" data-anomaly-action="resolved">Resolve</button>
+      </div>`
+    : '<div class="read-only-note">Viewer access · review actions are available to Editors and Admins.</div>';
   els.anomalyList.innerHTML = anomalies.map((item) => `<div class="anomaly-item" data-anomaly-id="${item.id}">
     <div class="anomaly-head"><span class="anomaly-title">${escapeHtml(item.title)}</span><span class="severity ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></div>
     <p class="anomaly-detail">${escapeHtml(item.detail || "")}</p>
-    <div class="anomaly-actions">
-      <button class="small-button" type="button" data-anomaly-action="expected">Expected</button>
-      <button class="small-button" type="button" data-anomaly-action="excluded">Exclude</button>
-      <button class="small-button" type="button" data-anomaly-action="resolved">Resolve</button>
-    </div>
+    ${actions}
   </div>`).join("");
 }
 
@@ -1148,6 +1174,10 @@ function queueRow(file, status, kind = "") {
 }
 
 async function processFiles(fileList) {
+  if(!roleCanEdit()) {
+    openDetailDialog("Read-only access","<p>Your WNMU-FM Analytics role can view reports but cannot import or modify data. Ask an Analytics Admin to change the role to Editor if importing is needed.</p>","Permissions");
+    return;
+  }
   const files = [...fileList].filter((file) => file.name.toLowerCase().endsWith(".zip"));
   if (!files.length) return;
   const userEmail = currentUser()?.email || null;
@@ -1346,7 +1376,7 @@ function bindEvents() {
   els.anomalyList.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("[data-anomaly-action]");
     const wrapper = event.target.closest("[data-anomaly-id]");
-    if (!actionButton || !wrapper) return;
+    if (!actionButton || !wrapper || !roleCanEdit()) return;
     actionButton.disabled = true;
     try {
       await updateRows("wnmufm_analytics_anomalies", `id=eq.${wrapper.dataset.anomalyId}`, {
