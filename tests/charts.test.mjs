@@ -42,3 +42,14 @@ test("multi-metric line paths cannot inherit a series fill", async () => {
     assert.match(css,new RegExp("\\.chart-metric-point\\.chart-series-" + i + "\\s*\\{[^}]*fill:","s"));
   }
 });
+
+
+test("line charts do not render a median reference series", async () => {
+  const fs = await import("node:fs/promises");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
+  assert.doesNotMatch(chartSource,/chart-median-line|Median " \+ compactNumber\(options\.median\)/);
+  assert.doesNotMatch(css,/\.chart-median-line|\.chart-median-label/);
+  assert.match(css,/\.chart-line \{[^}]*stroke: var\(--brand\)/s);
+  assert.match(css,/\.chart-secondary-line \{[^}]*stroke:var\(--accent\)/s);
+});
