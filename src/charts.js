@@ -51,7 +51,7 @@ function dayLabelCandidates(points) {
     months.get(key).push(index);
   });
   months.forEach((indexes) => {
-    for (const target of [1,15]) {
+    for (const target of [1,8,15,22]) {
       let best = indexes[0];
       let bestDistance = Infinity;
       indexes.forEach((index) => {
@@ -76,14 +76,14 @@ function dayLabelCandidates(points) {
 export function selectSpacedLabelIndexes(points, plotWidth, options = {}) {
   if (!points?.length) return [];
   const xFor = (index) => points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth;
-  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
+  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0));
   const candidates = options.grain === "day" && points.some((point)=>point.date)
     ? dayLabelCandidates(points)
     : points.map((_,index)=>index).filter((index) => {
-        const every = options.labelEvery || (points.length <= 16 ? 1 : points.length <= 40 ? 2 : Math.max(2,Math.ceil(points.length/24)));
+        const every = options.labelEvery || (points.length <= 24 ? 1 : points.length <= 60 ? 2 : Math.max(2,Math.ceil(points.length/40)));
         return index === 0 || index === points.length - 1 || index % every === 0;
       });
-  const gap = Number(options.minLabelGap ?? 6);
+  const gap = Number(options.minLabelGap ?? 2);
   const selected = [];
   for (const index of candidates) {
     const label = points[index]?.shortLabel || points[index]?.label || "";
@@ -103,6 +103,82 @@ export function selectSpacedLabelIndexes(points, plotWidth, options = {}) {
   return selected.map((item)=>item.index);
 }
 
+function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeight, zoomMode, onZoomSelect } = {}) {
+  if (!zoomMode || typeof onZoomSelect !== "function" || !Array.isArray(points) || points.length < 2) return;
+
+  svg.classList.add("chart-zoom-active");
+  const selection = svgElement("rect",{
+    x:margin.left,
+    y:margin.top,
+    width:0,
+    height:plotHeight,
+    class:"chart-zoom-selection"
+  });
+  const hitbox = svgElement("rect",{
+    x:margin.left,
+    y:margin.top,
+    width:plotWidth,
+    height:plotHeight,
+    class:"chart-zoom-hitbox",
+    tabindex:"0",
+    role:"button",
+    "aria-label":"Drag horizontally across the chart to zoom into a date range"
+  });
+
+  let startX = null;
+  let pointerId = null;
+  const clampX = (value) => Math.max(margin.left,Math.min(width-margin.right,value));
+  const svgX = (event) => {
+    const bounds=svg.getBoundingClientRect();
+    if(!bounds.width) return margin.left;
+    return clampX((event.clientX-bounds.left)*(width/bounds.width));
+  };
+  const resetSelection = () => {
+    startX=null;
+    pointerId=null;
+    selection.setAttribute("width","0");
+  };
+
+  hitbox.addEventListener("pointerdown",(event)=>{
+    if(event.button !== 0) return;
+    event.preventDefault();
+    pointerId=event.pointerId;
+    startX=svgX(event);
+    selection.setAttribute("x",String(startX));
+    selection.setAttribute("width","0");
+    hitbox.setPointerCapture?.(event.pointerId);
+  });
+  hitbox.addEventListener("pointermove",(event)=>{
+    if(startX===null || event.pointerId!==pointerId) return;
+    const current=svgX(event);
+    selection.setAttribute("x",String(Math.min(startX,current)));
+    selection.setAttribute("width",String(Math.abs(current-startX)));
+  });
+  hitbox.addEventListener("pointerup",(event)=>{
+    if(startX===null || event.pointerId!==pointerId) return;
+    event.preventDefault();
+    const endX=svgX(event);
+    hitbox.releasePointerCapture?.(event.pointerId);
+    const distance=Math.abs(endX-startX);
+    if(distance<8) { resetSelection(); return; }
+    const indexFor=(x)=>Math.max(0,Math.min(points.length-1,Math.round(((x-margin.left)/plotWidth)*(points.length-1))));
+    const a=indexFor(startX);
+    const b=indexFor(endX);
+    const startIndex=Math.min(a,b);
+    const endIndex=Math.max(a,b);
+    resetSelection();
+    if(endIndex<=startIndex) return;
+    onZoomSelect(points[startIndex],points[endIndex],startIndex,endIndex);
+  });
+  hitbox.addEventListener("pointercancel",resetSelection);
+  hitbox.addEventListener("keydown",(event)=>{
+    if(event.key==="Escape") resetSelection();
+  });
+
+  svg.appendChild(selection);
+  svg.appendChild(hitbox);
+}
+
 export function renderLineChart(container, points, options = {}) {
   clear(container);
   if (!points?.length) {
@@ -112,7 +188,7 @@ export function renderLineChart(container, points, options = {}) {
 
   const width = 1100;
   const hasSecondary = points.some((point)=>finiteNumber(point.secondaryValue) !== null);
-  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
+  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0));
   const margin = { top:(hasSecondary || options.primaryLabel ? 34 : 18), right:58, bottom:(labelAngle ? 92 : 58), left:76 };
   const height = labelAngle ? 390 : 340;
   const plotWidth = width - margin.left - margin.right;
@@ -194,7 +270,7 @@ export function renderLineChart(container, points, options = {}) {
 
   points.forEach((point,index)=>{
     if(finiteNumber(point.value) !== null) {
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:2,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:3,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
       const title=svgElement("title");
       const parts=[point.label + ": " + compactNumber(point.value)];
       if(finiteNumber(point.secondaryValue) !== null) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
@@ -208,7 +284,7 @@ export function renderLineChart(container, points, options = {}) {
       svg.appendChild(circle);
     }
     if(finiteNumber(point.secondaryValue) !== null) {
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:1.7,class:"chart-secondary-point"});
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:2.6,class:"chart-secondary-point"});
       const title=svgElement("title");
       title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue) + (point.contextLabel ? " · Notable because: " + point.contextLabel : "");
       circle.appendChild(title); svg.appendChild(circle);
@@ -222,6 +298,7 @@ export function renderLineChart(container, points, options = {}) {
     const label=svgElement("text",{x,y,"text-anchor":labelAngle ? "end" : "middle",class:(point.weekend ? "chart-axis-label weekend" : "chart-axis-label") + " dense",...(labelAngle ? {transform:"rotate(" + labelAngle + " " + x + " " + y + ")"} : {})});
     label.textContent=point.shortLabel || point.label; svg.appendChild(label);
   });
+  attachHorizontalZoom(svg,points,{ width,margin,plotWidth,plotHeight,zoomMode:options.zoomMode,onZoomSelect:options.onZoomSelect });
   container.appendChild(svg);
 }
 
@@ -234,7 +311,7 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
   }
 
   const width = 1100;
-  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
+  const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0));
   const margin = { top:58, right:58, bottom:(labelAngle ? 92 : 58), left:76 };
   const height = labelAngle ? 414 : 364;
   const plotWidth = width - margin.left - margin.right;
@@ -336,7 +413,7 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
       const circle=svgElement("circle",{
         cx:xFor(index),
         cy:yFor(indexed),
-        r:1.7,
+        r:2.6,
         class:"chart-metric-point chart-series-" + (seriesIndex % 8) + (options.onPointClick ? " clickable" : ""),
         ...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open " + item.label + " details for " + point.label} : {})
       });
@@ -383,6 +460,7 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
     label.textContent=point.shortLabel || point.label;
     svg.appendChild(label);
   });
+  attachHorizontalZoom(svg,points,{ width,margin,plotWidth,plotHeight,zoomMode:options.zoomMode,onZoomSelect:options.onZoomSelect });
   container.appendChild(svg);
 }
 
