@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -636,7 +636,7 @@ async function renderBreakdowns() {
     loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
     loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
     loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
-    loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
+    loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
   ]);
   if (requestId !== breakdownRequestId) return;
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
