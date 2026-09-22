@@ -296,7 +296,7 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px
 /* Busy state: keep the operating-system progress cursor visible during data loads and expensive filters. */
 body.app-busy,
 body.app-busy * {
-  cursor: progress !important;
+  cursor: wait !important;
 }
 
 
