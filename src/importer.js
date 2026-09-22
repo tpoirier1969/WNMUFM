@@ -86,6 +86,26 @@ function queryForHash(hash) {
   }).toString();
 }
 
+function queryForArchive(importId) {
+  return new URLSearchParams({
+    select: "import_id",
+    import_id: `eq.${importId}`,
+    limit: "1"
+  }).toString();
+}
+
+async function archiveSourceZip(importId, file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let hex = "";
+  for (const byte of bytes) hex += byte.toString(16).padStart(2, "0");
+  await insertRows("wnmufm_analytics_source_archives", [{
+    import_id: importId,
+    source_bytes: `\\x${hex}`,
+    source_mime_type: file.type || "application/zip",
+    source_size_bytes: bytes.length
+  }]);
+}
+
 export async function inspectExport(file, filterContext = {}) {
   const entries = await readZip(file);
   const files = parseEntries(entries);
@@ -127,6 +147,8 @@ export async function inspectExport(file, filterContext = {}) {
 export async function importInspectedExport(inspected, userEmail) {
   const existing = await selectRows("wnmufm_analytics_imports", queryForHash(inspected.contentHash));
   if (existing?.length) {
+    const archive = await selectRows("wnmufm_analytics_source_archives", queryForArchive(existing[0].id));
+    if (!archive?.length) await archiveSourceZip(existing[0].id, inspected.file);
     return { duplicate: true, importRecord: existing[0], inspected };
   }
 
@@ -161,6 +183,8 @@ export async function importInspectedExport(inspected, userEmail) {
   if (!importRecord?.id) throw new Error("The import record was created without an ID.");
 
   try {
+    await archiveSourceZip(importRecord.id, inspected.file);
+
     const rawRows = rawRowsForImport(importRecord.id, inspected.files);
     await batchInsert("wnmufm_analytics_raw_rows", rawRows, { batchSize: 150 });
 
