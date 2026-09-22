@@ -17,7 +17,7 @@ Read `PROJECT_RULES.md` before modifying the application.
 - Canonical repository: `tpoirier1969/WNMUFM`
 - Canonical branch: `main`
 - Status: active development / proof of concept
-- Hosting/deployment: GitHub Pages, deployed from canonical `main` through the repository Pages workflow
+- Hosting/deployment: GitHub Pages remains the verified live path; Cloudflare Pages is prepared as a second deployment target from the same canonical `main` branch
 - Persistent storage: existing Supabase project `WNMUProgramming data`
 - FM database ownership: every FM analytics database object uses the `wnmufm_` prefix
 - Authentication/authorization: Supabase Auth via GitHub OAuth or email/password, plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
@@ -60,4 +60,6 @@ Overlapping imports update canonical normalized observations while retaining eac
 
 ## Deployment
 
-GitHub Pages is the verified owner-test deployment path and publishes from canonical `main` through the repository Pages build/deployment workflow. The exact public URL is not duplicated here until it is recorded from an authoritative Pages configuration source.
+GitHub Pages remains the verified owner-test deployment path and continues to publish from canonical `main` through the repository Pages build/deployment workflow.
+
+Cloudflare Pages is also supported without replacing GitHub Pages. Cloudflare should build with `npm run build:cloudflare` and publish the `dist` directory. See `docs/CLOUDFLARE_PAGES.md` for the exact setup and Supabase redirect requirement.
