@@ -84,9 +84,19 @@
                     <span class="control-label">Week-part</span>
                     <div id="trendWeekpartButtons" class="button-strip weekpart-button-strip" role="group" aria-label="Week-part filter"></div>
                   </div>
+                  <div id="trendHolidayControls">
+                    <span class="control-label">Holiday context</span>
+                    <div id="trendHolidayButtons" class="button-strip" role="group" aria-label="Holiday filter"></div>
+                  </div>
+                  <label id="trendProgramControl" hidden>Program
+                    <select id="trendProgramSelect">
+                      <option value="">All on-demand audio</option>
+                    </select>
+                  </label>
                 </div>
               </div>
             </div>
+            <div id="trendMedianSummary" class="trend-stat-strip"></div>
             <div id="trendChart" class="chart-frame"></div>
             <div id="trendTable" class="table-wrap"></div>
           </article>
@@ -112,10 +122,26 @@
           </article>
 
           <article class="panel-card">
-            <p class="eyebrow">NPR One + WNMU schedule</p>
-            <h3>Listening by hour</h3>
+            <p class="eyebrow">Live stream</p>
+            <h3>Weekday vs weekend</h3>
+            <div id="streamingWeekpartBars"></div>
+            <p id="streamingWeekpartNote" class="panel-note"></p>
+          </article>
+
+          <article class="panel-card span-two listening-hour-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">NPR One + WNMU schedule</p>
+                <h3>Listening by hour</h3>
+              </div>
+              <label class="schedule-program-filter">Filter schedule by program
+                <select id="scheduleProgramFilter">
+                  <option value="">All programs</option>
+                </select>
+              </label>
+            </div>
             <p id="nprHourDescription" class="panel-note"></p>
-            <div id="nprHourTable" class="table-wrap"></div>
+            <div id="nprHourTable"></div>
           </article>
         </div>
 
@@ -225,6 +251,19 @@
           <div id="importHistory" class="table-wrap"></div>
         </article>
       </section>
+
+      <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailDialogTitle">
+        <div class="detail-dialog-shell">
+          <div class="detail-dialog-heading">
+            <div>
+              <p class="eyebrow">Deeper dive</p>
+              <h2 id="detailDialogTitle">Details</h2>
+            </div>
+            <button id="detailDialogClose" class="secondary-button" type="button">Close</button>
+          </div>
+          <div id="detailDialogBody"></div>
+        </div>
+      </dialog>
     </section>
   </main>
 

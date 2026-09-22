@@ -1,21 +1,21 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
-import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, shortDayLabel } from "./analysis.js";
+import { formatDayDate, formatPeriod, holidayContext, isWeekendDate, matchesHolidayMode, matchesWeekpart, median, percentFromMedian, shortDayLabel } from "./analysis.js";
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
   "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendTitle","trendDescription","trendChart","trendTable","programBars",
-  "deviceBars","channelBars","nprHourTable","nprHourDescription","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendHolidayControls","trendHolidayButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","programBars",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourTable","nprHourDescription","detailDialog","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
 ].map((id) => [id, document.getElementById(id)]));
 
-const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all" };
+const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all", trendHoliday: "all", trendProgram: "", scheduleProgram: "" };
 
 
 const TREND_METRICS = [
@@ -35,6 +35,7 @@ const WEEKPARTS = [
   ["all","All days"],["weekday","Mon–Fri"],["weekend","Weekend"],
   ["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"],["sat","Sat"],["sun","Sun"]
 ];
+const HOLIDAY_MODES = [["all","All dates"],["exclude","Exclude holiday weeks"],["only","Holiday weeks only"]];
 
 function trendMetricLabel(key) {
   return TREND_METRICS.find((item) => item.key === key)?.label || key;
@@ -47,6 +48,9 @@ function renderTrendControlButtons() {
   els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
     `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
   ).join("");
+  els.trendHolidayButtons.innerHTML = HOLIDAY_MODES.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-holiday-mode="${key}" aria-pressed="${key === state.trendHoliday}">${label}</button>`
+  ).join("");
 }
 
 function refreshTrendControlState() {
@@ -56,6 +60,125 @@ function refreshTrendControlState() {
   els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
   });
+  els.trendHolidayButtons.querySelectorAll("[data-holiday-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.holidayMode === state.trendHoliday));
+  });
+}
+
+
+function signedPercent(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return "—";
+  const number = Number(value);
+  return `${number > 0 ? "+" : ""}${number.toFixed(1)}%`;
+}
+
+function scheduleTime(value) {
+  if (!value) return "";
+  const [hourText,minuteText="00"] = String(value).split(":");
+  const hour = Number(hourText);
+  if (!Number.isFinite(hour)) return String(value);
+  const suffix = hour < 12 ? "a.m." : "p.m.";
+  return `${hour % 12 || 12}:${minuteText} ${suffix}`;
+}
+
+function buildDailySchedule(entries) {
+  const byDate = new Map();
+  entries.forEach((entry) => {
+    if (!byDate.has(entry.date)) byDate.set(entry.date, []);
+    const key = `${entry.start}|${entry.end}|${entry.program}`;
+    if (!byDate.get(entry.date).some((item) => item.key === key)) {
+      byDate.get(entry.date).push({ ...entry, key });
+    }
+  });
+  byDate.forEach((items) => items.sort((a,b) => String(a.start).localeCompare(String(b.start)) || a.program.localeCompare(b.program)));
+  return byDate;
+}
+
+async function renderProgramFilterOptions() {
+  const imports = await loadImports();
+  const names = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort((a,b) => a.localeCompare(b));
+  els.trendProgramSelect.innerHTML = '<option value="">All on-demand audio</option>' +
+    names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  if (state.trendProgram && names.includes(state.trendProgram)) els.trendProgramSelect.value = state.trendProgram;
+  else state.trendProgram = "";
+}
+
+function openDetailDialog(title, html) {
+  els.detailDialogTitle.textContent = title;
+  els.detailDialogBody.innerHTML = html;
+  if (typeof els.detailDialog.showModal === "function") els.detailDialog.showModal();
+  else els.detailDialog.setAttribute("open","");
+}
+
+const DAILY_METRIC_ORDER = [
+  "streaming.listeners","streaming.listener_hours","streaming.sessions","streaming.minutes_per_session",
+  "website.active_users","website.pageviews","website.engaged_seconds_per_user",
+  "audio.downloads","audio.users","audio.downloads_per_user",
+  "npr_one.localized_listeners","npr_one.average_minutes"
+];
+
+async function openDateDrilldown(point, metricKey, medianValue) {
+  const date = point.date;
+  const holiday = holidayContext(date);
+  openDetailDialog(formatDayDate(date), '<p class="empty-state">Loading the day’s context…</p>');
+  try {
+    const observations = await loadDateObservations(date);
+    const primary = observations.filter((row) => !row.dimension_type);
+    const byMetric = new Map(primary.map((row) => [row.metric_key,row]));
+    const ordered = DAILY_METRIC_ORDER.map((key) => byMetric.get(key)).filter(Boolean);
+    const other = primary.filter((row) => !DAILY_METRIC_ORDER.includes(row.metric_key));
+    const selected = byMetric.get(metricKey);
+    const delta = selected && medianValue !== null ? percentFromMedian(selected.station_value, medianValue) : null;
+
+    let scheduleHtml = '<p class="panel-note">Schedule lookup unavailable for this date.</p>';
+    try {
+      const scheduleResult = await fetchComposerSchedule(date,date);
+      const dayEntries = buildDailySchedule(scheduleResult.entries).get(date) || [];
+      scheduleHtml = dayEntries.length
+        ? `<div class="schedule-list">${dayEntries.map((entry) => `<div class="schedule-item"><span>${escapeHtml(scheduleTime(entry.start))}–${escapeHtml(scheduleTime(entry.end))}</span><strong>${escapeHtml(entry.program)}</strong></div>`).join("")}</div>`
+        : '<p class="panel-note">No schedule entries were returned for this date.</p>';
+    } catch (error) {
+      scheduleHtml = `<p class="panel-note">Schedule lookup unavailable: ${escapeHtml(error.message)}</p>`;
+    }
+
+    const channelRows = observations.filter((row) => row.metric_key === "website.sessions_by_channel" && row.dimension_type === "traffic_channel");
+    const playerRows = observations.filter((row) => row.metric_key === "audio.downloads_by_player" && row.dimension_type === "player");
+
+    els.detailDialogBody.innerHTML = `
+      <div class="detail-summary">
+        <div><span>Selected metric</span><strong>${selected ? escapeHtml(formatMetric(selected.station_value,selected.unit)) : escapeHtml(point.value)}</strong></div>
+        <div><span>Vs selected-range median</span><strong>${escapeHtml(signedPercent(delta))}</strong></div>
+        <div><span>Calendar context</span><strong>${holiday ? escapeHtml(`${holiday.name} (${holiday.delta === 0 ? "holiday" : `${Math.abs(holiday.delta)} day${Math.abs(holiday.delta) === 1 ? "" : "s"} ${holiday.delta < 0 ? "before" : "after"}`})`) : "No major holiday within ±3 days"}</strong></div>
+      </div>
+      <section class="detail-section">
+        <h3>What the reports say that day</h3>
+        <div class="detail-metric-grid">
+          ${[...ordered,...other].map((row) => `<div class="detail-metric"><span>${escapeHtml(row.metric_label || row.metric_key)}</span><strong>${escapeHtml(formatMetric(row.station_value,row.unit))}</strong></div>`).join("") || '<p>No other complete daily metrics are available.</p>'}
+        </div>
+      </section>
+      <section class="detail-section">
+        <h3>What was scheduled</h3>
+        ${scheduleHtml}
+        ${metricKey.startsWith("streaming.") ? '<p class="source-limit">We have daily live-stream totals here, not listener counts by hour or by program. When you add hourly/sub-hourly streaming data, this panel can show the actual audience curve underneath the schedule.</p>' : ""}
+      </section>
+      ${channelRows.length ? '<section class="detail-section"><h3>Website traffic sources that day</h3><div id="detailChannelBars"></div></section>' : ""}
+      ${playerRows.length ? '<section class="detail-section"><h3>Audio players that day</h3><div id="detailPlayerBars"></div></section>' : ""}
+    `;
+    if (channelRows.length) renderBarChart(document.getElementById("detailChannelBars"), channelRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
+    if (playerRows.length) renderBarChart(document.getElementById("detailPlayerBars"), playerRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
+  } catch (error) {
+    els.detailDialogBody.innerHTML = `<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function openBreakdownDrilldown(title, row, periodText = "") {
+  openDetailDialog(row.label, `
+    <div class="detail-summary">
+      <div><span>${escapeHtml(title)}</span><strong>${escapeHtml(String(row.formattedValue ?? row.value ?? "—"))}</strong></div>
+      <div><span>Period</span><strong>${escapeHtml(periodText || "Latest complete source period")}</strong></div>
+    </div>
+    <p class="source-limit">This is the first drilldown layer for this category. As the matching source becomes more detailed, this panel can add its date trend, related content, schedule context and comparison baselines.</p>
+  `);
 }
 
 const METRIC_DESCRIPTIONS = {
@@ -192,30 +315,59 @@ async function renderTrend() {
   const metricKey = state.trendMetric;
   const grain = els.trendGrain.value;
   const label = trendMetricLabel(metricKey);
+  const programCapable = metricKey === "audio.downloads" || metricKey === "audio.users";
   els.trendWeekpartControls.hidden = grain !== "day";
+  els.trendHolidayControls.hidden = grain !== "day";
+  els.trendProgramControl.hidden = !programCapable;
   refreshTrendControlState();
-  els.trendTitle.textContent = label;
-  const weekpartLabel = WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1] || "All days";
-  els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${grain === "day" && state.trendWeekpart !== "all" ? ` Showing ${weekpartLabel} only.` : ""}`;
-  const rows = await loadTimeSeries(metricKey, grain);
+
+  const selectedProgram = programCapable ? state.trendProgram : "";
+  const filterSignature = selectedProgram ? JSON.stringify({ selected_program:selectedProgram }) : "{}";
+  els.trendTitle.textContent = selectedProgram ? `${label}: ${selectedProgram}` : label;
+  const filterNotes = [];
+  if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
+  if (grain === "day" && state.trendHoliday !== "all") filterNotes.push(HOLIDAY_MODES.find(([key]) => key === state.trendHoliday)?.[1]);
+  if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
+  els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
+
+  const rows = await loadTimeSeries(metricKey, grain, filterSignature);
   const filteredRows = grain === "day"
-    ? rows.filter((row) => matchesWeekpart(row.period_start, state.trendWeekpart))
+    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesHolidayMode(row.period_start,state.trendHoliday))
     : rows;
+  const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value !== null && Number.isFinite(Number(value)));
+  const medianValue = median(numericValues);
+  const latest = [...filteredRows].reverse().find((row)=>row.station_value !== null);
+  els.trendMedianSummary.innerHTML = medianValue === null ? "" :
+    `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,filteredRows[0]?.unit))}</span>` +
+    (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
+    `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
+
   const points = filteredRows.filter((row) => row.station_value !== null).map((row) => ({
     date: row.period_start,
-    label: formatPeriod(row, grain),
-    shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row, grain),
+    label: formatPeriod(row,grain),
+    shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row,grain),
     value: Number(row.station_value),
     weekend: grain === "day" && isWeekendDate(row.period_start)
   }));
-  renderLineChart(els.trendChart, points, { title: label, ariaLabel: `${label} by ${grain}`, grain });
+  renderLineChart(els.trendChart,points,{
+    title:label,
+    ariaLabel:`${label} by ${grain}`,
+    grain,
+    median:medianValue,
+    onPointClick: grain === "day" ? (point) => openDateDrilldown(point,metricKey,medianValue) : null
+  });
+
   if (!filteredRows.length) {
     els.trendTable.innerHTML = "";
     return;
   }
   els.trendTable.innerHTML = `<table class="trend-data-table">
-    <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead>
-    <tbody>${filteredRows.map((row) => `<tr${rowClass(row, grain)}><td>${escapeHtml(formatPeriod(row, grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}</tbody>
+    <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
+    <tbody>${filteredRows.map((row) => {
+      const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
+      const holiday = grain === "day" ? holidayContext(row.period_start) : null;
+      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${holiday ? ` <span class="holiday-tag">${escapeHtml(holiday.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+    }).join("")}</tbody>
   </table>`;
 }
 
@@ -223,49 +375,83 @@ function sortBreakdown(rows) {
   return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
 }
 
+function titlesForHour(entries,day,hour) {
+  const startMinute = hour * 60;
+  const endMinute = startMinute + 60;
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const date = new Date(`${entry.date}T12:00:00Z`);
+    if (date.getUTCDay() !== day) return false;
+    const [sh,sm] = String(entry.start || "00:00").split(":").map(Number);
+    const [eh,em] = String(entry.end || entry.start || "00:00").split(":").map(Number);
+    const start = sh * 60 + sm;
+    let end = eh * 60 + em;
+    if (end <= start) end += 1440;
+    return start < endMinute && end > startMinute;
+  }).map((entry)=>entry.program).filter((name)=>name && !seen.has(name) && seen.add(name)).sort((a,b)=>a.localeCompare(b));
+}
+
+function programLines(names) {
+  const filtered = state.scheduleProgram ? names.filter((name)=>name === state.scheduleProgram) : names;
+  return filtered.length ? filtered.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("") : '<span class="program-line muted">—</span>';
+}
+
 async function renderListeningByHour(hours) {
   if (!hours.length) {
     els.nprHourTable.innerHTML = '<p class="empty-state">No NPR One hour-of-day data is available.</p>';
     return;
   }
-  const periodStart = hours[0].period_start;
-  const periodEnd = hours[0].period_end;
-  const byKey = new Map(hours.map((row) => [row.dimension_value, row]));
-  let schedule = new Map();
-  let scheduleNote = "";
-
+  const periodStart=hours[0].period_start;
+  const periodEnd=hours[0].period_end;
+  const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
+  let entries=[];
+  let scheduleNote="";
   try {
-    const scheduleResult = await fetchComposerSchedule(periodStart, periodEnd);
-    schedule = buildHourSchedule(scheduleResult.entries);
-    scheduleNote = scheduleResult.sourceType === "recurrences"
-      ? "Program names are cross-referenced to NPR Composer's public recurring WNMU-FM schedule. This identifies the normal weekly lineup but cannot prove historical preemptions or one-off substitutions."
-      : `Program names are cross-referenced to dated NPR Composer episodes for ${formatDayDate(periodStart)} through ${formatDayDate(periodEnd)}.`;
-  } catch (error) {
-    scheduleNote = `The NPR One figures are valid, but automatic Composer schedule lookup is currently unavailable in this browser: ${error.message}`;
+    const result=await fetchComposerSchedule(periodStart,periodEnd);
+    entries=result.entries;
+    scheduleNote=result.sourceType==="recurrences"
+      ? "Program titles use the normal recurring WNMU-FM Composer schedule; one-off substitutions may differ."
+      : "Program titles use dated Composer episodes for this report period.";
+  } catch(error) {
+    scheduleNote=`Schedule lookup unavailable: ${error.message}`;
   }
 
-  const runDayNote = hours[0]?.analysis_tail_incomplete
-    ? ` This range-level NPR One aggregate includes the ${formatDayDate(hours[0].report_run_date)} report-run day; NPR does not provide dated hourly rows that would let us remove only that day. A future export ending the previous day will eliminate that limitation.`
-    : "";
-  els.nprHourDescription.innerHTML = `NPR One does <strong>not</strong> provide individual dates for this breakdown. It reports an average for each clock hour across weekdays and weekends during ${escapeHtml(formatDayDate(periodStart))} through ${escapeHtml(formatDayDate(periodEnd))}. The table is therefore ordered by time of day, not by audience size.${escapeHtml(runDayNote)} ${escapeHtml(scheduleNote)} <a href="${escapeHtml(CONFIG.stationScheduleUrl)}" target="_blank" rel="noreferrer">Open the WNMU-FM schedule</a>.`;
+  const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const previous=state.scheduleProgram;
+  els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
 
-  const rows = [];
-  for (let hour = 0; hour < 24; hour += 1) {
-    const key = String(hour).padStart(2, "0");
-    const weekday = byKey.get(`weekday|${key}`);
-    const weekend = byKey.get(`weekend|${key}`);
-    rows.push(`<tr>
-      <td>${escapeHtml(hourLabel(hour))}</td>
-      <td class="numeric">${weekday ? escapeHtml(formatMetric(weekday.station_value, weekday.unit)) : "—"}</td>
-      <td>${escapeHtml(schedule.get(`weekday|${key}`) || "Schedule lookup unavailable")}</td>
-      <td class="numeric">${weekend ? escapeHtml(formatMetric(weekend.station_value, weekend.unit)) : "—"}</td>
-      <td>${escapeHtml(schedule.get(`weekend|${key}`) || "Schedule lookup unavailable")}</td>
-    </tr>`);
+  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour, not seven separate daily audience counts. The table therefore breaks the <em>schedule</em> out by day while keeping the audience number at the source's actual weekday/weekend level. ${escapeHtml(scheduleNote)}`;
+
+  const weekdayRows=[];
+  const weekendRows=[];
+  for(let hour=0;hour<24;hour+=1){
+    const key=String(hour).padStart(2,"0");
+    const weekday=byKey.get(`weekday|${key}`);
+    const weekend=byKey.get(`weekend|${key}`);
+    const dayTitles=[0,1,2,3,4,5,6].map((day)=>titlesForHour(entries,day,hour));
+    const matchesWeekday=!state.scheduleProgram || [1,2,3,4,5].some((day)=>dayTitles[day].includes(state.scheduleProgram));
+    const matchesWeekend=!state.scheduleProgram || [6,0].some((day)=>dayTitles[day].includes(state.scheduleProgram));
+    if(matchesWeekday) weekdayRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekday ? escapeHtml(formatMetric(weekday.station_value,weekday.unit)) : "—"}</td><td>${programLines(dayTitles[1])}</td><td>${programLines(dayTitles[2])}</td><td>${programLines(dayTitles[3])}</td><td>${programLines(dayTitles[4])}</td><td>${programLines(dayTitles[5])}</td></tr>`);
+    if(matchesWeekend) weekendRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekend ? escapeHtml(formatMetric(weekend.station_value,weekend.unit)) : "—"}</td><td>${programLines(dayTitles[6])}</td><td>${programLines(dayTitles[0])}</td></tr>`);
   }
-  els.nprHourTable.innerHTML = `<table class="hour-table">
-    <thead><tr><th>Hour</th><th class="numeric">Weekday avg.</th><th>Programs scheduled on weekdays</th><th class="numeric">Weekend avg.</th><th>Programs scheduled on weekends</th></tr></thead>
-    <tbody>${rows.join("")}</tbody>
-  </table>`;
+  els.nprHourTable.innerHTML=`
+    <section class="hour-section"><h4>Monday–Friday schedule against weekday hourly average</h4><div class="table-wrap"><table class="hour-table weekday-hour-table"><thead><tr><th>Hour</th><th>Weekday<br>avg.</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th></tr></thead><tbody>${weekdayRows.join("") || '<tr><td colspan="7">No hours match this program filter.</td></tr>'}</tbody></table></div></section>
+    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>avg.</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>`;
+}
+
+async function renderStreamingWeekpart() {
+  const rows=await loadTimeSeries("streaming.listeners","day");
+  const groups={weekday:[],weekend:[]};
+  rows.forEach((row)=>{ if(row.station_value!==null) groups[isWeekendDate(row.period_start) ? "weekend" : "weekday"].push(Number(row.station_value)); });
+  const average=(values)=>values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
+  const weekday=average(groups.weekday), weekend=average(groups.weekend);
+  const chartRows=[{label:"Mon–Fri",value:weekday},{label:"Weekend",value:weekend}].filter((row)=>row.value!==null);
+  renderBarChart(els.streamingWeekpartBars,chartRows,{onBarClick:(row)=>openBreakdownDrilldown("Average daily streaming listeners",row,"Loaded complete daily history")});
+  if(weekday && weekend!==null){
+    const gap=((weekend-weekday)/weekday)*100;
+    els.streamingWeekpartNote.textContent=`Weekends average ${Math.abs(gap).toFixed(1)}% ${gap<0 ? "fewer" : "more"} streaming listeners than Mon–Fri across the loaded daily history.`;
+  }
 }
 
 async function renderBreakdowns() {
@@ -275,13 +461,14 @@ async function renderBreakdowns() {
     loadLatestBreakdown("website.sessions_by_channel", "traffic_channel"),
     loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart")
   ]);
-  renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 12 });
-  renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value })), {
+  renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
+  renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
     maxValue: 100,
-    formatValue: (value) => `${Number(value).toFixed(1)}%`
+    formatValue: (value) => `${Number(value).toFixed(1)}%`,
+    onBarClick:(row)=>openBreakdownDrilldown("Live-stream device share",row,devices[0] ? formatPeriod(devices[0],devices[0].grain) : "")
   });
-  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value })), { limit: 8 });
-  await renderListeningByHour(hours);
+  renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
+  await Promise.all([renderListeningByHour(hours),renderStreamingWeekpart()]);
 }
 
 async function renderAnomalies() {
@@ -478,6 +665,7 @@ async function processFiles(fileList) {
     }
   }
   invalidateDataCache();
+  await renderProgramFilterOptions();
   await refreshDashboard();
 }
 
@@ -533,6 +721,21 @@ function bindEvents() {
     state.trendWeekpart = button.dataset.weekpart;
     renderTrend();
   });
+  els.trendHolidayButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-holiday-mode]");
+    if (!button) return;
+    state.trendHoliday = button.dataset.holidayMode;
+    renderTrend();
+  });
+  els.trendProgramSelect.addEventListener("change", () => {
+    state.trendProgram = els.trendProgramSelect.value;
+    renderTrend();
+  });
+  els.scheduleProgramFilter.addEventListener("change", () => {
+    state.scheduleProgram = els.scheduleProgramFilter.value;
+    renderBreakdowns();
+  });
+  els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
   els.trendGrain.addEventListener("change", renderTrend);
   els.exploreView.addEventListener("change", renderExplore);
 
@@ -591,7 +794,10 @@ async function boot() {
     showLoginMessage(error.message);
   }
   const authenticated = await establishAccess();
-  if (authenticated) await refreshDashboard();
+  if (authenticated) {
+    await renderProgramFilterOptions();
+    await refreshDashboard();
+  }
   setInterval(checkVersion, 5 * 60 * 1000);
 }
 

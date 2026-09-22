@@ -25,8 +25,8 @@ export function renderLineChart(container, points, options = {}) {
 
   const width = 1100;
   const denseLabels = points.length > 20;
-  const height = denseLabels ? 380 : 340;
-  const margin = { top: 18, right: 22, bottom: denseLabels ? 100 : 64, left: 76 };
+  const height = denseLabels ? 350 : 330;
+  const margin = { top: 18, right: 22, bottom: denseLabels ? 72 : 56, left: 76 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
@@ -85,6 +85,19 @@ export function renderLineChart(container, points, options = {}) {
     }));
   });
 
+  const baselineY = yFor(min);
+  const barWidth = Math.max(1.2, Math.min(13, step * 0.62));
+  points.forEach((point, index) => {
+    const y = yFor(point.value);
+    svg.appendChild(svgElement("rect", {
+      x: xFor(index) - barWidth / 2,
+      y,
+      width: barWidth,
+      height: Math.max(0, baselineY - y),
+      class: point.weekend ? "chart-background-bar weekend" : "chart-background-bar"
+    }));
+  });
+
   for (let i = 0; i <= 4; i += 1) {
     const fraction = i / 4;
     const y = margin.top + plotHeight * fraction;
@@ -100,6 +113,18 @@ export function renderLineChart(container, points, options = {}) {
     svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top + plotHeight, y2: margin.top + plotHeight + 6, class: "chart-tick" }));
   });
 
+  if (Number.isFinite(Number(options.median))) {
+    const medianY = yFor(Number(options.median));
+    svg.appendChild(svgElement("line", {
+      x1: margin.left, x2: width - margin.right, y1: medianY, y2: medianY, class: "chart-median-line"
+    }));
+    const medianLabel = svgElement("text", {
+      x: width - margin.right - 4, y: medianY - 6, "text-anchor": "end", class: "chart-median-label"
+    });
+    medianLabel.textContent = `Median ${compactNumber(options.median)}`;
+    svg.appendChild(medianLabel);
+  }
+
   const path = points.map((point, index) => `${index ? "L" : "M"}${xFor(index).toFixed(1)},${yFor(point.value).toFixed(1)}`).join(" ");
   svg.appendChild(svgElement("path", { d: path, class: "chart-line" }));
 
@@ -108,29 +133,60 @@ export function renderLineChart(container, points, options = {}) {
       cx: xFor(index),
       cy: yFor(point.value),
       r: 3.8,
-      class: point.weekend ? "chart-point weekend" : "chart-point"
+      class: `${point.weekend ? "chart-point weekend" : "chart-point"}${options.onPointClick ? " clickable" : ""}`,
+      ...(options.onPointClick ? { tabindex:"0", role:"button", "aria-label":`Open details for ${point.label}` } : {})
     });
     const title = svgElement("title");
     title.textContent = `${point.label}: ${compactNumber(point.value)}`;
     circle.appendChild(title);
+    if (options.onPointClick) {
+      const activate = () => options.onPointClick(point, index);
+      circle.addEventListener("click", activate);
+      circle.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        }
+      });
+    }
     svg.appendChild(circle);
   });
 
-  const labelEvery = options.labelEvery || (
-    points.length <= 16 ? 1 :
-    points.length <= 40 ? 2 :
-    Math.max(3, Math.ceil(points.length / 28))
-  );
+  const labelIndexes = new Set();
+  if (options.grain === "day" && points.some((point) => point.date)) {
+    let monthStart = 0;
+    while (monthStart < points.length) {
+      const monthKey = String(points[monthStart].date || "").slice(0, 7);
+      let monthEnd = monthStart;
+      while (monthEnd + 1 < points.length && String(points[monthEnd + 1].date || "").slice(0, 7) === monthKey) monthEnd += 1;
+      labelIndexes.add(monthStart);
+      let lastLabeledDate = new Date(`${points[monthStart].date}T12:00:00Z`);
+      for (let candidate = monthStart + 1; candidate <= monthEnd; candidate += 1) {
+        const candidateDate = new Date(`${points[candidate].date}T12:00:00Z`);
+        if ((candidateDate - lastLabeledDate) / 86400000 >= 7) {
+          labelIndexes.add(candidate);
+          lastLabeledDate = candidateDate;
+        }
+      }
+      monthStart = monthEnd + 1;
+    }
+  } else {
+    const labelEvery = options.labelEvery || (points.length <= 16 ? 1 : points.length <= 40 ? 2 : Math.max(2, Math.ceil(points.length / 24)));
+    points.forEach((point, index) => {
+      if (index === 0 || index === points.length - 1 || index % labelEvery === 0) labelIndexes.add(index);
+    });
+  }
+
   points.forEach((point, index) => {
-    if (index !== 0 && index !== points.length - 1 && index % labelEvery !== 0) return;
+    if (!labelIndexes.has(index)) return;
     const x = xFor(index);
-    const y = height - (denseLabels ? 18 : 22);
+    const y = margin.top + plotHeight + 16;
     const label = svgElement("text", {
       x,
       y,
       "text-anchor": denseLabels ? "end" : "middle",
       class: `${point.weekend ? "chart-axis-label weekend" : "chart-axis-label"}${denseLabels ? " dense" : ""}`,
-      ...(denseLabels ? { transform: `rotate(-38 ${x} ${y})` } : {})
+      ...(denseLabels ? { transform: `rotate(-34 ${x} ${y})` } : {})
     });
     label.textContent = point.shortLabel || point.label;
     svg.appendChild(label);
@@ -170,6 +226,20 @@ export function renderBarChart(container, rows, options = {}) {
     value.className = "bar-value";
     value.textContent = options.formatValue ? options.formatValue(row.value) : compactNumber(row.value);
     item.append(name, track, value);
+    if (options.onBarClick) {
+      item.classList.add("clickable-bar-row");
+      item.tabIndex = 0;
+      item.setAttribute("role","button");
+      item.setAttribute("aria-label", `Open details for ${row.label}`);
+      const activate = () => options.onBarClick(row);
+      item.addEventListener("click", activate);
+      item.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          activate();
+        }
+      });
+    }
     list.appendChild(item);
   });
 

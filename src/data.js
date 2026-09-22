@@ -142,3 +142,21 @@ export async function loadLatestValues(metricKeys, grain = "day") {
   }));
   return output;
 }
+
+
+export async function loadDateObservations(date) {
+  const params = new URLSearchParams({
+    select: "report_type,metric_key,metric_label,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,dimension_type,dimension_value,filter_signature,source_import_id",
+    grain: "eq.day",
+    period_start: `eq.${date}`,
+    period_end: `eq.${date}`,
+    filter_signature: "eq.{}",
+    order: "report_type.asc,metric_key.asc",
+    limit: "2000"
+  });
+  const [rows, context] = await Promise.all([
+    selectRows("wnmufm_analytics_observations", params.toString()),
+    loadAnalysisContext()
+  ]);
+  return rows.filter((row) => rowIsUsable(row, context));
+}
