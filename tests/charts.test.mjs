@@ -32,3 +32,13 @@ test("trend nodes are materially smaller than the original chart markers", async
   assert.match(source,/r:2,class:/);
   assert.match(source,/r:1\.7,class:"chart-secondary-point"/);
 });
+
+
+test("multi-metric line paths cannot inherit a series fill", async () => {
+  const fs = await import("node:fs/promises");
+  const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
+  for (let i=0;i<8;i+=1) {
+    assert.match(css,new RegExp("\\.chart-metric-line\\.chart-series-" + i + "\\s*\\{[^}]*fill:none;","s"));
+    assert.match(css,new RegExp("\\.chart-metric-point\\.chart-series-" + i + "\\s*\\{[^}]*fill:","s"));
+  }
+});
