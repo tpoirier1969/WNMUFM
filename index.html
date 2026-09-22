@@ -92,6 +92,10 @@
                   <span class="control-label">Metrics · choose one or more</span>
                   <div id="trendMetricButtons" class="button-strip metric-button-strip" role="group" aria-label="Trend metrics; choose one or more"></div>
                 </div>
+                <div>
+                  <span class="control-label">Quick range</span>
+                  <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Trend quick date ranges"></div>
+                </div>
                 <div class="trend-filter-row">
                   <label>View by
                     <select id="trendGrain">
@@ -118,6 +122,11 @@
             </div>
             <div id="trendMedianSummary" class="trend-stat-strip"></div>
             <p id="trendBenchmarkNote" class="benchmark-definition" hidden></p>
+            <div class="chart-toolbar" aria-label="Trend chart controls">
+              <button id="trendZoomButton" class="small-button chart-zoom-button" type="button" aria-pressed="false" title="Drag horizontally across the chart to zoom">🔍 Zoom</button>
+              <button id="trendZoomReset" class="small-button" type="button" hidden>Reset zoom</button>
+              <span id="trendZoomStatus" class="chart-zoom-status" aria-live="polite"></span>
+            </div>
             <div id="trendChart" class="chart-frame"></div>
             <details id="trendDataDetails" class="trend-data-details">
               <summary id="trendDataSummary">Show period-by-period data</summary>

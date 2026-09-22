@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { notableContextLabel, notableDateContext, notableDatesForYear } from "../src/notable-dates.js";
+import { matchesNotableDateMode, notableContextLabel, notableDateContext, notableDatesForYear } from "../src/notable-dates.js";
 
 test("2026 federal Election Day is identified as notable context", () => {
   const election=notableDatesForYear(2026).find((item)=>item.name==="Federal Election Day");
@@ -23,4 +23,12 @@ test("near-holiday notable context explains why an ordinary date is included", (
   const context=notableDateContext("2026-01-04");
   assert.equal(context?.name,"New Year's Day");
   assert.equal(notableContextLabel(context),"3 days after New Year's Day");
+});
+
+
+test("nearby holiday context does not turn every nearby day into a notable-day filter match", () => {
+  assert.equal(notableDateContext("2026-01-04")?.name,"New Year's Day");
+  assert.equal(matchesNotableDateMode("2026-01-04","only"),false);
+  assert.equal(matchesNotableDateMode("2026-01-01","only"),true);
+  assert.equal(matchesNotableDateMode("2026-01-04","exclude"),true);
 });

@@ -9,10 +9,11 @@ import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState } from "./view-state.js";
+import { buildRangePresets } from "./range-presets.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
@@ -27,6 +28,8 @@ const validChoice = (value, choices, fallback) => choices.includes(value) ? valu
 const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
 const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
 const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
+const initialTrendZoomStart = validDateKey(sharedOrRestored("trendZoomStart",""));
+const initialTrendZoomEnd = validDateKey(sharedOrRestored("trendZoomEnd",""));
 const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","custom"], (initialStartDate || initialEndDate) ? "custom" : "all");
 const initialMetrics = Array.isArray(sharedView.trendMetrics) && sharedView.trendMetrics.length
   ? sharedView.trendMetrics
@@ -40,6 +43,10 @@ const state = {
   trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
   trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
   trendProgram:sharedOrRestored("trendProgram",""),
+  trendZoomStart:initialTrendZoomStart,
+  trendZoomEnd:initialTrendZoomEnd,
+  trendZoomMode:false,
+  rangeNoticeArmed:false,
   scheduleProgram:"",
   startDate:initialStartDate,
   endDate:initialEndDate,
@@ -68,7 +75,9 @@ function viewStateSnapshot() {
     trendGrain:state.trendGrain,
     trendWeekpart:state.trendWeekpart,
     trendNotable:state.trendNotable,
-    trendProgram:state.trendProgram
+    trendProgram:state.trendProgram,
+    trendZoomStart:state.trendZoomStart,
+    trendZoomEnd:state.trendZoomEnd
   };
 }
 
@@ -89,6 +98,53 @@ function persistUiState() {
 
 function selectedRange() {
   return { startDate:state.startDate, endDate:state.endDate };
+}
+
+function clearTrendZoom({ persist = false } = {}) {
+  state.trendZoomStart="";
+  state.trendZoomEnd="";
+  state.trendZoomMode=false;
+  updateTrendZoomControls();
+  if(persist) persistUiState();
+}
+
+function updateTrendZoomControls() {
+  const hasZoom=Boolean(state.trendZoomStart && state.trendZoomEnd);
+  els.trendZoomButton?.setAttribute("aria-pressed",String(state.trendZoomMode));
+  if(els.trendZoomButton) els.trendZoomButton.textContent=state.trendZoomMode ? "✕ Cancel zoom" : "🔍 Zoom";
+  setHidden(els.trendZoomReset,!hasZoom);
+  if(els.trendZoomStatus) {
+    els.trendZoomStatus.textContent=hasZoom
+      ? `Zoomed: ${formatDayDate(state.trendZoomStart)} – ${formatDayDate(state.trendZoomEnd)}`
+      : (state.trendZoomMode ? "Drag horizontally across the graph to select a date window." : "");
+  }
+}
+
+function zoomedTrendPoints(points) {
+  if(!state.trendZoomStart || !state.trendZoomEnd) return points;
+  const filtered=points.filter((point)=>point.date && point.date>=state.trendZoomStart && point.date<=state.trendZoomEnd);
+  if(filtered.length>=2) return filtered;
+  clearTrendZoom();
+  return points;
+}
+
+function setTrendZoom(firstPoint,lastPoint) {
+  if(!firstPoint?.date || !lastPoint?.date) return;
+  state.trendZoomStart=firstPoint.date < lastPoint.date ? firstPoint.date : lastPoint.date;
+  state.trendZoomEnd=firstPoint.date < lastPoint.date ? lastPoint.date : firstPoint.date;
+  state.trendZoomMode=false;
+  updateTrendZoomControls();
+  persistUiState();
+  void renderTrend();
+}
+
+function renderTrendQuickRanges() {
+  if(!els.trendQuickRangeButtons) return;
+  const presets=buildRangePresets(state.availableRange);
+  els.trendQuickRangeButtons.innerHTML=presets.map((preset)=>{
+    const active=state.startDate===preset.startDate && state.endDate===preset.endDate;
+    return `<button type="button" class="filter-button" data-range-preset="${escapeHtml(preset.key)}" data-start="${escapeHtml(preset.startDate)}" data-end="${escapeHtml(preset.endDate)}" aria-pressed="${active}">${escapeHtml(preset.label)}</button>`;
+  }).join("");
 }
 
 let copyViewStatusTimer = null;
@@ -439,6 +495,7 @@ function applyRangeControls() {
   els.availableRangeLabel.textContent=hasAvailable
     ? `Available imported data: ${formattedRange(available)}`
     : "No dated imported data is available yet.";
+  renderTrendQuickRanges();
 }
 
 function rangeChanged(a,b) {
@@ -487,6 +544,9 @@ function validateAndStoreRange() {
   state.startDate=startDate;
   state.endDate=endDate;
   state.rangeMode="custom";
+  state.rangeNoticeArmed=true;
+  clearTrendZoom();
+  renderTrendQuickRanges();
   persistUiState();
   return true;
 }
@@ -628,6 +688,7 @@ async function renderTrend() {
   setHidden(els.trendNotableControls, grain !== "day");
   setHidden(els.trendProgramControl, !programCapable);
   refreshTrendControlState();
+  updateTrendZoomControls();
 
   const selectedProgram = programCapable ? state.trendProgram : "";
   const filterSignature = selectedProgram ? JSON.stringify({ selected_program:selectedProgram }) : "{}";
@@ -705,15 +766,20 @@ async function renderTrend() {
         value:Number(row.station_value),
         secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
         weekend:grain === "day" && isWeekendDate(row.period_start),
-        contextLabel:context ? notableContextLabel(context) : ""
+        contextLabel:context ? notableContextLabel(context) : "",
+        notableExact:context?.delta === 0
       };
     });
-    renderLineChart(els.trendChart,points,{
+    const chartPoints=zoomedTrendPoints(points);
+    updateTrendZoomControls();
+    renderLineChart(els.trendChart,chartPoints,{
       title:label,
       ariaLabel:`${label} by ${grain}`,
       grain,
       primaryLabel:"WNMU-FM",
       secondaryLabel:benchmarkLabel,
+      zoomMode:state.trendZoomMode,
+      onZoomSelect:setTrendZoom,
       onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
     });
 
@@ -727,7 +793,7 @@ async function renderTrend() {
       <tbody>${filteredRows.map((row)=>{
         const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
         const notable = grain === "day" ? notableDateContext(row.period_start) : null;
-        return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+        return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable?.delta === 0 ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
       }).join("")}</tbody>
     </table>`, filteredRows.length);
     renderTrendPrintDetail(filteredRows,grain,medianValue);
@@ -770,16 +836,21 @@ async function renderTrend() {
       shortLabel:grain === "day" ? shortDayLabel(date) : grain === "week" ? `Wk ${shortDayLabel(date)}` : shortMonthLabel(date),
       weekend:grain === "day" && isWeekendDate(date),
       contextLabel:context ? notableContextLabel(context) : "",
+      notableExact:context?.delta === 0,
       values,
       actualValues
     };
   }).filter((point)=>Object.keys(point.values).length);
 
-  renderIndexedMultiLineChart(els.trendChart,points,{
+  const chartPoints=zoomedTrendPoints(points);
+  updateTrendZoomControls();
+  renderIndexedMultiLineChart(els.trendChart,chartPoints,{
     title:"Metric comparison",
     ariaLabel:`Indexed comparison of ${seriesDefs.map((item)=>item.label).join(", ")} by ${grain}`,
     grain,
     series:seriesDefs,
+    zoomMode:state.trendZoomMode,
+    onZoomSelect:setTrendZoom,
     onPointClick:grain === "day" ? (point,item)=>openDateDrilldown({date:point.date,value:point.actualValues[item.key]},item.key,item.median) : null
   });
 
@@ -790,7 +861,7 @@ async function renderTrend() {
   }
   renderTrendDataTable(`<table class="trend-data-table multi-metric-table">
     <thead><tr><th>Period</th>${seriesDefs.map((item)=>`<th class="numeric">${escapeHtml(item.label)}</th>`).join("")}</tr></thead>
-    <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.contextLabel ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
+    <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.notableExact ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
   </table>`, points.length);
   els.trendPrintColumns.classList.add("single");
   els.trendPrintColumns.innerHTML='<p class="print-trend-note"><strong>Multi-metric comparison:</strong> the printed chart uses each selected metric\'s median as index 100. Actual values remain available in the on-screen table and hover details.</p>';
@@ -901,7 +972,7 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId, { ra
   const periodStart=hours[0].period_start;
   const periodEnd=hours[0].period_end;
 
-  if(rangeMismatch) {
+  if(rangeMismatch && state.rangeNoticeArmed) {
     const noticeKey=`${state.startDate}|${state.endDate}|${periodStart}|${periodEnd}`;
     if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
       listeningHourNoticeKey=noticeKey;
@@ -1280,6 +1351,18 @@ function bindEvents() {
     persistUiState();
     void withBusy(() => renderTrend());
   });
+  els.trendQuickRangeButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-range-preset]");
+    if(!button) return;
+    state.startDate=button.dataset.start || state.availableRange.startDate;
+    state.endDate=button.dataset.end || state.availableRange.endDate;
+    state.rangeMode=button.dataset.rangePreset === "full" ? "all" : "custom";
+    state.rangeNoticeArmed=true;
+    clearTrendZoom();
+    applyRangeControls();
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
+  });
   els.trendWeekpartButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-weekpart]");
     if (!button) return;
@@ -1304,6 +1387,15 @@ function bindEvents() {
     if (listeningHourContext) renderListeningHourContext(listeningHourContext);
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
+  els.trendZoomButton.addEventListener("click",()=>{
+    state.trendZoomMode=!state.trendZoomMode;
+    updateTrendZoomControls();
+    void renderTrend();
+  });
+  els.trendZoomReset.addEventListener("click",()=>{
+    clearTrendZoom({persist:true});
+    void renderTrend();
+  });
   els.trendGrain.addEventListener("change", () => {
     state.trendGrain = els.trendGrain.value;
     persistUiState();
@@ -1356,6 +1448,8 @@ function bindEvents() {
     }
     rangeEditPending=false;
     state.rangeMode="all";
+    state.rangeNoticeArmed=true;
+    clearTrendZoom();
     state.startDate=state.availableRange.startDate;
     state.endDate=state.availableRange.endDate;
     applyRangeControls();

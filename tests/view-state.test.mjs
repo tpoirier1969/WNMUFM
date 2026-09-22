@@ -13,6 +13,8 @@ test("shareable view state round-trips through the query string", () => {
     trendWeekpart:"weekend",
     trendNotable:"exclude",
     trendProgram:"Classical Music",
+    trendZoomStart:"2026-01-01",
+    trendZoomEnd:"2026-03-31",
     exploreView:"website-channels"
   };
 
@@ -69,4 +71,13 @@ test("date-range edits do not refresh on intermediate date-part changes", async 
   assert.match(app,/if\(rangeInputs\.includes\(document\.activeElement\)\) return;/);
   assert.doesNotMatch(app,/globalStartDate\.addEventListener\("change"/);
   assert.doesNotMatch(app,/globalEndDate\.addEventListener\("change"/);
+});
+
+
+test("source-range modal is armed only after an intentional range change", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/rangeNoticeArmed:false/);
+  assert.match(app,/if\(rangeMismatch && state\.rangeNoticeArmed\)/);
+  assert.match(app,/state\.rangeNoticeArmed=true/);
 });

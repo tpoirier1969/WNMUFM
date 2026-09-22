@@ -83,9 +83,13 @@ export function notableDateContext(value) {
   return nearest;
 }
 
+export function isExactNotableDate(value) {
+  return notableDateContext(value)?.delta === 0;
+}
+
 export function matchesNotableDateMode(value, mode = "all") {
   if (mode === "all") return true;
-  const notable = Boolean(notableDateContext(value));
+  const notable = isExactNotableDate(value);
   if (mode === "exclude") return !notable;
   if (mode === "only") return notable;
   return true;
