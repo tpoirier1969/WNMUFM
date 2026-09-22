@@ -99,9 +99,9 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .chart-background-bar.weekend { fill: rgba(217,162,27,.13); }
 .chart-median-line { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 6 5; }
 .chart-median-label { fill: var(--warning); font-size: 10px; font-weight: 850; }
-.chart-line { fill: none; stroke: var(--brand); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-.chart-point { fill: var(--surface); stroke: var(--brand); stroke-width: 2.5; }
-.chart-point.weekend { stroke: var(--accent); stroke-width: 3; }
+.chart-line { fill: none; stroke: var(--brand); stroke-width: 1.9; stroke-linejoin: round; stroke-linecap: round; }
+.chart-point { fill: var(--brand); stroke: var(--brand); stroke-width: 1.2; }
+.chart-point.weekend { fill: var(--brand); stroke: var(--brand); stroke-width: 1.2; }
 .chart-point.clickable { cursor: pointer; }
 .chart-point.clickable:hover, .chart-point.clickable:focus { r: 5.5; }
 .chart-axis-label { fill: var(--muted); font-size: 11.5px; }
@@ -316,9 +316,24 @@ body.app-busy * {
 .global-date-range input { min-height:36px; padding:6px 8px; }
 .global-date-range .small-button { min-height:36px; }
 
-.chart-secondary-line { fill:none; stroke:var(--accent); stroke-width:2.6; stroke-dasharray:8 5; stroke-linejoin:round; stroke-linecap:round; }
-.chart-secondary-point { fill:var(--surface); stroke:var(--accent); stroke-width:2.2; }
+.chart-secondary-line { fill:none; stroke:var(--accent); stroke-width:1.8; stroke-dasharray:8 5; stroke-linejoin:round; stroke-linecap:round; }
+.chart-secondary-point { fill:var(--accent); stroke:var(--accent); stroke-width:1.2; }
 .chart-legend-label { fill:var(--muted); font-size:11px; font-weight:800; }
+.chart-index-baseline { stroke:var(--muted); stroke-width:1.1; stroke-dasharray:4 4; opacity:.75; }
+.chart-index-label { fill:var(--muted); font-size:10px; font-weight:800; }
+.chart-metric-line { fill:none; stroke-width:1.8; stroke-linejoin:round; stroke-linecap:round; }
+.chart-metric-point { stroke-width:1.1; }
+.chart-metric-point.clickable { cursor:pointer; }
+.chart-metric-point.clickable:hover, .chart-metric-point.clickable:focus { r:4.8; }
+.chart-series-0 { stroke:var(--brand); fill:var(--brand); }
+.chart-series-1 { stroke:var(--accent); fill:var(--accent); }
+.chart-series-2 { stroke:var(--success); fill:var(--success); }
+.chart-series-3 { stroke:#7655a6; fill:#7655a6; }
+.chart-series-4 { stroke:#c15b2d; fill:#c15b2d; }
+.chart-series-5 { stroke:#2f7e7e; fill:#2f7e7e; }
+.chart-series-6 { stroke:#9a3f73; fill:#9a3f73; }
+.chart-series-7 { stroke:#66722c; fill:#66722c; }
+.multi-metric-table th.numeric { min-width:120px; }
 .hour-chart { min-height:300px; margin:6px 0 12px; }
 .print-trend-columns { display:none; }
 

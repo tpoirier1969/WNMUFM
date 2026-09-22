@@ -2,8 +2,8 @@ import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
 import { invalidateDataCache, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
-import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
-import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
+import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
+import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
@@ -23,7 +23,7 @@ const restoredUi = (() => {
 const state = {
   role:null,
   loading:false,
-  trendMetric:"streaming.listeners",
+  trendMetrics:Array.isArray(restoredUi.trendMetrics) && restoredUi.trendMetrics.length ? restoredUi.trendMetrics : ["streaming.listeners"],
   trendWeekpart:"all",
   trendNotable:"all",
   trendProgram:"",
@@ -45,7 +45,8 @@ function persistUiState() {
       activeTab:state.activeTab,
       startDate:state.startDate,
       endDate:state.endDate,
-      exploreView:state.exploreView
+      exploreView:state.exploreView,
+      trendMetrics:state.trendMetrics
     }));
   } catch {
     // Session persistence is convenience state, not analytics data.
@@ -98,7 +99,7 @@ function trendMetricLabel(key) {
 
 function renderTrendControlButtons() {
   els.trendMetricButtons.innerHTML = TREND_METRICS.map((item) =>
-    `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${item.key === state.trendMetric}">${escapeHtml(item.label)}</button>`
+    `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${state.trendMetrics.includes(item.key)}">${escapeHtml(item.label)}</button>`
   ).join("");
   els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
     `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
@@ -110,7 +111,7 @@ function renderTrendControlButtons() {
 
 function refreshTrendControlState() {
   els.trendMetricButtons.querySelectorAll("[data-trend-metric]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.trendMetric === state.trendMetric));
+    button.setAttribute("aria-pressed", String(state.trendMetrics.includes(button.dataset.trendMetric)));
   });
   els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
@@ -445,10 +446,14 @@ function rowClass(row, grain) {
 
 async function renderTrend() {
   const requestId = ++trendRequestId;
-  const metricKey = state.trendMetric;
+  const validMetricKeys = new Set(TREND_METRICS.map((item)=>item.key));
+  state.trendMetrics = state.trendMetrics.filter((key)=>validMetricKeys.has(key));
+  if (!state.trendMetrics.length) state.trendMetrics = ["streaming.listeners"];
+
+  const metricKeys = [...state.trendMetrics];
+  const multiple = metricKeys.length > 1;
   const grain = els.trendGrain.value;
-  const label = trendMetricLabel(metricKey);
-  const programCapable = metricKey === "audio.downloads" || metricKey === "audio.users";
+  const programCapable = metricKeys.every((key)=>key === "audio.downloads" || key === "audio.users");
   els.trendWeekpartControls.hidden = grain !== "day";
   els.trendNotableControls.hidden = grain !== "day";
   els.trendProgramControl.hidden = !programCapable;
@@ -456,69 +461,163 @@ async function renderTrend() {
 
   const selectedProgram = programCapable ? state.trendProgram : "";
   const filterSignature = selectedProgram ? JSON.stringify({ selected_program:selectedProgram }) : "{}";
-  els.trendTitle.textContent = selectedProgram ? `${label}: ${selectedProgram}` : label;
+  const metricLabels = metricKeys.map(trendMetricLabel);
+  els.trendTitle.textContent = multiple
+    ? `Compare: ${metricLabels.join(" + ")}`
+    : selectedProgram ? `${metricLabels[0]}: ${selectedProgram}` : metricLabels[0];
+
   const filterNotes = [];
   if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
   if (grain === "day" && state.trendNotable !== "all") filterNotes.push(NOTABLE_MODES.find(([key]) => key === state.trendNotable)?.[1]);
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
   if (state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
-  els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
 
-  const rows = await loadTimeSeries(metricKey, grain, filterSignature, selectedRange());
-  if (requestId !== trendRequestId) return;
-  const filteredRows = grain === "day"
-    ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
-    : rows;
-  const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value !== null && Number.isFinite(Number(value)));
-  if (numericValues.length > 0 && numericValues.length < 3) {
-    const unitName = grain === "day" ? "days" : grain === "week" ? "weeks" : "months";
-    els.trendDescription.textContent += ` Only ${numericValues.length} complete source ${unitName} are available for this selection.`;
+  if (multiple) {
+    els.trendDescription.textContent =
+      `Multiple metrics are indexed to each metric's selected-range median = 100, so listeners, hours, users and other unlike units can be compared without pretending they share one raw scale. Hover a node for the actual value. Station benchmark lines are shown in single-metric view only.` +
+      (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
+  } else {
+    els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKeys[0]] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
   }
-  const medianValue = median(numericValues);
-  const latest = [...filteredRows].reverse().find((row)=>row.station_value !== null);
-  els.trendMedianSummary.innerHTML = medianValue === null ? "" :
-    `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,filteredRows[0]?.unit))}</span>` +
-    (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
-    `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
 
-  const benchmarkLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
-  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => {
-    const context=grain === "day" ? notableDateContext(row.period_start) : null;
+  const loaded = await Promise.all(metricKeys.map(async (metricKey)=>{
+    const rows = await loadTimeSeries(metricKey,grain,filterSignature,selectedRange());
+    const filteredRows = grain === "day"
+      ? rows.filter((row)=>matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
+      : rows;
+    const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value!==null && Number.isFinite(Number(value)));
+    const medianValue = median(numericValues);
+    const latest = [...filteredRows].reverse().find((row)=>row.station_value!==null);
     return {
-      date:row.period_start,
-      label:formatPeriod(row,grain),
-      shortLabel:grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : shortMonthLabel(row.period_start),
-      value:Number(row.station_value),
-      secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
-      weekend:grain === "day" && isWeekendDate(row.period_start),
-      contextLabel:context ? notableContextLabel(context) : ""
+      key:metricKey,
+      label:trendMetricLabel(metricKey),
+      rows:filteredRows,
+      numericValues,
+      median:medianValue,
+      latest,
+      unit:filteredRows.find((row)=>row.station_value!==null)?.unit || ""
     };
-  });
-  renderLineChart(els.trendChart,points,{
-    title:label,
-    ariaLabel:`${label} by ${grain}`,
-    grain,
-    median:medianValue,
-    primaryLabel:"WNMU-FM",
-    secondaryLabel:benchmarkLabel,
-    onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
-  });
+  }));
+  if(requestId !== trendRequestId) return;
 
+  if (!multiple) {
+    const result=loaded[0];
+    const filteredRows=result.rows;
+    const numericValues=result.numericValues;
+    const medianValue=result.median;
+    const latest=result.latest;
+    const metricKey=result.key;
+    const label=result.label;
 
-  if (!filteredRows.length) {
-    els.trendTable.innerHTML = "";
-    els.trendPrintColumns.innerHTML = "";
+    if (numericValues.length > 0 && numericValues.length < 3) {
+      const unitName = grain === "day" ? "days" : grain === "week" ? "weeks" : "months";
+      els.trendDescription.textContent += ` Only ${numericValues.length} complete source ${unitName} are available for this selection.`;
+    }
+    els.trendMedianSummary.innerHTML = medianValue === null ? "" :
+      `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,filteredRows[0]?.unit))}</span>` +
+      (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
+      `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
+
+    const benchmarkLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
+    const points = filteredRows.filter((row)=>row.station_value !== null).map((row)=>{
+      const context=grain === "day" ? notableDateContext(row.period_start) : null;
+      return {
+        date:row.period_start,
+        label:formatPeriod(row,grain),
+        shortLabel:grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : shortMonthLabel(row.period_start),
+        value:Number(row.station_value),
+        secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
+        weekend:grain === "day" && isWeekendDate(row.period_start),
+        contextLabel:context ? notableContextLabel(context) : ""
+      };
+    });
+    renderLineChart(els.trendChart,points,{
+      title:label,
+      ariaLabel:`${label} by ${grain}`,
+      grain,
+      median:medianValue,
+      primaryLabel:"WNMU-FM",
+      secondaryLabel:benchmarkLabel,
+      onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
+    });
+
+    if (!filteredRows.length) {
+      els.trendTable.innerHTML = "";
+      els.trendPrintColumns.innerHTML = "";
+      return;
+    }
+    els.trendTable.innerHTML = `<table class="trend-data-table">
+      <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
+      <tbody>${filteredRows.map((row)=>{
+        const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
+        const notable = grain === "day" ? notableDateContext(row.period_start) : null;
+        return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+      }).join("")}</tbody>
+    </table>`;
+    renderTrendPrintDetail(filteredRows,grain,medianValue);
     return;
   }
-  els.trendTable.innerHTML = `<table class="trend-data-table">
-    <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
-    <tbody>${filteredRows.map((row) => {
-      const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
-      const notable = grain === "day" ? notableDateContext(row.period_start) : null;
-      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
-    }).join("")}</tbody>
+
+  const comparable = loaded.filter((item)=>item.median !== null && Number(item.median) !== 0 && item.numericValues.length);
+  els.trendMedianSummary.innerHTML = loaded.map((item)=>{
+    if(item.median === null) return `<span><strong>${escapeHtml(item.label)}:</strong> no observations</span>`;
+    const delta=item.latest ? percentFromMedian(item.latest.station_value,item.median) : null;
+    return `<span><strong>${escapeHtml(item.label)} median:</strong> ${escapeHtml(formatMetric(item.median,item.unit))}${item.latest ? ` · latest ${escapeHtml(signedPercent(delta))}` : ""}</span>`;
+  }).join("");
+
+  if(!comparable.length) {
+    els.trendChart.innerHTML='<p class="empty-state">The selected metrics do not have comparable observations in this range.</p>';
+    els.trendTable.innerHTML="";
+    els.trendPrintColumns.innerHTML="";
+    return;
+  }
+
+  const rowMaps=new Map(comparable.map((item)=>[item.key,new Map(item.rows.map((row)=>[row.period_start,row]))]));
+  const dates=[...new Set(comparable.flatMap((item)=>item.rows.map((row)=>row.period_start)))].sort();
+  const seriesDefs=comparable.map((item)=>({key:item.key,label:item.label,unit:item.unit,median:item.median}));
+  const points=dates.map((date)=>{
+    const exemplar=comparable.map((item)=>rowMaps.get(item.key).get(date)).find(Boolean);
+    const context=grain === "day" ? notableDateContext(date) : null;
+    const values={};
+    const actualValues={};
+    comparable.forEach((item)=>{
+      const row=rowMaps.get(item.key).get(date);
+      if(!row || row.station_value===null) return;
+      const indexed=indexToMedian(row.station_value,item.median);
+      if(indexed===null) return;
+      values[item.key]=indexed;
+      actualValues[item.key]=Number(row.station_value);
+    });
+    return {
+      date,
+      label:exemplar ? formatPeriod(exemplar,grain) : formatDayDate(date),
+      shortLabel:grain === "day" ? shortDayLabel(date) : grain === "week" ? `Wk ${shortDayLabel(date)}` : shortMonthLabel(date),
+      weekend:grain === "day" && isWeekendDate(date),
+      contextLabel:context ? notableContextLabel(context) : "",
+      values,
+      actualValues
+    };
+  }).filter((point)=>Object.keys(point.values).length);
+
+  renderIndexedMultiLineChart(els.trendChart,points,{
+    title:"Metric comparison",
+    ariaLabel:`Indexed comparison of ${seriesDefs.map((item)=>item.label).join(", ")} by ${grain}`,
+    grain,
+    series:seriesDefs,
+    onPointClick:grain === "day" ? (point,item)=>openDateDrilldown({date:point.date,value:point.actualValues[item.key]},item.key,item.median) : null
+  });
+
+  if(!points.length) {
+    els.trendTable.innerHTML="";
+    els.trendPrintColumns.innerHTML="";
+    return;
+  }
+  els.trendTable.innerHTML=`<table class="trend-data-table multi-metric-table">
+    <thead><tr><th>Period</th>${seriesDefs.map((item)=>`<th class="numeric">${escapeHtml(item.label)}</th>`).join("")}</tr></thead>
+    <tbody>${points.map((point)=>`<tr${point.weekend ? ' class="weekend-row"' : ""}><td>${escapeHtml(point.label)}${point.contextLabel ? ` <span class="notable-tag">${escapeHtml(point.contextLabel)}</span>` : ""}</td>${seriesDefs.map((item)=>`<td class="numeric">${point.actualValues[item.key] === undefined ? "—" : escapeHtml(formatMetric(point.actualValues[item.key],item.unit))}</td>`).join("")}</tr>`).join("")}</tbody>
   </table>`;
-  renderTrendPrintDetail(filteredRows,grain,medianValue);
+  els.trendPrintColumns.classList.add("single");
+  els.trendPrintColumns.innerHTML='<p class="print-trend-note"><strong>Multi-metric comparison:</strong> the printed chart uses each selected metric\'s median as index 100. Actual values remain available in the on-screen table and hover details.</p>';
 }
 
 function sortBreakdown(rows) {
@@ -980,7 +1079,14 @@ function bindEvents() {
   els.trendMetricButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-trend-metric]");
     if (!button) return;
-    state.trendMetric = button.dataset.trendMetric;
+    const key=button.dataset.trendMetric;
+    if(state.trendMetrics.includes(key)) {
+      if(state.trendMetrics.length===1) return;
+      state.trendMetrics=state.trendMetrics.filter((item)=>item!==key);
+    } else {
+      state.trendMetrics=[...state.trendMetrics,key];
+    }
+    persistUiState();
     void withBusy(() => renderTrend());
   });
   els.trendWeekpartButtons.addEventListener("click", (event) => {
