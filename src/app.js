@@ -480,9 +480,9 @@ async function establishAccess({ timeoutMs = 10000 } = {}) {
       "Account access lookup timed out."
     );
     if (!role) {
-      await signOut().catch(() => null);
       showLoginMessage("This account is valid, but it has not been assigned WNMU-FM Analytics access.");
       setAuthenticated(false);
+      void withTimeout(signOut().catch(() => null), 3000, "Sign out timed out.").catch(() => null);
       return false;
     }
 
@@ -1165,9 +1165,9 @@ function bindEvents() {
   });
 
   els.logoutButton.addEventListener("click", async () => {
-    await signOut().catch(() => null);
     state.role = null;
     setAuthenticated(false);
+    await withTimeout(signOut().catch(() => null), 3000, "Sign out timed out.").catch(() => null);
   });
 
   els.printButton.addEventListener("click", () => window.print());
@@ -1284,7 +1284,11 @@ async function boot() {
     bindTabs();
     bindEvents();
     try {
-      await consumeOAuthCallback();
+      await withTimeout(
+        consumeOAuthCallback(),
+        10000,
+        "GitHub sign-in completion timed out."
+      );
     } catch (error) {
       showLoginMessage(error.message);
     }
