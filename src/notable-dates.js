@@ -43,8 +43,10 @@ function federalElectionDay(year) {
 
 const CURATED_CIVIC_DATES = [
   { date:"2025-02-26", name:"Michigan State of the State", kind:"civic-address", windowDays:0 },
+  { date:"2025-11-04", name:"Michigan local election day", kind:"election", windowDays:1 },
   { date:"2026-02-24", name:"State of the Union", kind:"civic-address", windowDays:0 },
-  { date:"2026-02-25", name:"Michigan State of the State", kind:"civic-address", windowDays:0 }
+  { date:"2026-02-25", name:"Michigan State of the State", kind:"civic-address", windowDays:0 },
+  { date:"2026-08-04", name:"Michigan primary election", kind:"election", windowDays:1 }
 ];
 
 export function notableDatesForYear(year) {
