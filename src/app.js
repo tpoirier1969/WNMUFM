@@ -1252,6 +1252,7 @@ function bindEvents() {
   });
 
   els.githubLoginButton.addEventListener("click", () => {
+    persistUiState();
     showLoginMessage("Opening GitHub sign in…", true);
     signInWithGitHub();
   });
