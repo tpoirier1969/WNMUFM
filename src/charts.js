@@ -70,14 +70,14 @@ function dayLabelCandidates(points) {
 export function selectSpacedLabelIndexes(points, plotWidth, options = {}) {
   if (!points?.length) return [];
   const xFor = (index) => points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth;
-  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -52 : 0));
+  const angle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -74 : 0));
   const candidates = options.grain === "day" && points.some((point)=>point.date)
     ? dayLabelCandidates(points)
     : points.map((_,index)=>index).filter((index) => {
         const every = options.labelEvery || (points.length <= 16 ? 1 : points.length <= 40 ? 2 : Math.max(2,Math.ceil(points.length/24)));
         return index === 0 || index === points.length - 1 || index % every === 0;
       });
-  const gap = Number(options.minLabelGap ?? 8);
+  const gap = Number(options.minLabelGap ?? 6);
   const selected = [];
   for (const index of candidates) {
     const label = points[index]?.shortLabel || points[index]?.label || "";
