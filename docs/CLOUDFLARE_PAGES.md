@@ -6,8 +6,8 @@ This repository supports Cloudflare Pages **in parallel with** the existing GitH
 
 Use Cloudflare Pages with the GitHub integration so production deploys automatically from canonical `main`.
 
-Recommended project name: `wnmufm-analytics`  
-If that Pages subdomain is unavailable, use a close variant such as `wnmufm-fm-analytics`.
+Production project: `wnmufm`  
+Production URL: `https://wnmufm.pages.dev/`
 
 ## Cloudflare setup
 
@@ -45,8 +45,8 @@ After Cloudflare creates the production Pages URL:
 1. Open Supabase project **WNMUProgramming data**.
 2. Go to **Authentication > URL Configuration**.
 3. Keep the existing GitHub Pages production URL.
-4. Add the exact Cloudflare production URL, for example:
-   - `https://wnmufm-analytics.pages.dev/`
+4. Add the exact Cloudflare production URL:
+   - `https://wnmufm.pages.dev/`
 5. If a custom domain is added later, add that exact production URL as well.
 
 Do not broadly replace the existing Site URL merely to make Cloudflare work; the two deployments are intentionally supported in parallel.
