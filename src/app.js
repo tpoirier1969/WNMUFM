@@ -505,7 +505,7 @@ async function renderTrend() {
     <tbody>${filteredRows.map((row) => {
       const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
       const notable = grain === "day" ? notableDateContext(row.period_start) : null;
-      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notable.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notableContextLabel(notable))}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
     }).join("")}</tbody>
   </table>`;
   renderTrendPrintDetail(filteredRows,grain,medianValue);
@@ -571,7 +571,7 @@ async function renderListeningByHour(hours) {
     const weekend=byKey.get(`weekend|${key}`);
     hourPoints.push({
       label:hourLabel(hour),
-      shortLabel:hour % 2 === 0 ? hourLabel(hour).replace(":00","") : "",
+      shortLabel:hourLabel(hour).replace(":00",""),
       value:weekday ? Number(weekday.station_value) : null,
       secondaryValue:weekend ? Number(weekend.station_value) : null
     });
