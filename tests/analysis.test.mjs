@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatPeriod, isWeekendDate, periodIsComplete, shortDayLabel, shortMonthLabel, periodWithinRange } from "../src/analysis.js";
+import { formatPeriod, indexToMedian, isWeekendDate, periodIsComplete, shortDayLabel, shortMonthLabel, periodWithinRange } from "../src/analysis.js";
 
 test("run-day and later periods are not treated as complete", () => {
   assert.equal(periodIsComplete("2026-09-20", "2026-09-21"), true);
@@ -28,4 +28,10 @@ test("period range matching requires the complete source period to fit", () => {
   const row={period_start:"2026-09-07",period_end:"2026-09-13"};
   assert.equal(periodWithinRange(row,"2026-09-01","2026-09-30"),true);
   assert.equal(periodWithinRange(row,"2026-09-10","2026-09-30"),false);
+});
+
+test("indexed metric comparison uses each metric median as 100", () => {
+  assert.equal(indexToMedian(50,50),100);
+  assert.equal(indexToMedian(75,50),150);
+  assert.equal(indexToMedian(10,0),null);
 });
