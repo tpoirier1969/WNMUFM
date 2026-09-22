@@ -100,7 +100,7 @@ function renderTrendControlButtons() {
     `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
   ).join("");
   els.trendNotableButtons.innerHTML = NOTABLE_MODES.map(([key,label]) =>
-    `<button type="button" class="filter-button" data-holiday-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
+    `<button type="button" class="filter-button" data-notable-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
   ).join("");
 }
 
@@ -111,8 +111,8 @@ function refreshTrendControlState() {
   els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
   });
-  els.trendNotableButtons.querySelectorAll("[data-holiday-mode]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.holidayMode === state.trendNotable));
+  els.trendNotableButtons.querySelectorAll("[data-notable-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.notableMode === state.trendNotable));
   });
 }
 
@@ -497,6 +497,7 @@ async function renderTrend() {
 
   if (!filteredRows.length) {
     els.trendTable.innerHTML = "";
+    els.trendPrintColumns.innerHTML = "";
     return;
   }
   els.trendTable.innerHTML = `<table class="trend-data-table">
@@ -504,7 +505,7 @@ async function renderTrend() {
     <tbody>${filteredRows.map((row) => {
       const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
       const notable = grain === "day" ? notableDateContext(row.period_start) : null;
-      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="holiday-tag">${escapeHtml(notable.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="notable-tag">${escapeHtml(notable.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
     }).join("")}</tbody>
   </table>`;
   renderTrendPrintDetail(filteredRows,grain,medianValue);
@@ -537,7 +538,8 @@ function programLines(names) {
 
 async function renderListeningByHour(hours) {
   if (!hours.length) {
-    els.nprHourTable.innerHTML = '<p class="empty-state">No NPR One hour-of-day data is available.</p>';
+    els.nprHourChart.innerHTML = "";
+    els.nprHourTable.innerHTML = '<p class="empty-state">No NPR One hour-of-day source period fits completely inside the selected analysis range.</p>';
     return;
   }
   const periodStart=hours[0].period_start;
@@ -549,8 +551,8 @@ async function renderListeningByHour(hours) {
     const result=await fetchComposerSchedule(periodStart,periodEnd);
     entries=result.entries;
     scheduleNote=result.sourceType==="recurrences"
-      ? "Program titles use the normal recurring WNMU-FM Composer schedule; one-off substitutions may differ."
-      : "Program titles use dated Composer episodes for this report period.";
+      ? "Schedule context comes from Composer's recurring-program catalog, not a dated historical log; overlapping or stale recurrences may appear."
+      : "Schedule context comes from dated Composer episodes for this report period.";
   } catch(error) {
     scheduleNote=`Schedule lookup unavailable: ${error.message}`;
   }
@@ -560,7 +562,30 @@ async function renderListeningByHour(hours) {
   els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
   if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
 
-  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour, not seven separate daily audience counts. The table therefore breaks the <em>schedule</em> out by day while keeping the audience number at the source's actual weekday/weekend level. ${escapeHtml(scheduleNote)}`;
+  els.nprHourDescription.innerHTML=`NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
+
+  const hourPoints=[];
+  for(let hour=0;hour<24;hour+=1) {
+    const key=String(hour).padStart(2,"0");
+    const weekday=byKey.get(`weekday|${key}`);
+    const weekend=byKey.get(`weekend|${key}`);
+    hourPoints.push({
+      label:hourLabel(hour),
+      shortLabel:hour % 2 === 0 ? hourLabel(hour).replace(":00","") : "",
+      value:weekday ? Number(weekday.station_value) : null,
+      secondaryValue:weekend ? Number(weekend.station_value) : null
+    });
+  }
+  renderLineChart(els.nprHourChart,hourPoints,{
+    title:"NPR One listening by hour",
+    ariaLabel:"Average NPR One hourly listeners, weekdays compared with weekends",
+    primaryLabel:"Weekday",
+    secondaryLabel:"Weekend",
+    showBars:false,
+    labelAngle:0,
+    labelEvery:2,
+    minLabelGap:12
+  });
 
   const weekdayRows=[];
   const weekendRows=[];
@@ -580,7 +605,7 @@ async function renderListeningByHour(hours) {
 }
 
 async function renderStreamingWeekpart() {
-  const rows=await loadTimeSeries("streaming.listeners","day");
+  const rows=await loadTimeSeries("streaming.listeners","day","{}",selectedRange());
   const groups={weekday:[],weekend:[]};
   rows.forEach((row)=>{ if(row.station_value!==null) groups[isWeekendDate(row.period_start) ? "weekend" : "weekday"].push(Number(row.station_value)); });
   const average=(values)=>values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
@@ -595,10 +620,10 @@ async function renderStreamingWeekpart() {
 
 async function renderBreakdowns() {
   const [programs, devices, channels, hours] = await Promise.all([
-    loadLatestBreakdown("audio.downloads_by_program", "program"),
-    loadLatestBreakdown("streaming.device_share_pct", "device"),
-    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel"),
-    loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart")
+    loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
+    loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
+    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
+    loadLatestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange())
   ]);
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
   renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
@@ -670,7 +695,7 @@ function collectionSpan(imports, reportType, grain) {
 function collectionCell(span, targetStart = "2025-09-22") {
   if (!span) return '<span class="collection-status need">Missing</span>';
   const fullYear = span.start <= targetStart;
-  return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start, { year:false }))} – ${escapeHtml(formatDayDate(span.end, { year:false }))}</span>`;
+  return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start))} – ${escapeHtml(formatDayDate(span.end))}</span>`;
 }
 
 async function renderCollectionChecklist() {
@@ -726,12 +751,15 @@ async function renderImportHistory() {
 }
 
 async function renderExplore() {
-  const view = EXPLORE_VIEWS[els.exploreView.value] || EXPLORE_VIEWS["audio-programs"];
+  const view = EXPLORE_VIEWS[state.exploreView] || EXPLORE_VIEWS["audio-programs"];
+  els.exploreViewButtons.querySelectorAll("[data-explore-view]").forEach((button) => {
+    button.setAttribute("aria-pressed",String(button.dataset.exploreView===state.exploreView));
+  });
   els.exploreDescription.textContent = view.description;
-  const rows = await loadLatestBreakdown(view.metric, view.dimension);
+  const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", selectedRange());
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreChart.innerHTML = '<p class="empty-state">No complete data is available for this exploration yet.</p>';
+    els.exploreChart.innerHTML = '<p class="empty-state">No complete source breakdown fits inside the selected analysis range.</p>';
     els.exploreTable.innerHTML = "";
     return;
   }
@@ -850,11 +878,7 @@ async function processFiles(fileList) {
 
 function bindTabs() {
   document.querySelectorAll(".tab-button").forEach((button) => {
-    button.addEventListener("click", () => {
-      const tab = button.dataset.tab;
-      document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item === button));
-      document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = panel.dataset.panel !== tab; });
-    });
+    button.addEventListener("click", () => activateTab(button.dataset.tab));
   });
 }
 
@@ -901,9 +925,9 @@ function bindEvents() {
     void withBusy(() => renderTrend());
   });
   els.trendNotableButtons.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-holiday-mode]");
+    const button = event.target.closest("[data-notable-mode]");
     if (!button) return;
-    state.trendNotable = button.dataset.holidayMode;
+    state.trendNotable = button.dataset.notableMode;
     void withBusy(() => renderTrend());
   });
   els.trendProgramSelect.addEventListener("change", () => {
@@ -916,7 +940,26 @@ function bindEvents() {
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
   els.trendGrain.addEventListener("change", () => void withBusy(() => renderTrend()));
-  els.exploreView.addEventListener("change", () => void withBusy(() => renderExplore()));
+  els.exploreViewButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-explore-view]");
+    if(!button) return;
+    state.exploreView=button.dataset.exploreView;
+    persistUiState();
+    void withBusy(()=>renderExplore());
+  });
+  const rangeChanged=()=>{
+    if(!validateAndStoreRange()) return;
+    void withBusy(()=>refreshAnalysisViews());
+  };
+  els.globalStartDate.addEventListener("change",rangeChanged);
+  els.globalEndDate.addEventListener("change",rangeChanged);
+  els.clearDateRange.addEventListener("click",()=>{
+    state.startDate="";
+    state.endDate="";
+    applyRangeControls();
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
+  });
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
@@ -967,6 +1010,9 @@ async function boot() {
   try {
     els.versionBadge.textContent = `v${APP_VERSION}`;
     renderTrendControlButtons();
+    renderExploreControlButtons();
+    applyRangeControls();
+    activateTab(state.activeTab,false);
     bindTabs();
     bindEvents();
     try {
