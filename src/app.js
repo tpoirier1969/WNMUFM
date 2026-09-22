@@ -9,10 +9,11 @@ import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState } from "./view-state.js";
+import { buildRangePresets } from "./range-presets.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
@@ -27,6 +28,8 @@ const validChoice = (value, choices, fallback) => choices.includes(value) ? valu
 const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
 const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
 const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
+const initialTrendZoomStart = validDateKey(sharedOrRestored("trendZoomStart",""));
+const initialTrendZoomEnd = validDateKey(sharedOrRestored("trendZoomEnd",""));
 const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","custom"], (initialStartDate || initialEndDate) ? "custom" : "all");
 const initialMetrics = Array.isArray(sharedView.trendMetrics) && sharedView.trendMetrics.length
   ? sharedView.trendMetrics
@@ -40,6 +43,10 @@ const state = {
   trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
   trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
   trendProgram:sharedOrRestored("trendProgram",""),
+  trendZoomStart:initialTrendZoomStart,
+  trendZoomEnd:initialTrendZoomEnd,
+  trendZoomMode:false,
+  rangeNoticeArmed:false,
   scheduleProgram:"",
   startDate:initialStartDate,
   endDate:initialEndDate,
@@ -68,7 +75,9 @@ function viewStateSnapshot() {
     trendGrain:state.trendGrain,
     trendWeekpart:state.trendWeekpart,
     trendNotable:state.trendNotable,
-    trendProgram:state.trendProgram
+    trendProgram:state.trendProgram,
+    trendZoomStart:state.trendZoomStart,
+    trendZoomEnd:state.trendZoomEnd
   };
 }
 
