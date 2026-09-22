@@ -11,11 +11,28 @@ import { CONFIG } from "./config.js";
 const els = Object.fromEntries([
   "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendHolidayControls","trendHolidayButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendTable","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourTable","nprHourDescription","detailDialog","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","scheduleProgramFilter","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
 ].map((id) => [id, document.getElementById(id)]));
 
 const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all", trendHoliday: "all", trendProgram: "", scheduleProgram: "" };
+let busyDepth = 0;
+
+function setBusy(isBusy) {
+  busyDepth = Math.max(0, busyDepth + (isBusy ? 1 : -1));
+  const busy = busyDepth > 0;
+  document.body.classList.toggle("app-busy", busy);
+  document.body.setAttribute("aria-busy", String(busy));
+}
+
+async function withBusy(work) {
+  setBusy(true);
+  try {
+    return await work();
+  } finally {
+    setBusy(false);
+  }
+}
 
 
 const TREND_METRICS = [
@@ -103,7 +120,8 @@ async function renderProgramFilterOptions() {
   else state.trendProgram = "";
 }
 
-function openDetailDialog(title, html) {
+function openDetailDialog(title, html, eyebrow = "Deeper dive") {
+  els.detailDialogEyebrow.textContent = eyebrow;
   els.detailDialogTitle.textContent = title;
   els.detailDialogBody.innerHTML = html;
   if (typeof els.detailDialog.showModal === "function") els.detailDialog.showModal();
@@ -612,6 +630,7 @@ async function renderExplore() {
 async function refreshDashboard() {
   if (state.loading) return;
   state.loading = true;
+  setBusy(true);
   els.refreshButton.disabled = true;
   try {
     await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory(), renderCollectionChecklist(), renderExplore()]);
@@ -621,6 +640,7 @@ async function refreshDashboard() {
   } finally {
     state.loading = false;
     els.refreshButton.disabled = false;
+    setBusy(false);
   }
 }
 
@@ -645,28 +665,66 @@ async function processFiles(fileList) {
   if (!files.length) return;
   const userEmail = currentUser()?.email || null;
   const filters = filterContext();
+  let importedCount = 0;
+  let duplicateCount = 0;
+  let errorCount = 0;
+  let observationCount = 0;
+  let anomalyCount = 0;
 
-  for (const file of files) {
-    const row = queueRow(file, "Inspecting…");
-    try {
-      const result = await importExport(file, filters, userEmail);
-      if (result.duplicate) {
-        row.classList.add("success");
-        row.querySelector(".status").textContent = "Already imported";
-      } else {
-        row.classList.add("success");
-        const program = result.inspected.selectedProgram ? ` · ${result.inspected.selectedProgram}` : "";
-        row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${result.inspected.normalized.range.grain}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
+  await withBusy(async () => {
+    for (const file of files) {
+      const row = queueRow(file, "Inspecting…");
+      try {
+        const result = await importExport(file, filters, userEmail);
+        if (result.duplicate) {
+          duplicateCount += 1;
+          row.classList.add("success");
+          row.querySelector(".status").textContent = "Already imported";
+        } else {
+          importedCount += 1;
+          observationCount += Number(result.normalizedCount || 0);
+          anomalyCount += Number(result.anomalyCount || 0);
+          row.classList.add("success");
+          const program = result.inspected.selectedProgram ? ` · ${result.inspected.selectedProgram}` : "";
+          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${result.inspected.normalized.range.grain}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
+        }
+      } catch (error) {
+        errorCount += 1;
+        console.error(error);
+        row.classList.add("error");
+        row.querySelector(".status").textContent = error.message;
       }
-    } catch (error) {
-      console.error(error);
-      row.classList.add("error");
-      row.querySelector(".status").textContent = error.message;
     }
+    invalidateDataCache();
+    await renderProgramFilterOptions();
+    await refreshDashboard();
+  });
+
+  els.fileInput.value = "";
+  if (importedCount > 0) {
+    const reportWord = importedCount === 1 ? "report" : "reports";
+    const observationWord = observationCount === 1 ? "observation" : "observations";
+    const messages = [
+      `<p><strong>Data added to the app.</strong></p>`,
+      `<p>${importedCount} ${reportWord} imported with ${observationCount.toLocaleString()} ${observationWord}. The dashboard has been refreshed.</p>`,
+      anomalyCount ? `<p>${anomalyCount} data-quality ${anomalyCount === 1 ? "flag was" : "flags were"} created for review.</p>` : "",
+      duplicateCount ? `<p>${duplicateCount} ${duplicateCount === 1 ? "file was" : "files were"} already imported.</p>` : "",
+      errorCount ? `<p>${errorCount} ${errorCount === 1 ? "file could not" : "files could not"} be imported. See the import queue for details.</p>` : ""
+    ].join("");
+    openDetailDialog("Import complete", messages, "NPR Analytics");
+  } else if (duplicateCount > 0 && errorCount === 0) {
+    openDetailDialog(
+      "Already imported",
+      `<p>No new data was added because ${duplicateCount === 1 ? "this report is" : "these reports are"} already in the app.</p>`,
+      "NPR Analytics"
+    );
+  } else if (errorCount > 0) {
+    openDetailDialog(
+      "Import not completed",
+      `<p>No new data was added. See the import queue for the ${errorCount === 1 ? "error" : "errors"}.</p>`,
+      "NPR Analytics"
+    );
   }
-  invalidateDataCache();
-  await renderProgramFilterOptions();
-  await refreshDashboard();
 }
 
 function bindTabs() {
@@ -713,31 +771,31 @@ function bindEvents() {
     const button = event.target.closest("[data-trend-metric]");
     if (!button) return;
     state.trendMetric = button.dataset.trendMetric;
-    renderTrend();
+    void withBusy(() => renderTrend());
   });
   els.trendWeekpartButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-weekpart]");
     if (!button) return;
     state.trendWeekpart = button.dataset.weekpart;
-    renderTrend();
+    void withBusy(() => renderTrend());
   });
   els.trendHolidayButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-holiday-mode]");
     if (!button) return;
     state.trendHoliday = button.dataset.holidayMode;
-    renderTrend();
+    void withBusy(() => renderTrend());
   });
   els.trendProgramSelect.addEventListener("change", () => {
     state.trendProgram = els.trendProgramSelect.value;
-    renderTrend();
+    void withBusy(() => renderTrend());
   });
   els.scheduleProgramFilter.addEventListener("change", () => {
     state.scheduleProgram = els.scheduleProgramFilter.value;
-    renderBreakdowns();
+    void withBusy(() => renderBreakdowns());
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
-  els.trendGrain.addEventListener("change", renderTrend);
-  els.exploreView.addEventListener("change", renderExplore);
+  els.trendGrain.addEventListener("change", () => void withBusy(() => renderTrend()));
+  els.exploreView.addEventListener("change", () => void withBusy(() => renderExplore()));
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
@@ -784,21 +842,26 @@ async function checkVersion() {
 }
 
 async function boot() {
-  els.versionBadge.textContent = `v${APP_VERSION}`;
-  renderTrendControlButtons();
-  bindTabs();
-  bindEvents();
+  setBusy(true);
   try {
-    await consumeOAuthCallback();
-  } catch (error) {
-    showLoginMessage(error.message);
+    els.versionBadge.textContent = `v${APP_VERSION}`;
+    renderTrendControlButtons();
+    bindTabs();
+    bindEvents();
+    try {
+      await consumeOAuthCallback();
+    } catch (error) {
+      showLoginMessage(error.message);
+    }
+    const authenticated = await establishAccess();
+    if (authenticated) {
+      await renderProgramFilterOptions();
+      await refreshDashboard();
+    }
+    setInterval(checkVersion, 5 * 60 * 1000);
+  } finally {
+    setBusy(false);
   }
-  const authenticated = await establishAccess();
-  if (authenticated) {
-    await renderProgramFilterOptions();
-    await refreshDashboard();
-  }
-  setInterval(checkVersion, 5 * 60 * 1000);
 }
 
 boot();

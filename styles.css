@@ -290,3 +290,10 @@ footer { display: flex; justify-content: space-between; gap: 16px; padding: 22px
 .schedule-item { display: grid; grid-template-columns: 120px 1fr; gap: 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .schedule-item span { color: var(--muted); font-size: .8rem; }
 .source-limit { margin: 12px 0 0; padding: 10px 12px; border-left: 4px solid var(--accent); background: var(--surface-alt); color: var(--muted); font-size: .84rem; }
+
+
+/* Busy state: keep the operating-system progress cursor visible during data loads and expensive filters. */
+body.app-busy,
+body.app-busy * {
+  cursor: progress !important;
+}
