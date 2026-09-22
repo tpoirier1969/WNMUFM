@@ -201,7 +201,7 @@ export function renderLineChart(container, points, options = {}) {
 
   points.forEach((point,index)=>{
     if(finiteNumber(point.value) !== null) {
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:3.8,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:2,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
       const title=svgElement("title");
       const parts=[point.label + ": " + compactNumber(point.value)];
       if(finiteNumber(point.secondaryValue) !== null) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
@@ -215,7 +215,7 @@ export function renderLineChart(container, points, options = {}) {
       svg.appendChild(circle);
     }
     if(finiteNumber(point.secondaryValue) !== null) {
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:3.2,class:"chart-secondary-point"});
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:1.7,class:"chart-secondary-point"});
       const title=svgElement("title");
       title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue) + (point.contextLabel ? " · Notable because: " + point.contextLabel : "");
       circle.appendChild(title); svg.appendChild(circle);
@@ -343,7 +343,7 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
       const circle=svgElement("circle",{
         cx:xFor(index),
         cy:yFor(indexed),
-        r:3.2,
+        r:1.7,
         class:"chart-metric-point chart-series-" + (seriesIndex % 8) + (options.onPointClick ? " clickable" : ""),
         ...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open " + item.label + " details for " + point.label} : {})
       });
