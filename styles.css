@@ -109,7 +109,7 @@ input, select { width: 100%; border: 1px solid #bbc7d0; border-radius: 9px; padd
 .chart-axis-label.weekend { fill: var(--warning); font-weight: 800; }
 .trend-stat-strip { display: flex; gap: 18px; flex-wrap: wrap; margin: 8px 0 2px; padding: 8px 10px; border-radius: 9px; background: var(--surface-alt); color: var(--muted); font-size: .82rem; }
 .trend-stat-strip strong { color: var(--text); }
-.holiday-tag { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(217,162,27,.12); color: var(--warning); font-size: .68rem; font-weight: 800; }
+.notable-tag { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(217,162,27,.12); color: var(--warning); font-size: .68rem; font-weight: 800; }
 .empty-state { color: var(--muted); padding: 26px 8px; text-align: center; }
 
 .bar-chart { display: grid; gap: 10px; margin-top: 12px; }
