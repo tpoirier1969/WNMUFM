@@ -53,3 +53,13 @@ test("line charts do not render a median reference series", async () => {
   assert.match(css,/\.chart-line \{[^}]*stroke: var\(--brand\)/s);
   assert.match(css,/\.chart-secondary-line \{[^}]*stroke:var\(--accent\)/s);
 });
+
+
+test("NPR benchmark terminology is explicitly qualified", async () => {
+  const fs = await import("node:fs/promises");
+  const source = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(source,/benchmarkDisplayLabel/);
+  assert.match(source,/supplied by NPR/);
+  assert.match(source,/does not identify its peer stations/);
+  assert.match(source,/household income/);
+});

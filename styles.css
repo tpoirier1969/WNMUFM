@@ -380,3 +380,5 @@ body.app-busy * {
 .available-range-label { flex-basis:100%; text-align:right; color:var(--muted); font-size:.75rem; }
 .range-change-notice { padding:12px 14px; border-left:4px solid var(--accent); background:var(--surface-alt); border-radius:8px; }
 @media (max-width: 980px) { .available-range-label { text-align:left; } }
+
+.benchmark-definition { margin:8px 0 2px; padding:9px 11px; border-left:3px solid var(--accent); border-radius:7px; background:var(--surface-alt); color:var(--muted); font-size:.78rem; line-height:1.45; }

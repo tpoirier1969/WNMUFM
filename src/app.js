@@ -11,7 +11,7 @@ import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
@@ -101,6 +101,18 @@ const NOTABLE_MODES = [["all","All dates"],["exclude","Exclude notable dates"],[
 
 function trendMetricLabel(key) {
   return TREND_METRICS.find((item) => item.key === key)?.label || key;
+}
+
+function benchmarkDisplayLabel(label) {
+  const clean = String(label || "").trim();
+  if (!clean) return "";
+  return /^NPR\b/i.test(clean) ? clean : `NPR ${clean}`;
+}
+
+function benchmarkDefinition(label) {
+  const display = benchmarkDisplayLabel(label);
+  if (!display) return "";
+  return `${display} is supplied by NPR. The imported report does not identify its peer stations or say that the benchmark is matched to WNMU-FM by demographics, household income, market size, rurality, university affiliation, or other local characteristics.`;
 }
 
 function renderTrendControlButtons() {
@@ -568,9 +580,11 @@ async function renderTrend() {
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
   if (state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
+  setHidden(els.trendBenchmarkNote, true);
+  els.trendBenchmarkNote.textContent = "";
   if (multiple) {
     els.trendDescription.textContent =
-      `Multiple metrics are indexed to each metric's selected-range median = 100, so listeners, hours, users and other unlike units can be compared without pretending they share one raw scale. Hover a node for the actual value. Station benchmark lines are shown in single-metric view only.` +
+      `Multiple metrics are indexed to each metric's selected-range median = 100, so listeners, hours, users and other unlike units can be compared without pretending they share one raw scale. Hover a node for the actual value. NPR benchmark lines are shown in single-metric view only.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
   } else {
     els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKeys[0]] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
@@ -614,7 +628,12 @@ async function renderTrend() {
       (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
       `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
 
-    const benchmarkLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
+    const benchmarkSourceLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
+    const benchmarkLabel = benchmarkDisplayLabel(benchmarkSourceLabel);
+    if (benchmarkLabel) {
+      els.trendBenchmarkNote.textContent = benchmarkDefinition(benchmarkSourceLabel);
+      setHidden(els.trendBenchmarkNote, false);
+    }
     const points = filteredRows.filter((row)=>row.station_value !== null).map((row)=>{
       const context=grain === "day" ? notableDateContext(row.period_start) : null;
       return {
@@ -642,7 +661,7 @@ async function renderTrend() {
       return;
     }
     renderTrendDataTable(`<table class="trend-data-table">
-      <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
+      <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">${escapeHtml(benchmarkLabel || "NPR benchmark")}</th></tr></thead>
       <tbody>${filteredRows.map((row)=>{
         const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
         const notable = grain === "day" ? notableDateContext(row.period_start) : null;
