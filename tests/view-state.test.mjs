@@ -58,3 +58,15 @@ test("GitHub sign-in preserves shared state before leaving the app", async () =>
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   assert.match(app,/githubLoginButton\.addEventListener[\s\S]*persistUiState\(\);[\s\S]*signInWithGitHub\(\);/);
 });
+
+
+test("date-range edits do not refresh on intermediate date-part changes", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/rangeInputs\.forEach[\s\S]*addEventListener\("input",markRangeEdit\)/);
+  assert.match(app,/addEventListener\("blur",commitRangeAfterLeavingControls\)/);
+  assert.match(app,/event\.key !== "Enter"/);
+  assert.match(app,/if\(rangeInputs\.includes\(document\.activeElement\)\) return;/);
+  assert.doesNotMatch(app,/globalStartDate\.addEventListener\("change"/);
+  assert.doesNotMatch(app,/globalEndDate\.addEventListener\("change"/);
+});
