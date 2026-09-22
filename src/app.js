@@ -306,6 +306,72 @@ const EXPLORE_VIEWS = {
   }
 };
 
+const EXPLORE_ORDER = [
+  ["audio-programs","Downloads by program"],
+  ["audio-players","Downloads by player"],
+  ["website-channels","Website channels"],
+  ["website-countries","Website countries"],
+  ["streaming-devices","Stream devices"],
+  ["npr-one-podcasts","NPR One podcasts"],
+  ["npr-one-audio","NPR One audio"],
+  ["npr-one-clients","NPR One clients"]
+];
+
+function renderExploreControlButtons() {
+  els.exploreViewButtons.innerHTML = EXPLORE_ORDER.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-explore-view="${key}" aria-pressed="${key === state.exploreView}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
+function activateTab(tab, persist = true) {
+  const target = ["overview","explore","imports"].includes(tab) ? tab : "overview";
+  state.activeTab = target;
+  document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
+  document.querySelectorAll(".tab-panel").forEach((panel) => { panel.hidden = panel.dataset.panel !== target; });
+  if (persist) persistUiState();
+}
+
+function applyRangeControls() {
+  els.globalStartDate.value = state.startDate;
+  els.globalEndDate.value = state.endDate;
+}
+
+async function refreshAnalysisViews() {
+  await Promise.all([renderSummary(),renderTrend(),renderBreakdowns(),renderExplore()]);
+}
+
+function validateAndStoreRange() {
+  const startDate=els.globalStartDate.value;
+  const endDate=els.globalEndDate.value;
+  if(startDate && endDate && startDate>endDate) {
+    els.globalEndDate.setCustomValidity("End date must be on or after the start date.");
+    els.globalEndDate.reportValidity();
+    return false;
+  }
+  els.globalEndDate.setCustomValidity("");
+  state.startDate=startDate;
+  state.endDate=endDate;
+  persistUiState();
+  return true;
+}
+
+function renderTrendPrintDetail(rows, grain, medianValue) {
+  const MAX_PRINT_DETAIL_ROWS=120;
+  if(!rows.length) { els.trendPrintColumns.innerHTML=""; return; }
+  if(rows.length>MAX_PRINT_DETAIL_ROWS) {
+    els.trendPrintColumns.classList.add("single");
+    els.trendPrintColumns.innerHTML=`<p class="print-trend-note"><strong>Detailed rows omitted from this long-range report.</strong> ${rows.length} source periods are selected. The chart and summary statistics remain in the report; use a shorter analysis range when row-by-row detail is needed.</p>`;
+    return;
+  }
+  els.trendPrintColumns.classList.remove("single");
+  const midpoint=Math.ceil(rows.length/2);
+  const tableFor=(subset)=>`<table><thead><tr><th>Period</th><th class="numeric">WNMU</th><th class="numeric">Vs med.</th></tr></thead><tbody>${subset.map((row)=>{
+    const delta=medianValue===null ? null : percentFromMedian(row.station_value,medianValue);
+    return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td></tr>`;
+  }).join("")}</tbody></table>`;
+  els.trendPrintColumns.innerHTML=tableFor(rows.slice(0,midpoint))+tableFor(rows.slice(midpoint));
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
 }
@@ -390,9 +456,10 @@ async function renderTrend() {
   if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
   if (grain === "day" && state.trendNotable !== "all") filterNotes.push(NOTABLE_MODES.find(([key]) => key === state.trendNotable)?.[1]);
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
+  if (state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
   els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
 
-  const rows = await loadTimeSeries(metricKey, grain, filterSignature);
+  const rows = await loadTimeSeries(metricKey, grain, filterSignature, selectedRange());
   const filteredRows = grain === "day"
     ? rows.filter((row) => matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
     : rows;
@@ -404,20 +471,29 @@ async function renderTrend() {
     (latest ? `<span><strong>Latest vs median:</strong> ${escapeHtml(signedPercent(percentFromMedian(latest.station_value,medianValue)))}</span>` : "") +
     `<span><strong>Observations:</strong> ${numericValues.length}</span>`;
 
-  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => ({
-    date: row.period_start,
-    label: formatPeriod(row,grain),
-    shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row,grain),
-    value: Number(row.station_value),
-    weekend: grain === "day" && isWeekendDate(row.period_start)
-  }));
+  const benchmarkLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
+  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => {
+    const context=grain === "day" ? notableDateContext(row.period_start) : null;
+    return {
+      date:row.period_start,
+      label:formatPeriod(row,grain),
+      shortLabel:grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : shortMonthLabel(row.period_start),
+      value:Number(row.station_value),
+      secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
+      weekend:grain === "day" && isWeekendDate(row.period_start),
+      contextLabel:context ? notableContextLabel(context) : ""
+    };
+  });
   renderLineChart(els.trendChart,points,{
     title:label,
     ariaLabel:`${label} by ${grain}`,
     grain,
     median:medianValue,
-    onPointClick: grain === "day" ? (point) => openDateDrilldown(point,metricKey,medianValue) : null
+    primaryLabel:"WNMU-FM",
+    secondaryLabel:benchmarkLabel,
+    onPointClick:grain === "day" ? (point)=>openDateDrilldown(point,metricKey,medianValue) : null
   });
+
 
   if (!filteredRows.length) {
     els.trendTable.innerHTML = "";
@@ -427,10 +503,11 @@ async function renderTrend() {
     <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Vs median</th><th class="numeric">Benchmark</th></tr></thead>
     <tbody>${filteredRows.map((row) => {
       const delta = medianValue === null ? null : percentFromMedian(row.station_value,medianValue);
-      const holiday = grain === "day" ? notableDateContext(row.period_start) : null;
-      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${holiday ? ` <span class="holiday-tag">${escapeHtml(holiday.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
+      const notable = grain === "day" ? notableDateContext(row.period_start) : null;
+      return `<tr${rowClass(row,grain)}><td>${escapeHtml(formatPeriod(row,grain))}${notable ? ` <span class="holiday-tag">${escapeHtml(notable.name)}</span>` : ""}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${escapeHtml(signedPercent(delta))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`;
     }).join("")}</tbody>
   </table>`;
+  renderTrendPrintDetail(filteredRows,grain,medianValue);
 }
 
 function sortBreakdown(rows) {
