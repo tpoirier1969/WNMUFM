@@ -331,14 +331,22 @@ body.app-busy * {
 .chart-metric-point { stroke-width:1.1; }
 .chart-metric-point.clickable { cursor:pointer; }
 .chart-metric-point.clickable:hover, .chart-metric-point.clickable:focus { r:3.2; }
-.chart-series-0 { stroke:var(--brand); fill:var(--brand); }
-.chart-series-1 { stroke:var(--accent); fill:var(--accent); }
-.chart-series-2 { stroke:var(--success); fill:var(--success); }
-.chart-series-3 { stroke:#7655a6; fill:#7655a6; }
-.chart-series-4 { stroke:#c15b2d; fill:#c15b2d; }
-.chart-series-5 { stroke:#2f7e7e; fill:#2f7e7e; }
-.chart-series-6 { stroke:#9a3f73; fill:#9a3f73; }
-.chart-series-7 { stroke:#66722c; fill:#66722c; }
+.chart-metric-line.chart-series-0 { stroke:var(--brand); fill:none; }
+.chart-metric-line.chart-series-1 { stroke:var(--accent); fill:none; }
+.chart-metric-line.chart-series-2 { stroke:var(--success); fill:none; }
+.chart-metric-line.chart-series-3 { stroke:#7655a6; fill:none; }
+.chart-metric-line.chart-series-4 { stroke:#c15b2d; fill:none; }
+.chart-metric-line.chart-series-5 { stroke:#2f7e7e; fill:none; }
+.chart-metric-line.chart-series-6 { stroke:#9a3f73; fill:none; }
+.chart-metric-line.chart-series-7 { stroke:#66722c; fill:none; }
+.chart-metric-point.chart-series-0 { stroke:var(--brand); fill:var(--brand); }
+.chart-metric-point.chart-series-1 { stroke:var(--accent); fill:var(--accent); }
+.chart-metric-point.chart-series-2 { stroke:var(--success); fill:var(--success); }
+.chart-metric-point.chart-series-3 { stroke:#7655a6; fill:#7655a6; }
+.chart-metric-point.chart-series-4 { stroke:#c15b2d; fill:#c15b2d; }
+.chart-metric-point.chart-series-5 { stroke:#2f7e7e; fill:#2f7e7e; }
+.chart-metric-point.chart-series-6 { stroke:#9a3f73; fill:#9a3f73; }
+.chart-metric-point.chart-series-7 { stroke:#66722c; fill:#66722c; }
 .multi-metric-table th.numeric { min-width:120px; }
 .hour-chart { min-height:300px; margin:6px 0 12px; }
 .print-trend-columns { display:none; }
