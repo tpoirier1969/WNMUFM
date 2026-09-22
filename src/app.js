@@ -282,7 +282,7 @@ const EXPLORE_VIEWS = {
     title: "Website sessions by traffic channel",
     metric: "website.sessions_by_channel",
     dimension: "traffic_channel",
-    description: "Shows how visitors reached wnmufm.org: direct, search, social, referral, newsletters and other channels. Use it to evaluate acquisition, not just raw pageviews."
+    description: "Shows how visitors reached wnmufm.org. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The current NPR export does not identify Google, Bing, or other engines separately."
   },
   "website-countries": {
     title: "Website sessions by country",
@@ -703,7 +703,7 @@ async function renderTrend() {
   });
 
   if(!points.length) {
-    els.trendTable.innerHTML="";
+    renderTrendDataTable("",0);
     els.trendPrintColumns.innerHTML="";
     return;
   }
@@ -718,54 +718,18 @@ async function renderTrend() {
 function sortBreakdown(rows) {
   return [...rows].sort((a, b) => Number(b.station_value || 0) - Number(a.station_value || 0));
 }
-function renderExploreInsights(rows) {
-  if (!rows.length) {
-    els.exploreInsights.innerHTML = "";
-    return;
-  }
-  const numeric = sortBreakdown(rows).filter((row) => row.station_value !== null && Number.isFinite(Number(row.station_value)));
-  if (!numeric.length) {
-    els.exploreInsights.innerHTML = "";
-    return;
-  }
 
-  const unit = numeric[0].unit;
-  const top = numeric[0];
-  const total = numeric.reduce((sum,row)=>sum+Number(row.station_value),0);
-  const topShare = unit === "percent"
-    ? Number(top.station_value)
-    : total > 0 ? (Number(top.station_value) / total) * 100 : null;
-  const topThree = numeric.slice(0,3).reduce((sum,row)=>sum+Number(row.station_value),0);
-  const topThreeShare = unit === "percent"
-    ? topThree
-    : total > 0 ? (topThree / total) * 100 : null;
-
-  const benchmarkRows = numeric.filter((row) => row.benchmark_value !== null && Number.isFinite(Number(row.benchmark_value)));
-  const insights = [
-    `<div><span>Largest category</span><strong>${escapeHtml(top.dimension_value)}</strong><small>${escapeHtml(formatMetric(top.station_value,top.unit))}${topShare === null ? "" : ` · ${topShare.toFixed(1)}% of shown total`}</small></div>`
-  ];
-
-  if (numeric.length >= 3 && topThreeShare !== null) {
-    insights.push(`<div><span>Top-three concentration</span><strong>${topThreeShare.toFixed(1)}%</strong><small>Share of the shown total in the three largest categories</small></div>`);
-  }
-
-  if (benchmarkRows.length) {
-    const above = benchmarkRows.filter((row)=>Number(row.station_value)>Number(row.benchmark_value)).length;
-    const comparable = benchmarkRows.length;
-    const largestGap = [...benchmarkRows].sort((a,b) =>
-      Math.abs(Number(b.station_value)-Number(b.benchmark_value)) -
-      Math.abs(Number(a.station_value)-Number(a.benchmark_value))
-    )[0];
-    const gap = Number(largestGap.station_value)-Number(largestGap.benchmark_value);
-    const gapText = unit === "percent"
-      ? `${gap > 0 ? "+" : ""}${gap.toFixed(1)} percentage points`
-      : `${gap > 0 ? "+" : ""}${formatMetric(gap,unit)}`;
-    insights.push(`<div><span>Benchmark context</span><strong>${above} of ${comparable} above benchmark</strong><small>Largest absolute gap: ${escapeHtml(largestGap.dimension_value)} · ${escapeHtml(gapText)}</small></div>`);
-  }
-
-  els.exploreInsights.innerHTML = insights.join("");
+function exploreDimensionLabel(viewKey, value) {
+  if (viewKey !== "website-channels") return value;
+  return ({
+    "Direct":"Direct / unknown referrer",
+    "Search":"Search engines",
+    "Social":"Social media",
+    "Referral":"Links from other websites",
+    "Email & Newsletters":"Email / newsletters",
+    "Other":"Other / unclassified"
+  })[value] || value;
 }
-
 function titlesForHour(entries,day,hour) {
   const startMinute = hour * 60;
   const endMinute = startMinute + 60;
@@ -1007,32 +971,31 @@ async function renderImportHistory() {
 
 async function renderExplore() {
   const requestId = ++exploreRequestId;
-  const view = EXPLORE_VIEWS[state.exploreView] || EXPLORE_VIEWS["audio-programs"];
+  const viewKey = state.exploreView;
+  const view = EXPLORE_VIEWS[viewKey] || EXPLORE_VIEWS["audio-programs"];
   els.exploreViewButtons.querySelectorAll("[data-explore-view]").forEach((button) => {
-    button.setAttribute("aria-pressed",String(button.dataset.exploreView===state.exploreView));
+    button.setAttribute("aria-pressed",String(button.dataset.exploreView===viewKey));
   });
   els.exploreDescription.textContent = view.description;
   const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", selectedRange());
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreInsights.innerHTML = "";
-    els.exploreChart.innerHTML = '<p class="empty-state">No complete source breakdown fits inside the selected analysis range.</p>';
-    els.exploreTable.innerHTML = "";
+    els.exploreChart.innerHTML = '<p class="empty-state compact">No complete source breakdown fits inside the selected analysis range.</p>';
     return;
   }
   els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
   const sorted = sortBreakdown(rows);
-  renderExploreInsights(sorted);
   const isPercent = rows[0].unit === "percent";
-  renderBarChart(els.exploreChart, sorted.map((row) => ({ label: row.dimension_value, value: row.station_value })), {
+  renderBarChart(els.exploreChart, sorted.map((row) => ({
+    label: exploreDimensionLabel(viewKey,row.dimension_value),
+    value: row.station_value,
+    formattedValue: formatMetric(row.station_value,row.unit)
+  })), {
     maxValue: isPercent ? 100 : undefined,
     formatValue: (value) => formatMetric(value, rows[0].unit),
     limit: 25
   });
-  els.exploreTable.innerHTML = `<table><thead><tr><th>Category</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead><tbody>
-    ${sorted.map((row) => `<tr><td>${escapeHtml(row.dimension_value)}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}
-  </tbody></table>`;
 }
 
 async function refreshDashboard() {
