@@ -3,19 +3,60 @@ import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signI
 import { invalidateDataCache, loadImports, loadLatestBreakdown, loadLatestValues, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderLineChart, formatMetric } from "./charts.js";
-import { formatDayDate, formatPeriod, isWeekendDate, shortDayLabel } from "./analysis.js";
+import { formatDayDate, formatPeriod, isWeekendDate, matchesWeekpart, shortDayLabel } from "./analysis.js";
 import { buildHourSchedule, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 
 const els = Object.fromEntries([
   "authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendMetric","trendGrain","trendTitle","trendDescription","trendChart","trendTable","programBars",
+  "refreshButton","summaryCards","trendMetricButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendTitle","trendDescription","trendChart","trendTable","programBars",
   "deviceBars","channelBars","nprHourTable","nprHourDescription","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreView","exploreDescription","explorePeriod","exploreChart","exploreTable"
 ].map((id) => [id, document.getElementById(id)]));
 
-const state = { role: null, loading: false };
+const state = { role: null, loading: false, trendMetric: "streaming.listeners", trendWeekpart: "all" };
+
+
+const TREND_METRICS = [
+  { key:"streaming.listeners", label:"Streaming listeners", priority:"primary" },
+  { key:"streaming.listener_hours", label:"Listener hours", priority:"primary" },
+  { key:"website.active_users", label:"Website users", priority:"primary" },
+  { key:"website.pageviews", label:"Pageviews", priority:"primary" },
+  { key:"audio.downloads", label:"Audio downloads", priority:"primary" },
+  { key:"audio.users", label:"Audio users", priority:"primary" },
+  { key:"npr_one.localized_listeners", label:"NPR One listeners", priority:"primary" },
+  { key:"npr_one.average_minutes", label:"NPR One minutes", priority:"primary" },
+  { key:"streaming.sessions", label:"Streaming sessions", priority:"diagnostic" },
+  { key:"website.engaged_seconds_per_user", label:"Website engagement", priority:"diagnostic" }
+];
+
+const WEEKPARTS = [
+  ["all","All days"],["weekday","Mon–Fri"],["weekend","Weekend"],
+  ["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"],["sat","Sat"],["sun","Sun"]
+];
+
+function trendMetricLabel(key) {
+  return TREND_METRICS.find((item) => item.key === key)?.label || key;
+}
+
+function renderTrendControlButtons() {
+  els.trendMetricButtons.innerHTML = TREND_METRICS.map((item) =>
+    `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${item.key === state.trendMetric}">${escapeHtml(item.label)}</button>`
+  ).join("");
+  els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
+  ).join("");
+}
+
+function refreshTrendControlState() {
+  els.trendMetricButtons.querySelectorAll("[data-trend-metric]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.trendMetric === state.trendMetric));
+  });
+  els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
+  });
+}
 
 const METRIC_DESCRIPTIONS = {
   "streaming.listeners": "Unique listeners to WNMU-FM's live digital stream for each period. Use this to track reach. It does not measure how long they listened.",
@@ -148,26 +189,33 @@ function rowClass(row, grain) {
 }
 
 async function renderTrend() {
-  const metricKey = els.trendMetric.value;
+  const metricKey = state.trendMetric;
   const grain = els.trendGrain.value;
-  const label = els.trendMetric.selectedOptions[0]?.textContent || metricKey;
+  const label = trendMetricLabel(metricKey);
+  els.trendWeekpartControls.hidden = grain !== "day";
+  refreshTrendControlState();
   els.trendTitle.textContent = label;
-  els.trendDescription.textContent = METRIC_DESCRIPTIONS[metricKey] || "";
+  const weekpartLabel = WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1] || "All days";
+  els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKey] || ""}${grain === "day" && state.trendWeekpart !== "all" ? ` Showing ${weekpartLabel} only.` : ""}`;
   const rows = await loadTimeSeries(metricKey, grain);
-  const points = rows.filter((row) => row.station_value !== null).map((row) => ({
+  const filteredRows = grain === "day"
+    ? rows.filter((row) => matchesWeekpart(row.period_start, state.trendWeekpart))
+    : rows;
+  const points = filteredRows.filter((row) => row.station_value !== null).map((row) => ({
+    date: row.period_start,
     label: formatPeriod(row, grain),
     shortLabel: grain === "day" ? shortDayLabel(row.period_start) : grain === "week" ? `Wk ${shortDayLabel(row.period_start)}` : formatPeriod(row, grain),
     value: Number(row.station_value),
     weekend: grain === "day" && isWeekendDate(row.period_start)
   }));
-  renderLineChart(els.trendChart, points, { title: label, ariaLabel: `${label} by ${grain}` });
-  if (!rows.length) {
+  renderLineChart(els.trendChart, points, { title: label, ariaLabel: `${label} by ${grain}`, grain });
+  if (!filteredRows.length) {
     els.trendTable.innerHTML = "";
     return;
   }
-  els.trendTable.innerHTML = `<table>
+  els.trendTable.innerHTML = `<table class="trend-data-table">
     <thead><tr><th>Period</th><th class="numeric">WNMU-FM</th><th class="numeric">Benchmark</th></tr></thead>
-    <tbody>${rows.map((row) => `<tr${rowClass(row, grain)}><td>${escapeHtml(formatPeriod(row, grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}</tbody>
+    <tbody>${filteredRows.map((row) => `<tr${rowClass(row, grain)}><td>${escapeHtml(formatPeriod(row, grain))}</td><td class="numeric">${escapeHtml(formatMetric(row.station_value,row.unit))}</td><td class="numeric">${row.benchmark_value === null ? "—" : escapeHtml(formatMetric(row.benchmark_value,row.unit))}</td></tr>`).join("")}</tbody>
   </table>`;
 }
 
@@ -302,7 +350,7 @@ function collectionCell(span, targetStart = "2025-09-22") {
 async function renderCollectionChecklist() {
   const imports = await loadImports();
   const rows = [
-    { type:"station_streaming", label:"Live streaming", next:"Critical: get the longest Day, Week and Month exports. Current daily history is only Aug–Sep 2026." },
+    { type:"station_streaming", label:"Live streaming", next:"Full-year Day is loaded. Next get full-year Week and Month exports; hourly/daypart data remains the key program-analysis gap." },
     { type:"station_website", label:"Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
     { type:"audio_downloads", label:"On-demand audio", next:"Daily year is loaded. Next get full-year Week and Month exports, then longer drilldowns for every available program." },
     { type:"npr_one", label:"NPR One", next:"Daily year is loaded. Next get full-year Week and Month exports." }
@@ -473,7 +521,18 @@ function bindEvents() {
 
   els.printButton.addEventListener("click", () => window.print());
   els.refreshButton.addEventListener("click", refreshDashboard);
-  els.trendMetric.addEventListener("change", renderTrend);
+  els.trendMetricButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-trend-metric]");
+    if (!button) return;
+    state.trendMetric = button.dataset.trendMetric;
+    renderTrend();
+  });
+  els.trendWeekpartButtons.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-weekpart]");
+    if (!button) return;
+    state.trendWeekpart = button.dataset.weekpart;
+    renderTrend();
+  });
   els.trendGrain.addEventListener("change", renderTrend);
   els.exploreView.addEventListener("change", renderExplore);
 
@@ -523,6 +582,7 @@ async function checkVersion() {
 
 async function boot() {
   els.versionBadge.textContent = `v${APP_VERSION}`;
+  renderTrendControlButtons();
   bindTabs();
   bindEvents();
   try {

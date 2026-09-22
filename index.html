@@ -67,28 +67,24 @@
                 <h3 id="trendTitle">Streaming listeners</h3>
               </div>
               <p id="trendDescription" class="trend-description"></p>
-              <div class="inline-controls">
-                <label>Metric
-                  <select id="trendMetric">
-                    <option value="streaming.listeners">Streaming listeners</option>
-                    <option value="streaming.listener_hours">Streaming listener hours</option>
-                    <option value="streaming.sessions">Streaming sessions</option>
-                    <option value="website.active_users">Website active users</option>
-                    <option value="website.pageviews">Website pageviews</option>
-                    <option value="website.engaged_seconds_per_user">Website engaged seconds/user</option>
-                    <option value="audio.downloads">Audio downloads</option>
-                    <option value="audio.users">Audio users</option>
-                    <option value="npr_one.localized_listeners">NPR One localized listeners</option>
-                    <option value="npr_one.average_minutes">NPR One average minutes</option>
-                  </select>
-                </label>
-                <label>View by
-                  <select id="trendGrain">
-                    <option value="day">Day</option>
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                  </select>
-                </label>
+              <div class="trend-controls">
+                <div>
+                  <span class="control-label">Metric</span>
+                  <div id="trendMetricButtons" class="button-strip metric-button-strip" role="group" aria-label="Trend metric"></div>
+                </div>
+                <div class="trend-filter-row">
+                  <label>View by
+                    <select id="trendGrain">
+                      <option value="day">Day</option>
+                      <option value="week">Week</option>
+                      <option value="month">Month</option>
+                    </select>
+                  </label>
+                  <div id="trendWeekpartControls">
+                    <span class="control-label">Week-part</span>
+                    <div id="trendWeekpartButtons" class="button-strip weekpart-button-strip" role="group" aria-label="Week-part filter"></div>
+                  </div>
+                </div>
               </div>
             </div>
             <div id="trendChart" class="chart-frame"></div>

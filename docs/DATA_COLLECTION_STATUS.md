@@ -1,6 +1,6 @@
 # WNMU-FM Data Collection Status
 
-Updated: 2026-09-21
+Updated: 2026-09-22
 
 This is the working inventory for the WNMU-FM audience analytics project. It records what is actually loaded, what remains short or missing, and what should be collected next. The goal is content-first analysis, not collecting every metric merely because NPR exposes it.
 
@@ -11,7 +11,7 @@ This is the working inventory for the WNMU-FM audience analytics project. It rec
 | Station Website Overview | **Year loaded:** 2025-09-22 through 2026-09-19 | Short: 2026-08-23 through 2026-09-19 | No usable dated month series yet | active users, pageviews, engagement, channel trends, DMA/country |
 | NPR One Overview | **Year loaded:** 2025-09-22 through 2026-09-21; analysis stops before the 2026-09-21 run day | Short: 2026-08-23 through 2026-09-26 | Short: 2026-08-01 through 2026-09-30 | localized listeners, average minutes, weekday/weekend hour profile, station audio/podcast/client breakdowns |
 | Audio Downloads Overview | **Year loaded:** 2025-09-22 through 2026-09-20; WNMU station values are populated through 2026-09-19 | Short: 2026-08-23 through 2026-09-26 | Short: 2026-08-01 through 2026-09-30 | downloads, users, downloads/user, programs, players, player trends, 2,268 episode rows |
-| Station Streaming Overview | **Short:** 2026-08-22 through 2026-09-11; the newest supplied export is only a 2026-09-11 snapshot | Short: 2026-08-24 through 2026-09-06 | Missing usable dated month history | listeners, sessions, listener-hours, session duration, device/format |
+| Station Streaming Overview | **Year loaded:** 2025-09-12 through 2026-09-11 | Short: 2026-08-24 through 2026-09-06 | Missing usable dated month history | listeners, sessions, listener-hours, session duration, device/format |
 | Audio Program Drilldowns | Three short Day drilldowns only | Missing | Missing | Classiclectic, Northern Arts & Culture, Station Stories |
 
 All imports remain in FM-owned `wnmufm_analytics_*` tables. Original source ZIPs and raw CSV rows are retained as provenance, while overlapping normalized observations can refresh the canonical chart facts.
@@ -58,3 +58,16 @@ The schedule and WNMU program pages can supply much of this classification. Manu
 Device type, player/client, browser/platform and similar technical breakdowns remain useful for diagnosing distribution or suspicious behavior. They should not dominate the default analytics experience unless they answer a specific station question.
 
 Potential later additions include terrestrial ratings, pledge/member response by program or content, newsletter response, and social referral performance if those sources become available and can be tied to programming decisions.
+
+
+## Filter requirements
+
+As the history grows, analysis filters must include:
+
+- custom start and end dates;
+- Mon–Fri;
+- weekend;
+- each individual day of the week;
+- all days.
+
+Week-part filters should apply to daily observations without changing or re-aggregating the source facts.

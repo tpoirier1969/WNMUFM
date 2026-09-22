@@ -24,8 +24,9 @@ export function renderLineChart(container, points, options = {}) {
   }
 
   const width = 1100;
-  const height = 340;
-  const margin = { top: 18, right: 22, bottom: 64, left: 76 };
+  const denseLabels = points.length > 20;
+  const height = denseLabels ? 380 : 340;
+  const margin = { top: 18, right: 22, bottom: denseLabels ? 100 : 64, left: 76 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const values = points.map((point) => Number(point.value)).filter(Number.isFinite);
@@ -47,6 +48,30 @@ export function renderLineChart(container, points, options = {}) {
   const xFor = (index) => margin.left + (points.length === 1 ? plotWidth / 2 : (index / (points.length - 1)) * plotWidth);
   const yFor = (value) => margin.top + ((max - Number(value)) / (max - min)) * plotHeight;
   const step = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
+
+  if (points.some((point) => point.date)) {
+    let monthStart = 0;
+    let monthIndex = 0;
+    while (monthStart < points.length) {
+      const monthKey = String(points[monthStart].date || "").slice(0, 7);
+      let monthEnd = monthStart;
+      while (monthEnd + 1 < points.length && String(points[monthEnd + 1].date || "").slice(0, 7) === monthKey) monthEnd += 1;
+      const left = monthStart === 0 ? margin.left : (xFor(monthStart - 1) + xFor(monthStart)) / 2;
+      const right = monthEnd === points.length - 1 ? width - margin.right : (xFor(monthEnd) + xFor(monthEnd + 1)) / 2;
+      if (monthIndex % 2 === 1) {
+        svg.appendChild(svgElement("rect", {
+          x: left, y: margin.top, width: Math.max(0, right - left), height: plotHeight, class: "chart-month-band"
+        }));
+      }
+      if (monthStart > 0) {
+        svg.appendChild(svgElement("line", {
+          x1: xFor(monthStart), x2: xFor(monthStart), y1: margin.top, y2: margin.top + plotHeight, class: "chart-month-line"
+        }));
+      }
+      monthStart = monthEnd + 1;
+      monthIndex += 1;
+    }
+  }
 
   points.forEach((point, index) => {
     if (!point.weekend) return;
@@ -72,8 +97,7 @@ export function renderLineChart(container, points, options = {}) {
 
   points.forEach((point, index) => {
     const x = xFor(index);
-    svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top, y2: margin.top + plotHeight, class: "chart-v-grid" }));
-    svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top + plotHeight, y2: margin.top + plotHeight + 7, class: "chart-tick" }));
+    svg.appendChild(svgElement("line", { x1: x, x2: x, y1: margin.top + plotHeight, y2: margin.top + plotHeight + 6, class: "chart-tick" }));
   });
 
   const path = points.map((point, index) => `${index ? "L" : "M"}${xFor(index).toFixed(1)},${yFor(point.value).toFixed(1)}`).join(" ");
@@ -92,14 +116,21 @@ export function renderLineChart(container, points, options = {}) {
     svg.appendChild(circle);
   });
 
-  const labelEvery = options.labelEvery || (points.length <= 16 ? 1 : points.length <= 40 ? 2 : Math.ceil(points.length / 16));
+  const labelEvery = options.labelEvery || (
+    points.length <= 16 ? 1 :
+    points.length <= 40 ? 2 :
+    Math.max(3, Math.ceil(points.length / 28))
+  );
   points.forEach((point, index) => {
     if (index !== 0 && index !== points.length - 1 && index % labelEvery !== 0) return;
+    const x = xFor(index);
+    const y = height - (denseLabels ? 18 : 22);
     const label = svgElement("text", {
-      x: xFor(index),
-      y: height - 22,
-      "text-anchor": "middle",
-      class: point.weekend ? "chart-axis-label weekend" : "chart-axis-label"
+      x,
+      y,
+      "text-anchor": denseLabels ? "end" : "middle",
+      class: `${point.weekend ? "chart-axis-label weekend" : "chart-axis-label"}${denseLabels ? " dense" : ""}`,
+      ...(denseLabels ? { transform: `rotate(-38 ${x} ${y})` } : {})
     });
     label.textContent = point.shortLabel || point.label;
     svg.appendChild(label);
