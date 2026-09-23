@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectGa4Report, inspectGa4CsvText, parseGa4Metadata, parseGa4Sections } from "../src/ga4.js";
+import { detectGa4FreeFormReport, detectGa4Report, inspectGa4CsvText, parseGa4Metadata, parseGa4Sections } from "../src/ga4.js";
 
 const wrap=(title,body)=>`# ----------------------------------------
 # ${title}
@@ -120,4 +120,75 @@ test("the app exposes GA4 CSV imports and GA4 Explore views", async () => {
   assert.match(app,/["']ga4-events["']/);
   assert.match(app,/view\.sourceRange \? \{\} : selectedRange\(\)/);
   assert.match(app,/loadBreakdownDimensionMetrics/);
+});
+
+
+test("GA4 Free Form Date + Page Path exports normalize as daily observations", () => {
+  const text=[
+    "# ----------------------------------------",
+    "# WNMU-FM Public Radio 90",
+    "# Free form-Free form 1",
+    "# 20260723-20260922",
+    "# ----------------------------------------",
+    "",
+    "Date,Page path and screen class,Active users,Event count,Views,Views per active user,Average engagement time per session",
+    ",,211078,847833,309558,1.4665,6.888,Grand total",
+    "20260826,/,44963,163565,68392,1.521,0.308",
+    "20260826,/listen-online,50,210,130,2.6,12.5",
+    "20260825,/,33439,120438,48944,1.463,0.301"
+  ].join("\n");
+  const metadata=parseGa4Metadata(text);
+  assert.equal(metadata.title,"Free form-Free form 1");
+  assert.equal(metadata.start,"2026-07-23");
+  assert.equal(metadata.end,"2026-09-22");
+  const sections=parseGa4Sections(text);
+  assert.equal(detectGa4FreeFormReport(sections),"daily_pages");
+  const result=inspectGa4CsvText(text,{fileName:"daily-pages.csv",stationKey:"wnmu_fm"});
+  assert.equal(result.reportKey,"daily_pages");
+  assert.deepEqual(result.normalized.range,{grain:"day",start:"2026-07-23",end:"2026-09-22"});
+  const page=result.normalized.observations.find((row)=>row.metric_key==="ga4.page_views" && row.dimension_value==="/listen-online");
+  assert.equal(page.period_start,"2026-08-26");
+  assert.equal(page.station_value,130);
+  assert.deepEqual(page.quality_flags,["ga4_daily_exploration"]);
+  const total=result.normalized.observations.find((row)=>row.metric_key==="ga4.site_page_views" && row.period_start==="2026-08-26");
+  assert.equal(total.station_value,68522);
+  assert.equal(total.dimension_type,"");
+});
+
+test("GA4 Free Form landing and session-channel exports preserve their exact metrics", () => {
+  const landing=[
+    "# WNMU-FM Public Radio 90",
+    "# Free form-Free form 1",
+    "# 20260723-20260922",
+    "",
+    "Date,Landing page,Sessions,Active users,New users,Average engagement time per session",
+    "20260826,/,49241,44952,44921,0.394",
+    "20260826,/listen-online,80,70,50,18"
+  ].join("\n");
+  const landingResult=inspectGa4CsvText(landing,{fileName:"landing.csv"});
+  assert.equal(landingResult.reportKey,"daily_landing");
+  assert.equal(landingResult.normalized.observations.find((row)=>row.metric_key==="ga4.site_sessions")?.station_value,49321);
+
+  const channels=[
+    "# WNMU-FM Public Radio 90",
+    "# Free form-Free form 1",
+    "# 20260723-20260922",
+    "",
+    "Date,Session primary channel group (Default Channel Group),Event count,Active users,Event count per active user",
+    "20260826,Direct,164695,45251,3.6395",
+    "20260826,Organic Search,500,250,2"
+  ].join("\n");
+  const channelResult=inspectGa4CsvText(channels,{fileName:"channels.csv"});
+  assert.equal(channelResult.reportKey,"daily_session_channel");
+  assert.equal(channelResult.normalized.observations.find((row)=>row.metric_key==="ga4.channel_event_count" && row.dimension_value==="Direct")?.station_value,164695);
+  assert.equal(channelResult.normalized.observations.find((row)=>row.metric_key==="ga4.channel_active_users" && row.dimension_value==="Direct")?.station_value,45251);
+});
+
+test("dated GA4 controls are exposed without replacing NPR website metrics", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/ga4\.site_page_views/);
+  assert.match(app,/ga4\.site_sessions/);
+  assert.match(app,/GA4 pages that day/);
+  assert.match(app,/Date \+ Event name/);
 });

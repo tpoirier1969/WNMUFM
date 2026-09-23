@@ -197,6 +197,8 @@ const TREND_METRICS = [
   { key:"streaming.listener_hours", label:"Listener hours", priority:"primary" },
   { key:"website.active_users", label:"Website users", priority:"primary" },
   { key:"website.pageviews", label:"Pageviews", priority:"primary" },
+  { key:"ga4.site_page_views", label:"GA4 page views", priority:"diagnostic" },
+  { key:"ga4.site_sessions", label:"GA4 sessions", priority:"diagnostic" },
   { key:"audio.downloads", label:"Audio downloads", priority:"primary" },
   { key:"audio.users", label:"Audio users", priority:"primary" },
   { key:"npr_one.localized_listeners", label:"NPR One listeners", priority:"primary" },
@@ -304,6 +306,7 @@ function openDetailDialog(title, html, eyebrow = "Deeper dive") {
 const DAILY_METRIC_ORDER = [
   "streaming.listeners","streaming.listener_hours","streaming.sessions","streaming.minutes_per_session",
   "website.active_users","website.pageviews","website.engaged_seconds_per_user",
+  "ga4.site_page_views","ga4.site_sessions",
   "audio.downloads","audio.users","audio.downloads_per_user",
   "npr_one.localized_listeners","npr_one.average_minutes"
 ];
@@ -340,6 +343,9 @@ async function openDateDrilldown(point, metricKey, medianValue) {
 
     const channelRows = observations.filter((row) => row.metric_key === "website.sessions_by_channel" && row.dimension_type === "traffic_channel");
     const playerRows = observations.filter((row) => row.metric_key === "audio.downloads_by_player" && row.dimension_type === "player");
+    const ga4PageRows = observations.filter((row) => row.metric_key === "ga4.page_views" && row.dimension_type === "ga4_page_path");
+    const ga4LandingRows = observations.filter((row) => row.metric_key === "ga4.landing_sessions" && row.dimension_type === "ga4_landing_page");
+    const ga4ChannelRows = observations.filter((row) => (row.metric_key === "ga4.sessions_by_channel" || row.metric_key === "ga4.channel_event_count") && row.dimension_type === "ga4_session_channel");
 
     els.detailDialogBody.innerHTML = `
       <div class="detail-summary">
@@ -360,9 +366,15 @@ async function openDateDrilldown(point, metricKey, medianValue) {
       </section>
       ${channelRows.length ? '<section class="detail-section"><h3>Website traffic sources that day</h3><div id="detailChannelBars"></div></section>' : ""}
       ${playerRows.length ? '<section class="detail-section"><h3>Audio players that day</h3><div id="detailPlayerBars"></div></section>' : ""}
+      ${ga4PageRows.length ? '<section class="detail-section"><h3>GA4 pages that day</h3><div id="detailGa4PageBars"></div></section>' : ""}
+      ${ga4LandingRows.length ? '<section class="detail-section"><h3>GA4 landing pages that day</h3><div id="detailGa4LandingBars"></div></section>' : ""}
+      ${ga4ChannelRows.length ? '<section class="detail-section"><h3>GA4 session channels that day</h3><div id="detailGa4ChannelBars"></div></section>' : ""}
     `;
     if (channelRows.length) renderBarChart(document.getElementById("detailChannelBars"), channelRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
     if (playerRows.length) renderBarChart(document.getElementById("detailPlayerBars"), playerRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,8).map((row)=>({label:row.dimension_value,value:row.station_value})));
+    if (ga4PageRows.length) renderBarChart(document.getElementById("detailGa4PageBars"), ga4PageRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,10).map((row)=>({label:row.dimension_value,value:row.station_value})));
+    if (ga4LandingRows.length) renderBarChart(document.getElementById("detailGa4LandingBars"), ga4LandingRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,10).map((row)=>({label:row.dimension_value,value:row.station_value})));
+    if (ga4ChannelRows.length) renderBarChart(document.getElementById("detailGa4ChannelBars"), ga4ChannelRows.sort((a,b)=>Number(b.station_value)-Number(a.station_value)).slice(0,10).map((row)=>({label:row.dimension_value,value:row.station_value})));
   } catch (error) {
     els.detailDialogBody.innerHTML = `<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
   } finally {
@@ -388,6 +400,8 @@ const METRIC_DESCRIPTIONS = {
   "website.active_users": "People NPR/Google Analytics counted as active visitors to wnmufm.org. Sudden spikes should be checked against engagement, geography and traffic source before being treated as audience growth.",
   "website.pageviews": "Pages viewed on wnmufm.org. Useful for overall site activity, but strongest when paired with users, engagement and acquisition source.",
   "website.engaged_seconds_per_user": "Average engaged time per website user. Low values during a traffic spike can reveal automated, accidental or low-quality visits.",
+  "ga4.site_page_views": "Daily page views from the dated GA4 Free Form export. This is an additive website-activity measure and is kept separate from NPR Website Analytics pageviews.",
+  "ga4.site_sessions": "Daily sessions from the dated GA4 landing-page export. Each session has one landing page, so these rows can be summed safely into a sitewide daily session total.",
   "audio.downloads": "On-demand audio file downloads. Use program, episode and player drilldowns to determine whether movement comes from real audience interest or bulk/archive retrieval.",
   "audio.users": "Unique users downloading on-demand audio in the NPR reporting period. Do not add daily unique users to manufacture weekly or monthly uniques.",
   "npr_one.localized_listeners": "Listeners localized to WNMU-FM in NPR One. This is an NPR One audience measure, not the same population as the live stream.",
@@ -413,7 +427,7 @@ const EXPLORE_VIEWS = {
     dimension: "ga4_page_path",
     sourceRange:true,
     detailMetrics:["ga4.page_views","ga4.page_active_users","ga4.page_views_per_user","ga4.page_engagement_seconds_per_user","ga4.page_event_count"],
-    description: "Google Analytics page-level performance. Views show consumption; click a page to compare reach, repeat viewing, engagement time and events. This is a whole-source-period aggregate until a Date + Page Path export is available."
+    description: "Google Analytics page-level performance. Views show consumption; click a page to compare reach, repeat viewing, engagement time and events. Whole-period exports remain the primary ranked view; dated Free Form exports also feed daily GA4 trends and date drilldowns."
   },
   "ga4-landing": {
     title: "Entry content",
@@ -1283,8 +1297,9 @@ async function renderCollectionChecklist() {
   const ga4Imports=imports.filter((item)=>item.report_type==="ga4_website");
   const ga4Start=ga4Imports.reduce((value,item)=>!value || (item.report_start && item.report_start<value) ? item.report_start : value,null);
   const ga4End=ga4Imports.reduce((value,item)=>!value || (item.report_end && item.report_end>value) ? item.report_end : value,null);
+  const ga4Daily=collectionSpan(imports,"ga4_website","day");
   const ga4Status=ga4Imports.length
-    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports`
+    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports${ga4Daily ? ` · daily detail ${escapeHtml(formatDayDate(ga4Daily.start))} – ${escapeHtml(formatDayDate(ga4Daily.end))}` : ""}`
     : '<span class="collection-status need">Not imported</span> · GA4 CSV import is ready';
 
   els.collectionChecklist.innerHTML = `
@@ -1308,7 +1323,7 @@ async function renderCollectionChecklist() {
       <ul>
         <li><strong>Live-stream hour/daypart data:</strong> needed before we can honestly connect live listening to scheduled programs.</li>
         <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
-        <li><strong>Dated GA4 content:</strong> current GA4 page, landing-page, acquisition and geography reports are whole-period aggregates. Date + Page Path is the most valuable next website export because it would allow content to enter Trend Explorer and daily drilldowns.</li>
+        <li><strong>Dated GA4 content:</strong> ${ga4Daily ? "Date + Page Path / Landing Page daily detail is now supported. Next collect Date + Event name so station-relevant actions can be trended by day." : "Date + Page Path is the most valuable next website export because it allows content to enter Trend Explorer and daily drilldowns."}</li>
         <li><strong>GA4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
         <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
         <li><strong>Historical schedule:</strong> the recurring Composer schedule is usable for the normal lineup; exact dated schedule snapshots are still needed for preemptions, substitutions and long-term program attribution.</li>
