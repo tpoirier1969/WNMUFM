@@ -778,7 +778,7 @@ async function renderTrend() {
           title:`${formatPeriod(row,grain)}${context ? ` · ${notableContextLabel(context)}` : ""}`,
           rows:[
             { tone:"station", label:"WNMU-FM", value:formatMetric(row.station_value,row.unit), delta:`${signedPercent(percentFromMedian(row.station_value,medianValue))} vs median` },
-            { tone:"benchmark", label:benchmarkLabel || "NPR benchmark", value:row.benchmark_value === null ? "—" : formatMetric(row.benchmark_value,row.unit), delta:row.benchmark_value === null || benchmarkMedian === null ? "—" : `${signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median` }
+            { tone:"benchmark", label:benchmarkLabel || "NPR benchmark", value:row.benchmark_value === null ? "Not supplied" : formatMetric(row.benchmark_value,row.unit), delta:row.benchmark_value === null || benchmarkMedian === null ? "" : `${signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median` }
           ]
         }
       };
