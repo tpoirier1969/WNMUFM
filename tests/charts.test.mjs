@@ -98,3 +98,56 @@ test("desktop tab strip wraps instead of creating an unnecessary scrollbar", asy
   assert.match(css,/\.tab-bar \{[^}]*overflow:\s*visible;[^}]*flex-wrap:\s*wrap;/s);
   assert.doesNotMatch(css,/\.tab-bar \{[^}]*overflow-x:\s*auto;/s);
 });
+
+
+test("single-metric comparison tooltips are structured as date plus WNMU and NPR rows", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const charts = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(app,/tooltipModel:\{/);
+  assert.match(app,/label:"WNMU-FM"/);
+  assert.match(app,/label:benchmarkLabel \|\| "NPR benchmark"/);
+  assert.match(app,/vs median/);
+  assert.match(charts,/className="chart-tooltip"/);
+  assert.match(charts,/chart-tooltip-row/);
+});
+
+test("Listening by Hour tooltip uses typical program or genre only when confidence exists", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/Typical program:/);
+  assert.match(app,/Typical genre:/);
+  assert.match(app,/buildTypicalHourContext\(typicalEntries\)/);
+  assert.match(app,/Tooltip program context may use Composer recurring definitions only when one program or genre clearly dominates that hour/);
+});
+
+
+test("multi-metric charts retain NPR benchmark series with dashed line styling", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(app,/benchmarkValues/);
+  assert.match(app,/actualBenchmarkValues/);
+  assert.match(app,/benchmarkMedian/);
+  assert.match(chartSource,/point\.benchmarkValues/);
+  assert.match(chartSource,/chart-benchmark-line/);
+  assert.match(css,/\.chart-benchmark-line \{[^}]*stroke-dasharray:/s);
+});
+
+test("indexed comparison median explanation sits above the plot instead of on the median line", async () => {
+  const fs = await import("node:fs/promises");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(chartSource,/Index scale: 100 = each series' selected-range median/);
+  assert.doesNotMatch(chartSource,/Selected-range median = 100/);
+  assert.match(chartSource,/class:"chart-index-note"/);
+});
+
+test("multi-metric hover uses a real HTML comparison tooltip", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(app,/metrics:comparable\.map/);
+  assert.match(chartSource,/chart-tooltip-metric-row/);
+  assert.match(chartSource,/bindChartTooltip/);
+});
