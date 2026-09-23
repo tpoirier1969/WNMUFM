@@ -140,7 +140,7 @@ export async function inspectExport(file, filterContext = {}) {
       dataRowCount:ga4.dataRowCount,
       filterContext:{source:"Google Analytics 4",report:ga4.reportKey},
       parserVersion:ga4.parserVersion,
-      reportRunDate:ga4.metadata.end,
+      reportRunDate:ga4.normalized.range.grain === "day" ? new Date().toISOString().slice(0, 10) : ga4.metadata.end,
       note:ga4.note,
       storeRawRows:false
     };
