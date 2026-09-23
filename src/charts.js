@@ -253,21 +253,40 @@ function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeigh
     class:"chart-zoom-hitbox",
     tabindex:"0",
     role:"button",
-    "aria-label":"Drag horizontally across the chart to zoom into a date range"
+    "aria-label":"Drag horizontally across the chart to zoom into a date range, or use Left and Right arrows and Enter."
   });
 
   let startX = null;
   let pointerId = null;
+  let keyboardStartIndex = null;
+  let keyboardEndIndex = 0;
   const clampX = (value) => Math.max(margin.left,Math.min(width-margin.right,value));
   const svgX = (event) => {
     const bounds=svg.getBoundingClientRect();
     if(!bounds.width) return margin.left;
     return clampX((event.clientX-bounds.left)*(width/bounds.width));
   };
+  const xForIndex=(index)=>margin.left+((index/(points.length-1))*plotWidth);
+  const showKeyboardSelection=()=>{
+    const endX=xForIndex(keyboardEndIndex);
+    if(keyboardStartIndex===null) {
+      selection.setAttribute("x",String(Math.max(margin.left,endX-1)));
+      selection.setAttribute("width","2");
+      hitbox.setAttribute("aria-label",`Zoom cursor at ${points[keyboardEndIndex]?.label || "selected point"}. Use Left and Right arrows, then Enter to set the start of the zoom range.`);
+      return;
+    }
+    const anchorX=xForIndex(keyboardStartIndex);
+    selection.setAttribute("x",String(Math.min(anchorX,endX)));
+    selection.setAttribute("width",String(Math.max(2,Math.abs(endX-anchorX))));
+    hitbox.setAttribute("aria-label",`Zoom start is ${points[keyboardStartIndex]?.label || "selected point"}; current end is ${points[keyboardEndIndex]?.label || "selected point"}. Use Left and Right arrows and press Enter to apply.`);
+  };
   const resetSelection = () => {
     startX=null;
     pointerId=null;
+    keyboardStartIndex=null;
+    keyboardEndIndex=0;
     selection.setAttribute("width","0");
+    hitbox.setAttribute("aria-label","Drag horizontally across the chart to zoom into a date range, or use Left and Right arrows and Enter.");
   };
 
   hitbox.addEventListener("pointerdown",(event)=>{
@@ -302,8 +321,43 @@ function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeigh
     onZoomSelect(points[startIndex],points[endIndex],startIndex,endIndex);
   });
   hitbox.addEventListener("pointercancel",resetSelection);
+  hitbox.addEventListener("focus",()=>{
+    if(startX===null) showKeyboardSelection();
+  });
+  hitbox.addEventListener("blur",()=>{
+    if(startX===null) resetSelection();
+  });
   hitbox.addEventListener("keydown",(event)=>{
-    if(event.key==="Escape") resetSelection();
+    if(event.key==="Escape") {
+      event.preventDefault();
+      resetSelection();
+      return;
+    }
+    if(event.key==="ArrowLeft" || event.key==="ArrowRight" || event.key==="Home" || event.key==="End") {
+      event.preventDefault();
+      if(event.key==="Home") keyboardEndIndex=0;
+      else if(event.key==="End") keyboardEndIndex=points.length-1;
+      else {
+        const delta=event.key==="ArrowLeft" ? -1 : 1;
+        keyboardEndIndex=Math.max(0,Math.min(points.length-1,keyboardEndIndex+delta));
+      }
+      showKeyboardSelection();
+      return;
+    }
+    if(event.key==="Enter" || event.key===" ") {
+      event.preventDefault();
+      if(keyboardStartIndex===null) {
+        keyboardStartIndex=keyboardEndIndex;
+        showKeyboardSelection();
+        return;
+      }
+      const startIndex=Math.min(keyboardStartIndex,keyboardEndIndex);
+      const endIndex=Math.max(keyboardStartIndex,keyboardEndIndex);
+      if(endIndex>startIndex) {
+        onZoomSelect(points[startIndex],points[endIndex],startIndex,endIndex);
+        resetSelection();
+      }
+    }
   });
 
   svg.appendChild(selection);
