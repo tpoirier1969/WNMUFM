@@ -1226,7 +1226,8 @@ async function renderCoverage() {
   }
   const labels = {
     station_streaming:"Streaming",
-    station_website:"Website",
+    station_website:"NPR Website",
+    ga4_website:"Google Analytics 4",
     audio_downloads:"Audio Downloads",
     audio_program_drilldown:"Audio Drilldown",
     npr_one:"NPR One"
@@ -1243,7 +1244,13 @@ async function renderCoverage() {
     if (item.report_run_date && (!group.run || item.report_run_date > group.run)) group.run = item.report_run_date;
   });
   els.coverageTable.innerHTML = `<table><thead><tr><th>Report</th><th>Grains</th><th>Source coverage</th><th>Analysis cutoff</th><th class="numeric">Imports</th></tr></thead><tbody>
-    ${[...grouped.values()].map((group) => `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml([...group.grains].sort().join(", "))}</td><td>${escapeHtml(group.start ? `${formatDayDate(group.start)} – ${formatDayDate(group.end)}` : "Raw only")}</td><td>${escapeHtml(group.run ? `Before ${formatDayDate(group.run)}` : "Unknown")}</td><td class="numeric">${group.count}</td></tr>`).join("")}
+    ${[...grouped.values()].map((group) => {
+      const grains=[...group.grains].sort().map((grain)=>grain==="unknown" ? "source-period aggregate" : grain).join(", ");
+      const cutoff=group.type==="ga4_website"
+        ? (group.run ? `Through ${formatDayDate(group.run)}` : "Unknown")
+        : (group.run ? `Before ${formatDayDate(group.run)}` : "Unknown");
+      return `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml(grains)}</td><td>${escapeHtml(group.start ? `${formatDayDate(group.start)} – ${formatDayDate(group.end)}` : "Raw only")}</td><td>${escapeHtml(cutoff)}</td><td class="numeric">${group.count}</td></tr>`;
+    }).join("")}
   </tbody></table>`;
 }
 
@@ -1267,12 +1274,18 @@ async function renderCollectionChecklist() {
   const imports = await loadImports();
   const rows = [
     { type:"station_streaming", label:"Live streaming", next:"Full-year Day is loaded. Next get full-year Week and Month exports; hourly/daypart data remains the key program-analysis gap." },
-    { type:"station_website", label:"Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
+    { type:"station_website", label:"NPR Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
     { type:"audio_downloads", label:"On-demand audio", next:"Daily year is loaded. Next get full-year Week and Month exports, then longer drilldowns for every available program." },
     { type:"npr_one", label:"NPR One", next:"Daily year is loaded. Next get full-year Week and Month exports." }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
+  const ga4Imports=imports.filter((item)=>item.report_type==="ga4_website");
+  const ga4Start=ga4Imports.reduce((value,item)=>!value || (item.report_start && item.report_start<value) ? item.report_start : value,null);
+  const ga4End=ga4Imports.reduce((value,item)=>!value || (item.report_end && item.report_end>value) ? item.report_end : value,null);
+  const ga4Status=ga4Imports.length
+    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports`
+    : '<span class="collection-status need">Not imported</span> · GA4 CSV import is ready';
 
   els.collectionChecklist.innerHTML = `
     <div class="table-wrap collection-table-wrap">
@@ -1290,16 +1303,19 @@ async function renderCollectionChecklist() {
       </table>
     </div>
     <div class="collection-gaps">
+      <p><strong>Google Analytics 4:</strong> ${ga4Status}</p>
       <p><strong>Content-first gaps:</strong></p>
       <ul>
         <li><strong>Live-stream hour/daypart data:</strong> needed before we can honestly connect live listening to scheduled programs.</li>
         <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
-        <li><strong>Website content detail:</strong> page/landing-page/referrer exports are needed to learn which stories and topics actually attract people.</li>
+        <li><strong>Dated GA4 content:</strong> current GA4 page, landing-page, acquisition and geography reports are whole-period aggregates. Date + Page Path is the most valuable next website export because it would allow content to enter Trend Explorer and daily drilldowns.</li>
+        <li><strong>GA4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
         <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
         <li><strong>Historical schedule:</strong> the recurring Composer schedule is usable for the normal lineup; exact dated schedule snapshots are still needed for preemptions, substitutions and long-term program attribution.</li>
       </ul>
     </div>`;
 }
+
 
 async function renderImportHistory() {
   const imports = await loadImports();
@@ -1310,7 +1326,9 @@ async function renderImportHistory() {
   els.importHistory.innerHTML = `<table><thead><tr><th>Imported</th><th>Report</th><th>View</th><th>Coverage</th><th>Run date</th><th>Program/filter</th><th class="numeric">Rows</th><th>Status</th></tr></thead><tbody>
     ${imports.map((item) => {
       const filter = item.selected_program || Object.entries(item.filter_context || {}).map(([key,value]) => `${key}=${value}`).join(", ") || "Unfiltered";
-      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(item.report_type)}</td><td>${escapeHtml(item.grain)}</td><td>${escapeHtml(item.report_start ? `${formatDayDate(item.report_start)} – ${formatDayDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(item.report_run_date ? formatDayDate(item.report_run_date) : "Unknown")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
+      const reportLabel=item.report_type==="ga4_website" ? "Google Analytics 4" : item.report_type;
+      const viewLabel=item.grain==="unknown" ? "source-period aggregate" : item.grain;
+      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(reportLabel)}</td><td>${escapeHtml(viewLabel)}</td><td>${escapeHtml(item.report_start ? `${formatDayDate(item.report_start)} – ${formatDayDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(item.report_run_date ? formatDayDate(item.report_run_date) : "Unknown")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
     }).join("")}
   </tbody></table>`;
 }
