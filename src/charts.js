@@ -448,12 +448,32 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
   }
 
   const width = 1100;
+  const left = 76;
+  const right = 58;
+  const bottom = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0)) ? 92 : 58;
   const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0));
-  const margin = { top:58, right:58, bottom:(labelAngle ? 92 : 58), left:76 };
-  const height = labelAngle ? 414 : 364;
+  const legendAvailable = width-left-right;
+  let legendRows=1;
+  let legendUsed=0;
+  series.forEach((item)=>{
+    const estimated=Math.max(126,String(item.label).length*7+54);
+    if(legendUsed && legendUsed+estimated>legendAvailable) {
+      legendRows+=1;
+      legendUsed=0;
+    }
+    legendUsed+=estimated;
+  });
+  const metricLegendStart=42;
+  const indexNoteY=metricLegendStart+(legendRows-1)*18+24;
+  const margin = { top:indexNoteY+12, right, bottom, left };
+  const plotHeight = 264;
+  const height = margin.top + plotHeight + margin.bottom;
   const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
-  const values = points.flatMap((point)=>series.map((item)=>finiteNumber(point.values?.[item.key]))).filter((value)=>value !== null);
+
+  const values = points.flatMap((point)=>series.flatMap((item)=>[
+    finiteNumber(point.values?.[item.key]),
+    finiteNumber(point.benchmarkValues?.[item.key])
+  ])).filter((value)=>value !== null);
   if (!values.length) {
     container.innerHTML = '<p class="empty-state">No comparable observations are available for this view.</p>';
     return;
@@ -482,9 +502,9 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
       const monthKey=String(points[monthStart].date||"").slice(0,7);
       let monthEnd=monthStart;
       while(monthEnd+1<points.length && String(points[monthEnd+1].date||"").slice(0,7)===monthKey) monthEnd+=1;
-      const left=monthStart===0 ? margin.left : (xFor(monthStart-1)+xFor(monthStart))/2;
-      const right=monthEnd===points.length-1 ? width-margin.right : (xFor(monthEnd)+xFor(monthEnd+1))/2;
-      if(monthIndex%2===1) svg.appendChild(svgElement("rect",{x:left,y:margin.top,width:Math.max(0,right-left),height:plotHeight,class:"chart-month-band"}));
+      const bandLeft=monthStart===0 ? margin.left : (xFor(monthStart-1)+xFor(monthStart))/2;
+      const bandRight=monthEnd===points.length-1 ? width-margin.right : (xFor(monthEnd)+xFor(monthEnd+1))/2;
+      if(monthIndex%2===1) svg.appendChild(svgElement("rect",{x:bandLeft,y:margin.top,width:Math.max(0,bandRight-bandLeft),height:plotHeight,class:"chart-month-band"}));
       if(monthStart>0) svg.appendChild(svgElement("line",{x1:xFor(monthStart),x2:xFor(monthStart),y1:margin.top,y2:margin.top+plotHeight,class:"chart-month-line"}));
       monthStart=monthEnd+1;
       monthIndex+=1;
@@ -511,69 +531,97 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
 
   const baselineY=yFor(100);
   svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:baselineY,y2:baselineY,class:"chart-index-baseline"}));
-  const baselineLabel=svgElement("text",{x:width-margin.right-4,y:baselineY-6,"text-anchor":"end",class:"chart-index-label"});
-  baselineLabel.textContent="Selected-range median = 100";
-  svg.appendChild(baselineLabel);
+  const indexNote=svgElement("text",{x:width-margin.right,y:indexNoteY,"text-anchor":"end",class:"chart-index-note"});
+  indexNote.textContent="Index scale: 100 = each series' selected-range median";
+  svg.appendChild(indexNote);
+
+  let styleX=margin.left;
+  const addStyleLegend=(className,labelText)=>{
+    svg.appendChild(svgElement("line",{x1:styleX,x2:styleX+24,y1:18,y2:18,class:className}));
+    const label=svgElement("text",{x:styleX+30,y:22,class:"chart-legend-label"});
+    label.textContent=labelText;
+    svg.appendChild(label);
+    styleX+=Math.max(150,labelText.length*7+62);
+  };
+  addStyleLegend("chart-station-key","WNMU-FM");
+  addStyleLegend("chart-benchmark-key","NPR Typical Station");
 
   let legendX=margin.left;
-  let legendY=18;
+  let legendY=metricLegendStart;
   series.forEach((item,seriesIndex)=>{
     const estimated=Math.max(126,String(item.label).length*7+54);
-    if(legendX+estimated>width-margin.right) {
+    if(legendX>margin.left && legendX+estimated>width-margin.right) {
       legendX=margin.left;
       legendY+=18;
     }
-    const className="chart-metric-line chart-series-" + (seriesIndex % 8);
-    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+22,y1:legendY,y2:legendY,class:className}));
+    const metricClass="chart-metric-line chart-series-" + (seriesIndex % 8);
+    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+22,y1:legendY,y2:legendY,class:metricClass}));
     const legend=svgElement("text",{x:legendX+28,y:legendY+4,class:"chart-legend-label"});
     legend.textContent=item.label;
     svg.appendChild(legend);
     legendX+=estimated;
 
-    let path="";
-    let drawing=false;
-    points.forEach((point,index)=>{
-      const value=finiteNumber(point.values?.[item.key]);
-      if(value===null) {
-        drawing=false;
-        return;
-      }
-      path+=(drawing ? " L" : "M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
-      drawing=true;
-    });
-    if(path) svg.appendChild(svgElement("path",{d:path,class:className}));
+    const pathFor=(bucket)=>{
+      let path="";
+      let drawing=false;
+      points.forEach((point,index)=>{
+        const value=finiteNumber(point[bucket]?.[item.key]);
+        if(value===null) { drawing=false; return; }
+        path+=(drawing ? " L" : "M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
+        drawing=true;
+      });
+      return path;
+    };
+
+    const stationPath=pathFor("values");
+    if(stationPath) svg.appendChild(svgElement("path",{d:stationPath,class:metricClass}));
+    const benchmarkPath=pathFor("benchmarkValues");
+    if(benchmarkPath) svg.appendChild(svgElement("path",{d:benchmarkPath,class:metricClass+" chart-benchmark-line"}));
 
     points.forEach((point,index)=>{
-      const indexed=finiteNumber(point.values?.[item.key]);
-      if(indexed===null) return;
-      const actual=finiteNumber(point.actualValues?.[item.key]);
-      const circle=svgElement("circle",{
-        cx:xFor(index),
-        cy:yFor(indexed),
-        r:2.6,
-        class:"chart-metric-point chart-series-" + (seriesIndex % 8) + (options.onPointClick ? " clickable" : ""),
-        ...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open " + item.label + " details for " + point.label} : {})
-      });
-      const title=svgElement("title");
-      const parts=[
-        point.label,
-        item.label + ": " + (actual===null ? "—" : formatMetric(actual,item.unit)),
-        "Index: " + indexed.toFixed(1)
-      ];
-      if(point.contextLabel) parts.push("Notable because: " + point.contextLabel);
-      title.textContent=parts.join(" · ");
-      circle.appendChild(title);
-      if(options.onPointClick) {
-        const activate=()=>options.onPointClick(point,item);
-        circle.addEventListener("click",activate);
-        circle.addEventListener("keydown",(event)=>{
-          if(event.key==="Enter"||event.key===" ") {
-            event.preventDefault();
-            activate();
-          }
+      const stationIndexed=finiteNumber(point.values?.[item.key]);
+      if(stationIndexed!==null) {
+        const circle=svgElement("circle",{
+          cx:xFor(index),
+          cy:yFor(stationIndexed),
+          r:2.6,
+          class:"chart-metric-point chart-series-" + (seriesIndex % 8) + (options.onPointClick ? " clickable" : ""),
+          ...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open " + item.label + " details for " + point.label} : {})
         });
+        if(point.tooltipModel) bindChartTooltip(container,circle,point.tooltipModel);
+        else {
+          const title=svgElement("title");
+          title.textContent=point.label+" · "+item.label+" · WNMU-FM";
+          circle.appendChild(title);
+        }
+        if(options.onPointClick) {
+          const activate=()=>options.onPointClick(point,item);
+          circle.addEventListener("click",activate);
+          circle.addEventListener("keydown",(event)=>{
+            if(event.key==="Enter"||event.key===" ") { event.preventDefault(); activate(); }
+          });
+        }
+        svg.appendChild(circle);
       }
-      svg.appendChild(circle);
+
+      const benchmarkIndexed=finiteNumber(point.benchmarkValues?.[item.key]);
+      if(benchmarkIndexed!==null) {
+        const circle=svgElement("circle",{
+          cx:xFor(index),
+          cy:yFor(benchmarkIndexed),
+          r:2.2,
+          class:"chart-metric-point chart-benchmark-point chart-series-" + (seriesIndex % 8),
+          tabindex:"0",
+          role:"img"
+        });
+        if(point.tooltipModel) bindChartTooltip(container,circle,point.tooltipModel);
+        else {
+          const title=svgElement("title");
+          title.textContent=point.label+" · "+item.label+" · "+(item.benchmarkLabel || "NPR benchmark");
+          circle.appendChild(title);
+        }
+        svg.appendChild(circle);
+      }
     });
   });
 
