@@ -544,7 +544,7 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
     styleX+=Math.max(150,labelText.length*7+62);
   };
   addStyleLegend("chart-station-key","WNMU-FM");
-  addStyleLegend("chart-benchmark-key","NPR Typical Station");
+  addStyleLegend("chart-benchmark-key",options.benchmarkLabel || "NPR benchmark");
 
   let legendX=margin.left;
   let legendY=metricLegendStart;
