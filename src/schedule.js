@@ -56,7 +56,17 @@ function textValue(value) {
 }
 
 function programGenre(source) {
-  const program = source?.program && typeof source.program === "object" ? source.program : source;
+  let program = source?.program;
+  if (typeof program === "string" && program.trim()) {
+    try {
+      const parsed=JSON.parse(program);
+      program=parsed && typeof parsed === "object" ? parsed : source;
+    } catch {
+      program=source;
+    }
+  } else if (!program || typeof program !== "object") {
+    program=source;
+  }
   const candidates = [
     program?.genre,
     program?.genres,
@@ -215,16 +225,21 @@ export function normalizeComposerPrograms(payload, startDate, endDate) {
   return output;
 }
 
-function hourOverlap(entry, hour) {
+export function entryHourDayOffset(entry, hour) {
   const start = minutes(entry.start);
-  let end = minutes(entry.end);
-  if (start === null || end === null) return false;
-  if (end <= start) end += 24 * 60;
+  const rawEnd = minutes(entry.end);
+  if (start === null || rawEnd === null || rawEnd === start) return null;
+  const wraps = rawEnd < start;
+  const end = wraps ? rawEnd + 24 * 60 : rawEnd;
   const hourStart = hour * 60;
   const hourEnd = hourStart + 60;
-  const overlaps = start < hourEnd && end > hourStart;
-  const wrapsOverlap = end > 24 * 60 && (hourStart + 24 * 60) < end && (hourEnd + 24 * 60) > start;
-  return overlaps || wrapsOverlap;
+  if (start < hourEnd && end > hourStart) return 0;
+  if (wraps) {
+    const shiftedStart=hourStart + 24 * 60;
+    const shiftedEnd=hourEnd + 24 * 60;
+    if (start < shiftedEnd && end > shiftedStart) return 1;
+  }
+  return null;
 }
 
 function dominantLabel(values, total, threshold) {
@@ -242,12 +257,14 @@ export function buildTypicalHourContext(entries, { titleThreshold = 0.7, genreTh
   for(const weekpart of ["weekday","weekend"]) {
     for(let hour=0;hour<24;hour+=1) {
       const matches=(entries || []).filter((entry)=>{
+        const dayOffset=entryHourDayOffset(entry,hour);
+        if(dayOffset===null) return false;
         const date=new Date(`${entry.date}T12:00:00Z`);
         if(Number.isNaN(date.getTime())) return false;
+        date.setUTCDate(date.getUTCDate()+dayOffset);
         const day=date.getUTCDay();
         const isWeekend=day===0 || day===6;
-        if((weekpart==="weekend") !== isWeekend) return false;
-        return hourOverlap(entry,hour);
+        return (weekpart==="weekend") === isWeekend;
       });
       if(matches.length < minimumSamples) continue;
 
@@ -297,21 +314,14 @@ export function buildHourSchedule(entries) {
   }
 
   entries.forEach((entry) => {
-    const date = new Date(`${entry.date}T12:00:00Z`);
-    if (Number.isNaN(date.getTime())) return;
-    const day = date.getUTCDay();
-    const weekpart = day === 0 || day === 6 ? "weekend" : "weekday";
-    const start = minutes(entry.start);
-    let end = minutes(entry.end);
-    if (start === null || end === null) return;
-    if (end <= start) end += 24 * 60;
-
     for (let hour = 0; hour < 24; hour += 1) {
-      const hourStart = hour * 60;
-      const hourEnd = hourStart + 60;
-      const overlaps = start < hourEnd && end > hourStart;
-      const wrapsOverlap = end > 24 * 60 && (hourStart + 24 * 60) < end && (hourEnd + 24 * 60) > start;
-      if (!overlaps && !wrapsOverlap) continue;
+      const dayOffset=entryHourDayOffset(entry,hour);
+      if(dayOffset===null) continue;
+      const date = new Date(`${entry.date}T12:00:00Z`);
+      if (Number.isNaN(date.getTime())) continue;
+      date.setUTCDate(date.getUTCDate()+dayOffset);
+      const day = date.getUTCDay();
+      const weekpart = day === 0 || day === 6 ? "weekend" : "weekday";
       const key = `${weekpart}|${String(hour).padStart(2, "0")}`;
       const programs = buckets.get(key);
       if (!programs.has(entry.program)) programs.set(entry.program, new Set());
