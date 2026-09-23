@@ -44,6 +44,33 @@ function programName(episode) {
   return episode?.program_name || episode?.name || "Unknown program";
 }
 
+function textValue(value) {
+  if (Array.isArray(value)) {
+    const first=value.map(textValue).find(Boolean);
+    return first || "";
+  }
+  if (value && typeof value === "object") {
+    return String(value.name || value.title || value.label || value.value || "").trim();
+  }
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function programGenre(source) {
+  const program = source?.program && typeof source.program === "object" ? source.program : source;
+  const candidates = [
+    program?.genre,
+    program?.genres,
+    program?.category,
+    program?.categories,
+    program?.format,
+    program?.program_type,
+    program?.content_type,
+    source?.genre,
+    source?.category
+  ];
+  return candidates.map(textValue).find(Boolean) || "";
+}
+
 function airtimeObjects(episode) {
   const candidates = [];
   const value = episode?.airtime;
@@ -76,7 +103,8 @@ function normalizeAirtime(episode, airtime) {
     date,
     start,
     end: end || start,
-    program: programName(episode)
+    program: programName(episode),
+    genre: programGenre(episode)
   };
 }
 
@@ -172,7 +200,8 @@ export function normalizeComposerPrograms(payload, startDate, endDate) {
           date: dateText,
           start,
           end,
-          program: program?.name || program?.title || "Unknown program"
+          program: program?.name || program?.title || "Unknown program",
+          genre: programGenre(program)
         });
       }
     });
@@ -184,6 +213,69 @@ export function normalizeComposerPrograms(payload, startDate, endDate) {
     String(a.program).localeCompare(String(b.program))
   );
   return output;
+}
+
+function hourOverlap(entry, hour) {
+  const start = minutes(entry.start);
+  let end = minutes(entry.end);
+  if (start === null || end === null) return false;
+  if (end <= start) end += 24 * 60;
+  const hourStart = hour * 60;
+  const hourEnd = hourStart + 60;
+  const overlaps = start < hourEnd && end > hourStart;
+  const wrapsOverlap = end > 24 * 60 && (hourStart + 24 * 60) < end && (hourEnd + 24 * 60) > start;
+  return overlaps || wrapsOverlap;
+}
+
+function dominantLabel(values, total, threshold) {
+  if (!values.length || !total) return null;
+  const counts=new Map();
+  values.forEach((value)=>counts.set(value,(counts.get(value)||0)+1));
+  const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+  const [label,count]=ranked[0] || [];
+  if(!label || count/total < threshold) return null;
+  return { label, count, share:count/total };
+}
+
+export function buildTypicalHourContext(entries, { titleThreshold = 0.7, genreThreshold = 0.75, minimumSamples = 4 } = {}) {
+  const result=new Map();
+  for(const weekpart of ["weekday","weekend"]) {
+    for(let hour=0;hour<24;hour+=1) {
+      const matches=(entries || []).filter((entry)=>{
+        const date=new Date(`${entry.date}T12:00:00Z`);
+        if(Number.isNaN(date.getTime())) return false;
+        const day=date.getUTCDay();
+        const isWeekend=day===0 || day===6;
+        if((weekpart==="weekend") !== isWeekend) return false;
+        return hourOverlap(entry,hour);
+      });
+      if(matches.length < minimumSamples) continue;
+
+      const titles=matches.map((entry)=>String(entry.program || "").trim()).filter(Boolean);
+      const title=dominantLabel(titles,matches.length,titleThreshold);
+      if(title) {
+        result.set(`${weekpart}|${String(hour).padStart(2,"0")}`,{
+          type:"program",
+          label:title.label,
+          share:title.share,
+          samples:matches.length
+        });
+        continue;
+      }
+
+      const genres=matches.map((entry)=>String(entry.genre || "").trim()).filter(Boolean);
+      const genre=dominantLabel(genres,matches.length,genreThreshold);
+      if(genre) {
+        result.set(`${weekpart}|${String(hour).padStart(2,"0")}`,{
+          type:"genre",
+          label:genre.label,
+          share:genre.share,
+          samples:matches.length
+        });
+      }
+    }
+  }
+  return result;
 }
 
 function compactDays(daySet) {
