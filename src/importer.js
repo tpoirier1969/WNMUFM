@@ -1,9 +1,10 @@
 import { CONFIG } from "./config.js";
 import { parseCsv, normalizeLineEndings } from "./csv.js";
 import { detectAnomalies, detectReport, inferDrilldownProgram, normalizeReport, reportLabel, REPORT_TYPES } from "./reports.js";
+import { GA4_REPORT_TYPE, inspectGa4CsvText } from "./ga4.js";
 import { batchInsert, batchUpsert, insertRows, selectRows, updateRows } from "./api.js";
 
-const PARSER_VERSION = "npr-export-parser-1";
+const NPR_PARSER_VERSION = "npr-export-parser-1";
 const OBSERVATION_CONFLICT = [
   "station_key",
   "report_type",
@@ -94,19 +95,58 @@ function queryForArchive(importId) {
   }).toString();
 }
 
-async function archiveSourceZip(importId, file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
+async function archiveSourceFile(importId, file) {
+  let bytes = new Uint8Array(await file.arrayBuffer());
+  let mimeType=file.type || "application/octet-stream";
+
+  // GA4 CSV exports can exceed the practical REST request size once bytea is
+  // hex-encoded. Compress the original CSV losslessly before archiving it.
+  if(file.name.toLowerCase().endsWith(".csv")) {
+    if (!window.JSZip) throw new Error("ZIP reader did not load.");
+    const zip=new window.JSZip();
+    zip.file(file.name,bytes);
+    bytes=await zip.generateAsync({type:"uint8array",compression:"DEFLATE",compressionOptions:{level:6}});
+    mimeType="application/zip";
+  } else if(file.name.toLowerCase().endsWith(".zip")) {
+    mimeType=file.type || "application/zip";
+  }
+
   let hex = "";
   for (const byte of bytes) hex += byte.toString(16).padStart(2, "0");
   await insertRows("wnmufm_analytics_source_archives", [{
     import_id: importId,
     source_bytes: `\\x${hex}`,
-    source_mime_type: file.type || "application/zip",
+    source_mime_type: mimeType,
     source_size_bytes: bytes.length
   }]);
 }
 
 export async function inspectExport(file, filterContext = {}) {
+  const lowerName=String(file?.name || "").toLowerCase();
+  if(lowerName.endsWith(".csv")) {
+    const text=await file.text();
+    const ga4=inspectGa4CsvText(text,{fileName:file.name,stationKey:CONFIG.stationKey});
+    const contentHash=await sha256(canonicalExportText([{name:file.name,text}]));
+    return {
+      file,
+      entries:[{name:file.name,text}],
+      files:new Map(),
+      reportType:GA4_REPORT_TYPE,
+      reportLabel:ga4.reportLabel,
+      selectedProgram:null,
+      programInference:null,
+      normalized:ga4.normalized,
+      contentHash,
+      dataRowCount:ga4.dataRowCount,
+      filterContext:{source:"Google Analytics 4",report:ga4.reportKey},
+      parserVersion:ga4.parserVersion,
+      reportRunDate:ga4.metadata.end,
+      note:ga4.note,
+      storeRawRows:false
+    };
+  }
+  if(!lowerName.endsWith(".zip")) throw new Error("Choose an NPR Analytics ZIP export or a Google Analytics 4 CSV export.");
+
   const entries = await readZip(file);
   const files = parseEntries(entries);
   const reportType = detectReport(entries.map((entry) => entry.name));
@@ -140,7 +180,11 @@ export async function inspectExport(file, filterContext = {}) {
     normalized,
     contentHash,
     dataRowCount,
-    filterContext
+    filterContext,
+    parserVersion:NPR_PARSER_VERSION,
+    reportRunDate:new Date().toISOString().slice(0, 10),
+    note:"",
+    storeRawRows:true
   };
 }
 
@@ -148,7 +192,7 @@ export async function importInspectedExport(inspected, userEmail) {
   const existing = await selectRows("wnmufm_analytics_imports", queryForHash(inspected.contentHash));
   if (existing?.length) {
     const archive = await selectRows("wnmufm_analytics_source_archives", queryForArchive(existing[0].id));
-    if (!archive?.length) await archiveSourceZip(existing[0].id, inspected.file);
+    if (!archive?.length) await archiveSourceFile(existing[0].id, inspected.file);
     return { duplicate: true, importRecord: existing[0], inspected };
   }
 
@@ -157,7 +201,8 @@ export async function importInspectedExport(inspected, userEmail) {
   if (inspected.reportType === REPORT_TYPES.AUDIO_DRILLDOWN && !inspected.selectedProgram) {
     notes.push(`Program inference: ${inspected.programInference?.confidence || "unresolved"}.`);
   }
-  if (!range.start || !range.end) notes.push("No dated primary rows were present; raw CSV data was preserved but not normalized for charts.");
+  if (inspected.note) notes.push(inspected.note);
+  if (!range.start || !range.end) notes.push("No dated primary rows were present; the original source file was preserved but not normalized for charts.");
 
   const inserted = await insertRows("wnmufm_analytics_imports", [{
     source_sha256: inspected.contentHash,
@@ -169,12 +214,12 @@ export async function importInspectedExport(inspected, userEmail) {
     service_name: CONFIG.serviceName,
     report_start: range.start,
     report_end: range.end,
-    report_run_date: new Date().toISOString().slice(0, 10),
+    report_run_date: inspected.reportRunDate || new Date().toISOString().slice(0, 10),
     filter_context: inspected.filterContext || {},
     selected_program: inspected.selectedProgram,
     status,
     row_count: inspected.dataRowCount,
-    parser_version: PARSER_VERSION,
+    parser_version: inspected.parserVersion || NPR_PARSER_VERSION,
     imported_by_email: userEmail || null,
     notes: notes.join(" ") || null
   }], { returnRows: true });
@@ -183,10 +228,12 @@ export async function importInspectedExport(inspected, userEmail) {
   if (!importRecord?.id) throw new Error("The import record was created without an ID.");
 
   try {
-    await archiveSourceZip(importRecord.id, inspected.file);
+    await archiveSourceFile(importRecord.id, inspected.file);
 
-    const rawRows = rawRowsForImport(importRecord.id, inspected.files);
-    await batchInsert("wnmufm_analytics_raw_rows", rawRows, { batchSize: 150 });
+    if(inspected.storeRawRows !== false) {
+      const rawRows = rawRowsForImport(importRecord.id, inspected.files);
+      await batchInsert("wnmufm_analytics_raw_rows", rawRows, { batchSize: 150 });
+    }
 
     const normalizedRows = observations.map((item) => ({ ...item, source_import_id: importRecord.id }));
     await batchUpsert("wnmufm_analytics_observations", normalizedRows, OBSERVATION_CONFLICT, 150);

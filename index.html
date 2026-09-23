@@ -231,23 +231,23 @@
       <section class="tab-panel" data-panel="imports" hidden>
         <div class="section-heading">
           <div>
-            <p class="eyebrow">NPR Analytics</p>
+            <p class="eyebrow">Source data</p>
             <h2>Import reports</h2>
-            <p>Drop the original ZIP exports here. The app keeps raw rows for provenance, deduplicates semantically identical exports, and updates normalized chart data.</p>
+            <p>Drop NPR Analytics ZIP exports or Google Analytics 4 CSV exports here. The app preserves the original source file for provenance, deduplicates identical exports, and updates normalized chart data.</p>
           </div>
         </div>
 
         <div class="dashboard-grid two-column">
           <article class="panel-card">
             <h3>Upload</h3>
-            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP files">
-              <strong>Drop ZIP reports here</strong>
-              <span>or click to choose files</span>
-              <input id="fileInput" type="file" accept=".zip,application/zip" multiple hidden>
+            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP or Google Analytics CSV files">
+              <strong>Drop ZIP or CSV reports here</strong>
+              <span>NPR Analytics ZIPs and GA4 CSV exports are supported</span>
+              <input id="fileInput" type="file" accept=".zip,.csv,application/zip,text/csv" multiple hidden>
             </div>
             <div class="filter-context">
               <h4>Optional export filter</h4>
-              <p>If this batch was exported with a dashboard filter, record it here. Leave blank for normal unfiltered reports.</p>
+              <p>If an NPR Analytics ZIP was exported with a dashboard filter, record it here. GA4 CSV source details are read from the export itself.</p>
               <div class="inline-controls">
                 <label>Filter name
                   <input id="filterName" type="text" placeholder="e.g. device_type">
@@ -296,7 +296,7 @@
 
   <footer>
     <span>WNMU-FM Audience Analytics</span>
-    <span>Raw NPR exports remain the source evidence.</span>
+    <span>Original source exports remain the evidence.</span>
   </footer>
 
   <script src="vendor/jszip.min.js"></script>

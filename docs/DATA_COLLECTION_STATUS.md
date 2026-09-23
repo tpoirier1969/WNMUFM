@@ -1,6 +1,6 @@
 # WNMU-FM Data Collection Status
 
-Updated: 2026-09-22
+Updated: 2026-09-23
 
 This is the working inventory for the WNMU-FM audience analytics project. It records what is actually loaded, what remains short or missing, and what should be collected next. The goal is content-first analysis, not collecting every metric merely because NPR exposes it.
 
@@ -16,6 +16,14 @@ This is the working inventory for the WNMU-FM audience analytics project. It rec
 
 All imports remain in FM-owned `wnmufm_analytics_*` tables. Original source ZIPs and raw CSV rows are retained as provenance, while overlapping normalized observations can refresh the canonical chart facts.
 
+## Google Analytics 4 (GA4) source-period exports
+
+The app now supports direct GA4 CSV imports as a separate source family from NPR Website Analytics. Useful current report families include Pages and Screens, Landing Page, Events, Traffic Acquisition, User Acquisition, Country, Browser details, Tech overview, User Attributes overview, and the manual-source section of Generate Leads overview.
+
+These GA4 exports are whole-period aggregates. They add content, acquisition, geography and traffic-quality detail, but they do not create daily content history. The highest-value next GA4 source is **Date + Page Path** (or an equivalent dated content export). Detailed parameters for `audio_action` and `player_interactions` are also valuable if GA4 exposes them.
+
+Very large GA4 dimensions are normalized only to the highest-activity rows needed for interactive analysis while the complete original CSV is preserved losslessly as source evidence.
+
 ## Highest-priority downloads
 
 1. **Station Streaming Overview: full-year Day, Week and Month.** This is the largest core-history gap.
@@ -24,7 +32,7 @@ All imports remain in FM-owned `wnmufm_analytics_*` tables. Original source ZIPs
 4. **NPR One Overview: full-year Week and Month.**
 5. **Audio Program Drilldown: every selectable discrete local program**, using the longest available Day range and Week/Month where available.
 6. **Any live-stream hour, half-hour, or daypart export** from NPR or the stream provider. This is the critical missing bridge between live listening and the broadcast schedule.
-7. **Website content detail:** page URL/title, landing page and referrer/source-medium exports if NPR/GA makes them available.
+7. **Dated GA4 website content:** Date + Page Path (or equivalent) so content can enter Trend Explorer and daily drilldowns; current GA4 page/landing/acquisition reports are aggregate source-period facts.
 8. **Exact historical schedule source or snapshots.** The public recurring NPR Composer schedule can describe the normal weekly lineup, but exact dated history is needed for preemptions and substitutions.
 
 ## Content taxonomy needed

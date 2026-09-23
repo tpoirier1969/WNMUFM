@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -52,7 +52,7 @@ const state = {
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
   activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","explore","imports"], "overview"),
-  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs")
+  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
@@ -407,17 +407,93 @@ const EXPLORE_VIEWS = {
     dimension: "player",
     description: "Shows which player/client requested WNMU-FM audio. This is especially useful for separating broad audience changes from browser-driven or automated-looking download bursts."
   },
+  "ga4-pages": {
+    title: "Website content",
+    metric: "ga4.page_views",
+    dimension: "ga4_page_path",
+    sourceRange:true,
+    detailMetrics:["ga4.page_views","ga4.page_active_users","ga4.page_views_per_user","ga4.page_engagement_seconds_per_user","ga4.page_event_count"],
+    description: "Google Analytics page-level performance. Views show consumption; click a page to compare reach, repeat viewing, engagement time and events. This is a whole-source-period aggregate until a Date + Page Path export is available."
+  },
+  "ga4-landing": {
+    title: "Entry content",
+    metric: "ga4.landing_sessions",
+    dimension: "ga4_landing_page",
+    sourceRange:true,
+    detailMetrics:["ga4.landing_sessions","ga4.landing_active_users","ga4.landing_new_users","ga4.landing_engagement_seconds_per_session"],
+    description: "Shows which page began a session. This separates pages that are merely viewed from pages that actually bring people into WNMU-FM."
+  },
+  "ga4-traffic": {
+    title: "GA4 traffic acquisition",
+    metric: "ga4.sessions_by_channel",
+    dimension: "ga4_session_channel",
+    sourceRange:true,
+    detailMetrics:["ga4.sessions_by_channel","ga4.engaged_sessions_by_channel","ga4.engagement_rate_by_channel","ga4.engagement_seconds_per_session_by_channel","ga4.events_per_session_by_channel"],
+    description: "Session acquisition from Google Analytics. Use engagement alongside volume so a large source is not automatically treated as high-quality audience traffic."
+  },
+  "ga4-sources": {
+    title: "Referral and source detail",
+    metric: "ga4.sessions_by_manual_source",
+    dimension: "ga4_manual_source",
+    sourceRange:true,
+    description: "More specific source labels from GA4, such as search engines, social sites, NPR properties, newsletters or other referring systems when Google provides them."
+  },
+  "ga4-events": {
+    title: "Website actions",
+    metric: "ga4.event_count",
+    dimension: "ga4_event",
+    sourceRange:true,
+    detailMetrics:["ga4.event_count","ga4.event_users","ga4.event_count_per_user"],
+    description: "GA4 events include page views plus station-relevant actions such as audio_action, player_interactions, outbound links, forms, downloads and search."
+  },
+  "ga4-countries": {
+    title: "GA4 countries",
+    metric: "ga4.country_active_users",
+    dimension: "ga4_country",
+    sourceRange:true,
+    detailMetrics:["ga4.country_active_users","ga4.country_new_users","ga4.country_engaged_sessions","ga4.country_engagement_rate","ga4.country_engagement_seconds_per_user"],
+    description: "Country-level audience volume and engagement from GA4. Geography and low engagement can reveal traffic that should not be treated as equivalent to WNMU's service-area audience."
+  },
+  "ga4-cities": {
+    title: "GA4 cities",
+    metric: "ga4.city_active_users",
+    dimension: "ga4_city",
+    sourceRange:true,
+    description: "City-level GA4 traffic used mainly as a traffic-quality diagnostic. Geography is evidence to investigate, not proof that a visitor is invalid."
+  },
+  "ga4-browser": {
+    title: "Browser diagnostics",
+    metric: "ga4.browser_active_users",
+    dimension: "ga4_browser",
+    sourceRange:true,
+    detailMetrics:["ga4.browser_active_users","ga4.browser_engagement_rate","ga4.browser_engagement_seconds_per_user"],
+    description: "Browser mix is diagnostic context. Large concentrations paired with near-zero engagement can help explain unusual website traffic."
+  },
+  "ga4-devices": {
+    title: "Device diagnostics",
+    metric: "ga4.device_active_users",
+    dimension: "ga4_device_category",
+    sourceRange:true,
+    description: "GA4 device category is supporting evidence for traffic-quality review, not a primary programming metric."
+  },
+  "ga4-screens": {
+    title: "Screen diagnostics",
+    metric: "ga4.screen_active_users",
+    dimension: "ga4_screen_resolution",
+    sourceRange:true,
+    description: "Screen-resolution concentrations can help identify nonrepresentative traffic patterns. This is diagnostic rather than a headline audience measure."
+  },
   "website-channels": {
-    title: "Website sessions by traffic source",
+    title: "NPR website traffic sources",
     metric: "website.sessions_by_channel",
     dimension: "traffic_channel",
-    description: "Shows how visitors reached wnmufm.org. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The current NPR export does not identify Google, Bing, or other engines separately."
+    description: "Shows how visitors reached wnmufm.org in NPR's website export. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The NPR export does not identify Google, Bing, or other engines separately; GA4 acquisition views provide more detailed website analysis when available."
   },
   "website-countries": {
-    title: "Website sessions by country",
+    title: "NPR website countries",
     metric: "website.sessions_by_country",
     dimension: "country",
-    description: "Geographic website traffic helps distinguish service-area use from unusual outside traffic. Geography is a clue, not proof that traffic is invalid."
+    description: "Country traffic from the NPR website export. GA4 country analysis adds engagement detail and should be preferred for traffic-quality investigation when available."
   },
   "streaming-devices": {
     title: "Live-stream device share",
@@ -446,10 +522,20 @@ const EXPLORE_VIEWS = {
 };
 
 const EXPLORE_ORDER = [
+  ["ga4-pages","Website content"],
+  ["ga4-landing","Entry pages"],
+  ["ga4-traffic","GA4 traffic"],
+  ["ga4-sources","Referral sources"],
+  ["ga4-events","Website actions"],
+  ["ga4-countries","GA4 countries"],
+  ["ga4-cities","GA4 cities"],
+  ["ga4-browser","Browser diagnostics"],
+  ["ga4-devices","Device diagnostics"],
+  ["ga4-screens","Screen diagnostics"],
   ["audio-programs","Downloads by program"],
   ["audio-players","Downloads by player"],
-  ["website-channels","Website traffic sources"],
-  ["website-countries","Website countries"],
+  ["website-channels","NPR web sources"],
+  ["website-countries","NPR web countries"],
   ["streaming-devices","Stream devices"],
   ["npr-one-podcasts","NPR One podcasts"],
   ["npr-one-audio","NPR One audio"],
@@ -1140,7 +1226,8 @@ async function renderCoverage() {
   }
   const labels = {
     station_streaming:"Streaming",
-    station_website:"Website",
+    station_website:"NPR Website",
+    ga4_website:"Google Analytics 4",
     audio_downloads:"Audio Downloads",
     audio_program_drilldown:"Audio Drilldown",
     npr_one:"NPR One"
@@ -1157,7 +1244,13 @@ async function renderCoverage() {
     if (item.report_run_date && (!group.run || item.report_run_date > group.run)) group.run = item.report_run_date;
   });
   els.coverageTable.innerHTML = `<table><thead><tr><th>Report</th><th>Grains</th><th>Source coverage</th><th>Analysis cutoff</th><th class="numeric">Imports</th></tr></thead><tbody>
-    ${[...grouped.values()].map((group) => `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml([...group.grains].sort().join(", "))}</td><td>${escapeHtml(group.start ? `${formatDayDate(group.start)} – ${formatDayDate(group.end)}` : "Raw only")}</td><td>${escapeHtml(group.run ? `Before ${formatDayDate(group.run)}` : "Unknown")}</td><td class="numeric">${group.count}</td></tr>`).join("")}
+    ${[...grouped.values()].map((group) => {
+      const grains=[...group.grains].sort().map((grain)=>grain==="unknown" ? "source-period aggregate" : grain).join(", ");
+      const cutoff=group.type==="ga4_website"
+        ? (group.run ? `Through ${formatDayDate(group.run)}` : "Unknown")
+        : (group.run ? `Before ${formatDayDate(group.run)}` : "Unknown");
+      return `<tr><td>${escapeHtml(labels[group.type] || group.type)}</td><td>${escapeHtml(grains)}</td><td>${escapeHtml(group.start ? `${formatDayDate(group.start)} – ${formatDayDate(group.end)}` : "Raw only")}</td><td>${escapeHtml(cutoff)}</td><td class="numeric">${group.count}</td></tr>`;
+    }).join("")}
   </tbody></table>`;
 }
 
@@ -1181,12 +1274,18 @@ async function renderCollectionChecklist() {
   const imports = await loadImports();
   const rows = [
     { type:"station_streaming", label:"Live streaming", next:"Full-year Day is loaded. Next get full-year Week and Month exports; hourly/daypart data remains the key program-analysis gap." },
-    { type:"station_website", label:"Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
+    { type:"station_website", label:"NPR Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
     { type:"audio_downloads", label:"On-demand audio", next:"Daily year is loaded. Next get full-year Week and Month exports, then longer drilldowns for every available program." },
     { type:"npr_one", label:"NPR One", next:"Daily year is loaded. Next get full-year Week and Month exports." }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
+  const ga4Imports=imports.filter((item)=>item.report_type==="ga4_website");
+  const ga4Start=ga4Imports.reduce((value,item)=>!value || (item.report_start && item.report_start<value) ? item.report_start : value,null);
+  const ga4End=ga4Imports.reduce((value,item)=>!value || (item.report_end && item.report_end>value) ? item.report_end : value,null);
+  const ga4Status=ga4Imports.length
+    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports`
+    : '<span class="collection-status need">Not imported</span> · GA4 CSV import is ready';
 
   els.collectionChecklist.innerHTML = `
     <div class="table-wrap collection-table-wrap">
@@ -1204,16 +1303,19 @@ async function renderCollectionChecklist() {
       </table>
     </div>
     <div class="collection-gaps">
+      <p><strong>Google Analytics 4:</strong> ${ga4Status}</p>
       <p><strong>Content-first gaps:</strong></p>
       <ul>
         <li><strong>Live-stream hour/daypart data:</strong> needed before we can honestly connect live listening to scheduled programs.</li>
         <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
-        <li><strong>Website content detail:</strong> page/landing-page/referrer exports are needed to learn which stories and topics actually attract people.</li>
+        <li><strong>Dated GA4 content:</strong> current GA4 page, landing-page, acquisition and geography reports are whole-period aggregates. Date + Page Path is the most valuable next website export because it would allow content to enter Trend Explorer and daily drilldowns.</li>
+        <li><strong>GA4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
         <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
         <li><strong>Historical schedule:</strong> the recurring Composer schedule is usable for the normal lineup; exact dated schedule snapshots are still needed for preemptions, substitutions and long-term program attribution.</li>
       </ul>
     </div>`;
 }
+
 
 async function renderImportHistory() {
   const imports = await loadImports();
@@ -1224,9 +1326,45 @@ async function renderImportHistory() {
   els.importHistory.innerHTML = `<table><thead><tr><th>Imported</th><th>Report</th><th>View</th><th>Coverage</th><th>Run date</th><th>Program/filter</th><th class="numeric">Rows</th><th>Status</th></tr></thead><tbody>
     ${imports.map((item) => {
       const filter = item.selected_program || Object.entries(item.filter_context || {}).map(([key,value]) => `${key}=${value}`).join(", ") || "Unfiltered";
-      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(item.report_type)}</td><td>${escapeHtml(item.grain)}</td><td>${escapeHtml(item.report_start ? `${formatDayDate(item.report_start)} – ${formatDayDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(item.report_run_date ? formatDayDate(item.report_run_date) : "Unknown")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
+      const reportLabel=item.report_type==="ga4_website" ? "Google Analytics 4" : item.report_type;
+      const viewLabel=item.grain==="unknown" ? "source-period aggregate" : item.grain;
+      return `<tr><td>${escapeHtml(new Date(item.imported_at).toLocaleString())}</td><td>${escapeHtml(reportLabel)}</td><td>${escapeHtml(viewLabel)}</td><td>${escapeHtml(item.report_start ? `${formatDayDate(item.report_start)} – ${formatDayDate(item.report_end)}` : "Raw only")}</td><td>${escapeHtml(item.report_run_date ? formatDayDate(item.report_run_date) : "Unknown")}</td><td>${escapeHtml(filter)}</td><td class="numeric">${item.row_count}</td><td>${escapeHtml(item.status)}</td></tr>`;
     }).join("")}
   </tbody></table>`;
+}
+
+async function openExploreDimensionDetail(view,row,periodText) {
+  if(!view.detailMetrics?.length || !row.sourceImportId) {
+    openBreakdownDrilldown(view.title,row,periodText);
+    return;
+  }
+  setBusy(true);
+  openDetailDialog(row.label,'<p class="empty-state">Loading related metrics…</p>',"Website detail");
+  try {
+    const metrics=await loadBreakdownDimensionMetrics(view.detailMetrics,view.dimension,row.dimensionValue,row.sourceImportId);
+    const byKey=new Map(metrics.map((item)=>[item.metric_key,item]));
+    els.detailDialogBody.innerHTML=`
+      <div class="detail-summary">
+        <div><span>Source period</span><strong>${escapeHtml(periodText)}</strong></div>
+        <div><span>Primary measure</span><strong>${escapeHtml(String(row.formattedValue ?? row.value ?? "—"))}</strong></div>
+      </div>
+      <section class="detail-section">
+        <h3>What GA4 reports</h3>
+        <div class="detail-metric-grid">
+          ${view.detailMetrics.map((key)=>{
+            const item=byKey.get(key);
+            if(!item) return "";
+            return `<div class="detail-metric"><span>${escapeHtml(item.metric_label || item.metric_key)}</span><strong>${escapeHtml(formatMetric(item.station_value,item.unit))}</strong></div>`;
+          }).join("")}
+        </div>
+      </section>
+      ${view.sourceRange ? '<p class="source-limit">This GA4 export is an aggregate for its complete source period. A Date + Page Path or similarly dated export is still needed before this category can be trended day by day.</p>' : ""}
+    `;
+  } catch(error) {
+    els.detailDialogBody.innerHTML=`<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
+  } finally {
+    setBusy(false);
+  }
 }
 
 async function renderExplore() {
@@ -1237,24 +1375,28 @@ async function renderExplore() {
     button.setAttribute("aria-pressed",String(button.dataset.exploreView===viewKey));
   });
   els.exploreDescription.textContent = view.description;
-  const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", selectedRange());
+  const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", view.sourceRange ? {} : selectedRange());
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreChart.innerHTML = '<p class="empty-state compact">No complete source breakdown fits inside the selected analysis range.</p>';
+    els.exploreChart.innerHTML = `<p class="empty-state compact">${view.sourceRange ? "No imported GA4 source currently supplies this view." : "No complete source breakdown fits inside the selected analysis range."}</p>`;
     return;
   }
-  els.explorePeriod.textContent = `${formatPeriod(rows[0], rows[0].grain)}${rows[0].analysis_tail_incomplete ? " · includes report-run day" : ""}`;
+  const periodText=formatPeriod(rows[0], rows[0].grain);
+  els.explorePeriod.textContent = `${periodText}${rows[0].analysis_tail_incomplete ? " · source includes its report-end day" : ""}`;
   const sorted = sortBreakdown(rows);
   const isPercent = rows[0].unit === "percent";
   renderBarChart(els.exploreChart, sorted.map((row) => ({
     label: exploreDimensionLabel(viewKey,row.dimension_value),
+    dimensionValue:row.dimension_value,
+    sourceImportId:row.source_import_id,
     value: row.station_value,
     formattedValue: formatMetric(row.station_value,row.unit)
   })), {
     maxValue: isPercent ? 100 : undefined,
     formatValue: (value) => formatMetric(value, rows[0].unit),
-    limit: 25
+    limit: 25,
+    onBarClick:(row)=>openExploreDimensionDetail(view,row,periodText)
   });
 }
 
@@ -1292,7 +1434,7 @@ function queueRow(file, status, kind = "") {
 }
 
 async function processFiles(fileList) {
-  const files = [...fileList].filter((file) => file.name.toLowerCase().endsWith(".zip"));
+  const files = [...fileList].filter((file) => /\.(zip|csv)$/i.test(file.name));
   if (!files.length) return;
   const userEmail = currentUser()?.email || null;
   const filters = filterContext();
@@ -1319,7 +1461,8 @@ async function processFiles(fileList) {
           anomalyCount += Number(result.anomalyCount || 0);
           row.classList.add("success");
           const program = result.inspected.selectedProgram ? ` · ${result.inspected.selectedProgram}` : "";
-          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${result.inspected.normalized.range.grain}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
+          const viewLabel=result.inspected.normalized.range.grain === "unknown" ? "source-period aggregate" : result.inspected.normalized.range.grain;
+          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${viewLabel}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
         }
       } catch (error) {
         errorCount += 1;
@@ -1354,18 +1497,18 @@ async function processFiles(fileList) {
       duplicateCount ? `<p>${duplicateCount} ${duplicateCount === 1 ? "file was" : "files were"} already imported.</p>` : "",
       errorCount ? `<p>${errorCount} ${errorCount === 1 ? "file could not" : "files could not"} be imported. See the import queue for details.</p>` : ""
     ].join("");
-    openDetailDialog("Import complete", messages, "NPR Analytics");
+    openDetailDialog("Import complete", messages, "Analytics import");
   } else if (duplicateCount > 0 && errorCount === 0) {
     openDetailDialog(
       "Already imported",
       `<p>No new data was added because ${duplicateCount === 1 ? "this report is" : "these reports are"} already in the app.</p>`,
-      "NPR Analytics"
+      "Analytics import"
     );
   } else if (errorCount > 0) {
     openDetailDialog(
       "Import not completed",
       `<p>No new data was added. See the import queue for the ${errorCount === 1 ? "error" : "errors"}.</p>`,
-      "NPR Analytics"
+      "Analytics import"
     );
   }
 }
