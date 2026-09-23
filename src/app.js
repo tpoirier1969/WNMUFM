@@ -5,7 +5,7 @@ import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
-import { buildHourSchedule, hourLabel } from "./schedule.js";
+import { buildHourSchedule, buildTypicalHourContext, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState } from "./view-state.js";
@@ -753,6 +753,7 @@ async function renderTrend() {
 
     const benchmarkSourceLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
     const benchmarkLabel = benchmarkDisplayLabel(benchmarkSourceLabel);
+    const benchmarkMedian = median(filteredRows.map((row)=>row.benchmark_value).filter((value)=>value!==null && Number.isFinite(Number(value))));
     if (benchmarkLabel) {
       els.trendBenchmarkNote.textContent = benchmarkDefinition(benchmarkSourceLabel);
       setHidden(els.trendBenchmarkNote, false);
@@ -767,7 +768,12 @@ async function renderTrend() {
         secondaryValue:row.benchmark_value === null ? null : Number(row.benchmark_value),
         weekend:grain === "day" && isWeekendDate(row.period_start),
         contextLabel:context ? notableContextLabel(context) : "",
-        notableExact:context?.delta === 0
+        notableExact:context?.delta === 0,
+        tooltipLines:[
+          `${formatPeriod(row,grain)}${context ? ` · ${notableContextLabel(context)}` : ""}`,
+          `WNMU-FM: ${formatMetric(row.station_value,row.unit)} · ${signedPercent(percentFromMedian(row.station_value,medianValue))} vs median`,
+          `${benchmarkLabel || "NPR benchmark"}: ${row.benchmark_value === null ? "—" : formatMetric(row.benchmark_value,row.unit)} · ${row.benchmark_value === null || benchmarkMedian === null ? "—" : signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median`
+        ]
       };
     });
     const chartPoints=zoomedTrendPoints(points);
@@ -903,9 +909,19 @@ function programLines(names) {
   return filtered.length ? filtered.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("") : '<span class="program-line muted">—</span>';
 }
 
+function typicalContextLine(context) {
+  if(!context?.label) return "";
+  return context.type === "program"
+    ? `Typical program: ${context.label}`
+    : context.type === "genre"
+      ? `Typical genre: ${context.label}`
+      : "";
+}
+
 function renderListeningHourContext(context) {
-  const { hours, entries, scheduleNote, periodStart, periodEnd, rangeMismatch = false } = context;
+  const { hours, entries, typicalEntries = entries, scheduleNote, periodStart, periodEnd, rangeMismatch = false } = context;
   const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
+  const typicalByHour=buildTypicalHourContext(typicalEntries);
   const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   const previous=state.scheduleProgram;
   els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
@@ -928,11 +944,23 @@ function renderListeningHourContext(context) {
     const dayTitles=[0,1,2,3,4,5,6].map((day)=>titlesForHour(entries,day,hour));
     const matchesWeekday=!state.scheduleProgram || [1,2,3,4,5].some((day)=>dayTitles[day].includes(state.scheduleProgram));
     const matchesWeekend=!state.scheduleProgram || [6,0].some((day)=>dayTitles[day].includes(state.scheduleProgram));
+    const weekdayTypical=typicalByHour.get(`weekday|${key}`);
+    const weekendTypical=typicalByHour.get(`weekend|${key}`);
     hourPoints.push({
       label:hourLabel(hour),
       shortLabel:hourLabel(hour).replace(":00",""),
       value:weekday ? Number(weekday.station_value) : null,
-      secondaryValue:weekend ? Number(weekend.station_value) : null
+      secondaryValue:weekend ? Number(weekend.station_value) : null,
+      primaryTooltipLines:[
+        hourLabel(hour),
+        `Weekday: ${weekday ? formatMetric(weekday.station_value,weekday.unit) : "—"}`,
+        typicalContextLine(weekdayTypical)
+      ].filter(Boolean),
+      secondaryTooltipLines:[
+        hourLabel(hour),
+        `Weekend: ${weekend ? formatMetric(weekend.station_value,weekend.unit) : "—"}`,
+        typicalContextLine(weekendTypical)
+      ].filter(Boolean)
     });
     if(matchesWeekday) weekdayRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekday ? escapeHtml(formatMetric(weekday.station_value,weekday.unit)) : "—"}</td><td>${programLines(dayTitles[1])}</td><td>${programLines(dayTitles[2])}</td><td>${programLines(dayTitles[3])}</td><td>${programLines(dayTitles[4])}</td><td>${programLines(dayTitles[5])}</td></tr>`);
     if(matchesWeekend) weekendRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekend ? escapeHtml(formatMetric(weekend.station_value,weekend.unit)) : "—"}</td><td>${programLines(dayTitles[6])}</td><td>${programLines(dayTitles[0])}</td></tr>`);
@@ -985,20 +1013,21 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId, { ra
   }
 
   let entries=[];
+  let typicalEntries=[];
   let scheduleNote="";
   try {
     const result=await fetchComposerSchedule(periodStart,periodEnd);
     if(requestId !== breakdownRequestId) return;
-    entries=result.entries;
+    typicalEntries=result.entries;
+    entries=result.sourceType==="recurrences" ? [] : result.entries;
     scheduleNote=result.sourceType==="recurrences"
-      ? "Exact dated schedule entries were unavailable; the program filter is hidden rather than using overlapping recurring definitions as if they were a historical log."
-      : "Schedule context comes from dated Composer episodes for this report period.";
-    if(result.sourceType==="recurrences") entries=[];
+      ? "Exact dated schedule entries were unavailable. Tooltip program context may use Composer recurring definitions only when one program or genre clearly dominates that hour; the dated schedule table and program filter remain hidden."
+      : "Schedule context comes from dated Composer episodes for this report period. Typical-program hints are shown only when one program or genre clearly dominates an hour.";
   } catch(error) {
     if(requestId !== breakdownRequestId) return;
     scheduleNote=`Schedule lookup unavailable: ${error.message}`;
   }
-  listeningHourContext={hours,entries,scheduleNote,periodStart,periodEnd,rangeMismatch};
+  listeningHourContext={hours,entries,typicalEntries,scheduleNote,periodStart,periodEnd,rangeMismatch};
   renderListeningHourContext(listeningHourContext);
 }
 
