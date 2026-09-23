@@ -59,3 +59,40 @@ test("typical hour context stays silent for a mixed slot", () => {
   const context=buildTypicalHourContext(entries);
   assert.equal(context.has("weekday|20"),false);
 });
+
+
+test("JSON-encoded Composer program metadata preserves genre context", () => {
+  const rows=normalizeComposerEpisodes([{
+    program:'{"name":"Jazz Night","genre":"Jazz"}',
+    airtime:[{date:"2026-09-21",start:"20:00",end:"21:00"}]
+  }]);
+  assert.deepEqual(rows,[{date:"2026-09-21",start:"20:00",end:"21:00",program:"Jazz Night",genre:"Jazz"}]);
+});
+
+test("overnight schedule hours belong to the following day and weekpart", () => {
+  const entries=[
+    {date:"2026-09-18",start:"23:00",end:"02:00",program:"Overnight"},
+    {date:"2026-09-25",start:"23:00",end:"02:00",program:"Overnight"},
+    {date:"2026-10-02",start:"23:00",end:"02:00",program:"Overnight"},
+    {date:"2026-10-09",start:"23:00",end:"02:00",program:"Overnight"}
+  ];
+  const schedule=buildHourSchedule(entries);
+  assert.match(schedule.get("weekday|23"),/Overnight/);
+  assert.match(schedule.get("weekend|00"),/Overnight/);
+  assert.doesNotMatch(schedule.get("weekday|00"),/Overnight/);
+
+  const typical=buildTypicalHourContext(entries);
+  assert.equal(typical.get("weekend|00")?.label,"Overnight");
+  assert.equal(typical.has("weekday|00"),false);
+});
+
+test("missing end times do not become all-day typical programs", () => {
+  const rows=normalizeComposerEpisodes([
+    {program:{name:"Unknown End"},airtime:[{date:"2026-09-21",start:"10:00"}]},
+    {program:{name:"Unknown End"},airtime:[{date:"2026-09-22",start:"10:00"}]},
+    {program:{name:"Unknown End"},airtime:[{date:"2026-09-23",start:"10:00"}]},
+    {program:{name:"Unknown End"},airtime:[{date:"2026-09-24",start:"10:00"}]}
+  ]);
+  const typical=buildTypicalHourContext(rows);
+  assert.equal(typical.size,0);
+});
