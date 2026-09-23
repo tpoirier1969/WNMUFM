@@ -204,6 +204,24 @@ export async function loadLongestBreakdown(metricKey, dimensionType, filterSigna
   return selectLongestBreakdownRows(usable).map((row) => withBreakdownStatus(row, context));
 }
 
+export async function loadBreakdownDimensionMetrics(metricKeys, dimensionType, dimensionValue, sourceImportId) {
+  if(!metricKeys?.length || !dimensionType || !dimensionValue || !sourceImportId) return [];
+  const params=new URLSearchParams({
+    select:"metric_key,metric_label,station_value,unit,period_start,period_end,grain,dimension_type,dimension_value,source_import_id",
+    metric_key:`in.(${metricKeys.join(",")})`,
+    dimension_type:`eq.${dimensionType}`,
+    dimension_value:`eq.${dimensionValue}`,
+    source_import_id:`eq.${sourceImportId}`,
+    filter_signature:`eq.${DEFAULT_FILTER_SIGNATURE}`,
+    limit:"100"
+  });
+  const [rows,context]=await Promise.all([
+    selectRows("wnmufm_analytics_observations",params.toString()),
+    loadAnalysisContext()
+  ]);
+  return rows.filter((row)=>breakdownRowIsUsable(row,context)).map((row)=>withBreakdownStatus(row,context));
+}
+
 export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
   const context = await loadAnalysisContext();
   const output = {};
