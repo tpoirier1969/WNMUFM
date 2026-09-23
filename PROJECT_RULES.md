@@ -58,3 +58,6 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 42. Whole-period GA4 reports such as Pages and Screens, Landing Page, Traffic Acquisition, Events, Country, and Tech reports are aggregate source-period facts. Show their actual source period and do not clip, rescale, or present them as daily Trend Explorer history. Date + Page Path or another explicitly dated export is required before content can be trended day by day.
 43. Large GA4 dimensions may be normalized to the highest-activity rows needed for interactive analysis only when the complete original CSV is archived losslessly. Do not imply that the normalized top-row subset is the complete source table.
 
+
+44. GA4 Free Form explorations that explicitly include a Date column are dated source facts and must normalize at day grain. Do not relabel them as whole-period aggregates.
+45. Dated page-path and landing-page GA4 exports may be very large. Preserve the complete original CSV losslessly, normalize only the highest-activity 100 page/landing values across the source period for interactive detail, and create sitewide daily totals only from additive measures such as Views or Sessions. Never manufacture daily active-user totals, engagement averages, or other non-additive metrics by summing dimension rows.
