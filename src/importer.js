@@ -96,13 +96,27 @@ function queryForArchive(importId) {
 }
 
 async function archiveSourceFile(importId, file) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  let bytes = new Uint8Array(await file.arrayBuffer());
+  let mimeType=file.type || "application/octet-stream";
+
+  // GA4 CSV exports can exceed the practical REST request size once bytea is
+  // hex-encoded. Compress the original CSV losslessly before archiving it.
+  if(file.name.toLowerCase().endsWith(".csv")) {
+    if (!window.JSZip) throw new Error("ZIP reader did not load.");
+    const zip=new window.JSZip();
+    zip.file(file.name,bytes);
+    bytes=await zip.generateAsync({type:"uint8array",compression:"DEFLATE",compressionOptions:{level:6}});
+    mimeType="application/zip";
+  } else if(file.name.toLowerCase().endsWith(".zip")) {
+    mimeType=file.type || "application/zip";
+  }
+
   let hex = "";
   for (const byte of bytes) hex += byte.toString(16).padStart(2, "0");
   await insertRows("wnmufm_analytics_source_archives", [{
     import_id: importId,
     source_bytes: `\\x${hex}`,
-    source_mime_type: file.type || (file.name.toLowerCase().endsWith(".csv") ? "text/csv" : "application/zip"),
+    source_mime_type: mimeType,
     source_size_bytes: bytes.length
   }]);
 }
