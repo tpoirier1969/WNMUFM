@@ -487,7 +487,7 @@ const EXPLORE_VIEWS = {
     title: "NPR website traffic sources",
     metric: "website.sessions_by_channel",
     dimension: "traffic_channel",
-    description: "NPR's website export shows broad traffic channels. GA4 acquisition views provide the more detailed website analysis when available."
+    description: "Shows how visitors reached wnmufm.org in NPR's website export. Direct / unknown referrer means NPR received no usable referring source; it can include typed or bookmarked visits, apps, privacy-stripped referrals, and untagged links. Search engines combines search traffic. The NPR export does not identify Google, Bing, or other engines separately; GA4 acquisition views provide more detailed website analysis when available."
   },
   "website-countries": {
     title: "NPR website countries",
