@@ -705,7 +705,7 @@ async function renderTrend() {
   els.trendBenchmarkNote.textContent = "";
   if (multiple) {
     els.trendDescription.textContent =
-      `Multiple metrics are indexed so each series' selected-range median = 100. Metric color identifies the metric; solid lines are WNMU-FM and dashed lines are the NPR benchmark. Hover a node for the actual values and percent above/below each series' median.` +
+      `Multiple metrics are indexed so each series' selected-range median = 100. Metric color identifies the metric; solid lines are WNMU-FM and dashed lines are the NPR benchmark where NPR supplied one. Hover a node for actual values and percent above/below each series' median.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
   } else {
     els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKeys[0]] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
@@ -891,8 +891,8 @@ async function renderTrend() {
             },
             benchmark:{
               label:item.benchmarkLabel || "NPR benchmark",
-              value:benchmarkValue===null || benchmarkValue===undefined ? "—" : formatMetric(benchmarkValue,item.unit),
-              delta:benchmarkValue===null || benchmarkValue===undefined || item.benchmarkMedian===null ? "—" : `${signedPercent(percentFromMedian(benchmarkValue,item.benchmarkMedian))} vs median`
+              value:benchmarkValue===null || benchmarkValue===undefined ? "Not supplied" : formatMetric(benchmarkValue,item.unit),
+              delta:benchmarkValue===null || benchmarkValue===undefined || item.benchmarkMedian===null ? "" : `${signedPercent(percentFromMedian(benchmarkValue,item.benchmarkMedian))} vs median`
             }
           };
         })
