@@ -906,6 +906,7 @@ async function renderTrend() {
     title:"Metric comparison",
     ariaLabel:`Indexed comparison of ${seriesDefs.map((item)=>item.label).join(", ")} by ${grain}`,
     grain,
+    benchmarkLabel:seriesDefs.find((item)=>item.benchmarkLabel)?.benchmarkLabel || "NPR benchmark",
     series:seriesDefs,
     zoomMode:state.trendZoomMode,
     onZoomSelect:setTrendZoom,
