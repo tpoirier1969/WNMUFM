@@ -42,6 +42,114 @@ function tooltipText(point, options, series = "primary") {
   return parts.join("\n");
 }
 
+function tooltipModelText(model) {
+  if(!model) return "";
+  const lines=[model.title || ""];
+  if(Array.isArray(model.rows)) {
+    model.rows.forEach((row)=>{
+      lines.push([row.label,row.value,row.delta].filter(Boolean).join(" · "));
+    });
+  }
+  if(Array.isArray(model.metrics)) {
+    model.metrics.forEach((metric)=>{
+      lines.push(metric.label || "");
+      if(metric.station) lines.push(["WNMU-FM",metric.station.value,metric.station.delta].filter(Boolean).join(" · "));
+      if(metric.benchmark) lines.push([metric.benchmark.label || "NPR benchmark",metric.benchmark.value,metric.benchmark.delta].filter(Boolean).join(" · "));
+    });
+  }
+  return lines.filter(Boolean).join("\n");
+}
+
+function chartTooltip(container) {
+  let tooltip=container.querySelector(":scope > .chart-tooltip");
+  if(tooltip) return tooltip;
+  tooltip=document.createElement("div");
+  tooltip.className="chart-tooltip";
+  tooltip.hidden=true;
+  tooltip.setAttribute("role","tooltip");
+  container.appendChild(tooltip);
+  return tooltip;
+}
+
+function populateTooltip(tooltip, model) {
+  tooltip.replaceChildren();
+  const title=document.createElement("div");
+  title.className="chart-tooltip-title";
+  title.textContent=model?.title || "";
+  tooltip.appendChild(title);
+
+  if(Array.isArray(model?.rows)) {
+    model.rows.forEach((row)=>{
+      const line=document.createElement("div");
+      line.className="chart-tooltip-row " + (row.tone ? " " + row.tone : "");
+      const label=document.createElement("strong");
+      label.textContent=row.label || "";
+      const value=document.createElement("span");
+      value.textContent=row.value || "—";
+      const delta=document.createElement("span");
+      delta.className="chart-tooltip-delta";
+      delta.textContent=row.delta || "";
+      line.append(label,value,delta);
+      tooltip.appendChild(line);
+    });
+  }
+
+  if(Array.isArray(model?.metrics)) {
+    const head=document.createElement("div");
+    head.className="chart-tooltip-metric-head";
+    ["Metric","WNMU-FM","NPR benchmark"].forEach((text)=>{
+      const cell=document.createElement("span");
+      cell.textContent=text;
+      head.appendChild(cell);
+    });
+    tooltip.appendChild(head);
+    model.metrics.forEach((metric)=>{
+      const row=document.createElement("div");
+      row.className="chart-tooltip-metric-row";
+      const name=document.createElement("strong");
+      name.textContent=metric.label || "";
+      const station=document.createElement("span");
+      station.textContent=[metric.station?.value,metric.station?.delta].filter(Boolean).join(" · ") || "—";
+      const benchmark=document.createElement("span");
+      benchmark.textContent=[metric.benchmark?.value,metric.benchmark?.delta].filter(Boolean).join(" · ") || "—";
+      benchmark.title=metric.benchmark?.label || "NPR benchmark";
+      row.append(name,station,benchmark);
+      tooltip.appendChild(row);
+    });
+  }
+}
+
+function positionTooltip(container, tooltip, event, target) {
+  const containerRect=container.getBoundingClientRect();
+  const targetRect=target.getBoundingClientRect();
+  const anchorX=event?.clientX ?? (targetRect.left+targetRect.width/2);
+  const anchorY=event?.clientY ?? targetRect.top;
+  tooltip.style.left=(anchorX-containerRect.left+14)+"px";
+  tooltip.style.top=(anchorY-containerRect.top+14)+"px";
+  const right=tooltip.offsetLeft+tooltip.offsetWidth;
+  const bottom=tooltip.offsetTop+tooltip.offsetHeight;
+  if(right>container.clientWidth-6) tooltip.style.left=Math.max(6,container.clientWidth-tooltip.offsetWidth-6)+"px";
+  if(bottom>container.clientHeight-6) tooltip.style.top=Math.max(6,anchorY-containerRect.top-tooltip.offsetHeight-14)+"px";
+}
+
+function bindChartTooltip(container, element, model) {
+  if(!model) return;
+  const tooltip=chartTooltip(container);
+  const text=tooltipModelText(model);
+  if(text) element.setAttribute("aria-label",text.replace(/\n/g,". "));
+  const show=(event)=>{
+    populateTooltip(tooltip,model);
+    tooltip.hidden=false;
+    positionTooltip(container,tooltip,event,element);
+  };
+  const hide=()=>{ tooltip.hidden=true; };
+  element.addEventListener("pointerenter",show);
+  element.addEventListener("pointermove",(event)=>positionTooltip(container,tooltip,event,element));
+  element.addEventListener("pointerleave",hide);
+  element.addEventListener("focus",show);
+  element.addEventListener("blur",hide);
+}
+
 function linePath(points, key, xFor, yFor) {
   let path = "";
   let drawing = false;
