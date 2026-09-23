@@ -5,10 +5,10 @@ import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
-import { buildHourSchedule, buildTypicalHourContext, hourLabel } from "./schedule.js";
+import { buildHourSchedule, buildTypicalHourContext, entryHourDayOffset, hourLabel } from "./schedule.js";
 import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
-import { buildViewSearch, parseViewState } from "./view-state.js";
+import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets } from "./range-presets.js";
 
 const els = Object.fromEntries([
@@ -23,7 +23,7 @@ const restoredUi = (() => {
   try { return JSON.parse(sessionStorage.getItem(UI_STATE_KEY) || "{}"); } catch { return {}; }
 })();
 const sharedView = parseViewState(window.location.search);
-const validDateKey = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "";
+const validDateKey = validIsoDate;
 const validChoice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
 const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
 const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
@@ -759,6 +759,7 @@ async function renderTrend() {
     const benchmarkSourceLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
     const benchmarkLabel = benchmarkDisplayLabel(benchmarkSourceLabel);
     const benchmarkMedian = median(filteredRows.map((row)=>row.benchmark_value).filter((value)=>value!==null && Number.isFinite(Number(value))));
+    const hasBenchmark = Boolean(benchmarkLabel && result.benchmarkValues.length);
     if (benchmarkLabel) {
       els.trendBenchmarkNote.textContent = benchmarkDefinition(benchmarkSourceLabel);
       setHidden(els.trendBenchmarkNote, false);
@@ -778,7 +779,7 @@ async function renderTrend() {
           title:`${formatPeriod(row,grain)}${context ? ` · ${notableContextLabel(context)}` : ""}`,
           rows:[
             { tone:"station", label:"WNMU-FM", value:formatMetric(row.station_value,row.unit), delta:`${signedPercent(percentFromMedian(row.station_value,medianValue))} vs median` },
-            { tone:"benchmark", label:benchmarkLabel || "NPR benchmark", value:row.benchmark_value === null ? "Not supplied" : formatMetric(row.benchmark_value,row.unit), delta:row.benchmark_value === null || benchmarkMedian === null ? "" : `${signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median` }
+            ...(hasBenchmark ? [{ tone:"benchmark", label:benchmarkLabel, value:row.benchmark_value === null ? "Not supplied" : formatMetric(row.benchmark_value,row.unit), delta:row.benchmark_value === null || benchmarkMedian === null ? "" : `${signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median` }] : [])
           ]
         }
       };
@@ -835,7 +836,8 @@ async function renderTrend() {
     unit:item.unit,
     median:item.median,
     benchmarkMedian:item.benchmarkMedian,
-    benchmarkLabel:item.benchmarkLabel
+    benchmarkLabel:item.benchmarkLabel,
+    hasBenchmark:Boolean(item.benchmarkLabel && item.benchmarkValues.length)
   }));
   const firstBenchmarkSource=comparable.find((item)=>item.benchmarkSourceLabel)?.benchmarkSourceLabel || "";
   if(firstBenchmarkSource) {
@@ -879,6 +881,7 @@ async function renderTrend() {
       actualBenchmarkValues,
       tooltipModel:{
         title:`${label}${context ? ` · ${notableContextLabel(context)}` : ""}`,
+        benchmarkLabel:seriesDefs.find((item)=>item.hasBenchmark)?.benchmarkLabel || "NPR benchmark",
         metrics:comparable.map((item)=>{
           const row=rowMaps.get(item.key).get(date);
           const stationValue=row?.station_value;
@@ -889,11 +892,11 @@ async function renderTrend() {
               value:stationValue===null || stationValue===undefined ? "—" : formatMetric(stationValue,item.unit),
               delta:stationValue===null || stationValue===undefined ? "—" : `${signedPercent(percentFromMedian(stationValue,item.median))} vs median`
             },
-            benchmark:{
-              label:item.benchmarkLabel || "NPR benchmark",
+            benchmark:item.benchmarkLabel && item.benchmarkValues.length ? {
+              label:item.benchmarkLabel,
               value:benchmarkValue===null || benchmarkValue===undefined ? "Not supplied" : formatMetric(benchmarkValue,item.unit),
               delta:benchmarkValue===null || benchmarkValue===undefined || item.benchmarkMedian===null ? "" : `${signedPercent(percentFromMedian(benchmarkValue,item.benchmarkMedian))} vs median`
-            }
+            } : null
           };
         })
       }
@@ -942,18 +945,14 @@ function exploreDimensionLabel(viewKey, value) {
   })[value] || value;
 }
 function titlesForHour(entries,day,hour) {
-  const startMinute = hour * 60;
-  const endMinute = startMinute + 60;
   const seen = new Set();
   return entries.filter((entry) => {
+    const dayOffset=entryHourDayOffset(entry,hour);
+    if(dayOffset===null) return false;
     const date = new Date(`${entry.date}T12:00:00Z`);
-    if (date.getUTCDay() !== day) return false;
-    const [sh,sm] = String(entry.start || "00:00").split(":").map(Number);
-    const [eh,em] = String(entry.end || entry.start || "00:00").split(":").map(Number);
-    const start = sh * 60 + sm;
-    let end = eh * 60 + em;
-    if (end <= start) end += 1440;
-    return start < endMinute && end > startMinute;
+    if(Number.isNaN(date.getTime())) return false;
+    date.setUTCDate(date.getUTCDate()+dayOffset);
+    return date.getUTCDay() === day;
   }).map((entry)=>entry.program).filter((name)=>name && !seen.has(name) && seen.add(name)).sort((a,b)=>a.localeCompare(b));
 }
 
@@ -1378,6 +1377,37 @@ function bindTabs() {
 }
 
 function bindEvents() {
+  const rangeInputs=[els.globalStartDate,els.globalEndDate];
+  const cancelRangeCommitTimer=()=>{
+    if(rangeBlurCommitTimer) {
+      window.clearTimeout(rangeBlurCommitTimer);
+      rangeBlurCommitTimer=null;
+    }
+  };
+  const storePendingRangeEdit=()=>{
+    cancelRangeCommitTimer();
+    if(!rangeEditPending) return false;
+    if(!validateAndStoreRange()) return null;
+    rangeEditPending=false;
+    return true;
+  };
+  const commitRangeEdit=()=>{
+    const stored=storePendingRangeEdit();
+    if(stored) void withBusy(()=>refreshAnalysisViews());
+    return stored;
+  };
+  const markRangeEdit=()=>{
+    rangeEditPending=true;
+  };
+  const commitRangeAfterLeavingControls=()=>{
+    cancelRangeCommitTimer();
+    rangeBlurCommitTimer=window.setTimeout(()=>{
+      rangeBlurCommitTimer=null;
+      if(rangeInputs.includes(document.activeElement)) return;
+      commitRangeEdit();
+    },0);
+  };
+
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     showLoginMessage("Signing in…", true);
@@ -1408,8 +1438,17 @@ function bindEvents() {
     await withTimeout(signOut().catch(() => null), 3000, "Sign out timed out.").catch(() => null);
   });
 
-  els.printButton.addEventListener("click", () => window.print());
-  els.refreshButton.addEventListener("click", refreshDashboard);
+  els.printButton.addEventListener("click", async () => {
+    const stored=storePendingRangeEdit();
+    if(stored===null) return;
+    if(stored) await withBusy(()=>refreshAnalysisViews());
+    window.print();
+  });
+  els.refreshButton.addEventListener("click", async () => {
+    const stored=storePendingRangeEdit();
+    if(stored===null) return;
+    await refreshDashboard();
+  });
   els.trendMetricButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-trend-metric]");
     if (!button) return;
@@ -1426,6 +1465,8 @@ function bindEvents() {
   els.trendQuickRangeButtons.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-range-preset]");
     if(!button) return;
+    cancelRangeCommitTimer();
+    rangeEditPending=false;
     state.startDate=button.dataset.start || state.availableRange.startDate;
     state.endDate=button.dataset.end || state.availableRange.endDate;
     state.rangeMode=button.dataset.rangePreset === "full" ? "all" : "custom";
@@ -1479,44 +1520,18 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>renderExplore());
   });
-  const rangeInputs=[els.globalStartDate,els.globalEndDate];
-  const commitRangeEdit=()=>{
-    if(rangeBlurCommitTimer) {
-      window.clearTimeout(rangeBlurCommitTimer);
-      rangeBlurCommitTimer=null;
-    }
-    if(!rangeEditPending) return;
-    if(!validateAndStoreRange()) return;
-    rangeEditPending=false;
-    void withBusy(()=>refreshAnalysisViews());
-  };
-  const markRangeEdit=()=>{
-    rangeEditPending=true;
-  };
-  const commitRangeAfterLeavingControls=()=>{
-    if(rangeBlurCommitTimer) window.clearTimeout(rangeBlurCommitTimer);
-    rangeBlurCommitTimer=window.setTimeout(()=>{
-      rangeBlurCommitTimer=null;
-      if(rangeInputs.includes(document.activeElement)) return;
-      commitRangeEdit();
-    },0);
-  };
   rangeInputs.forEach((input)=>{
     input.addEventListener("input",markRangeEdit);
     input.addEventListener("blur",commitRangeAfterLeavingControls);
     input.addEventListener("keydown",(event)=>{
       if(event.key !== "Enter") return;
       event.preventDefault();
-      rangeEditPending=true;
-      commitRangeEdit();
+      if(rangeEditPending) commitRangeEdit();
       input.blur();
     });
   });
   els.clearDateRange.addEventListener("click",()=>{
-    if(rangeBlurCommitTimer) {
-      window.clearTimeout(rangeBlurCommitTimer);
-      rangeBlurCommitTimer=null;
-    }
+    cancelRangeCommitTimer();
     rangeEditPending=false;
     state.rangeMode="all";
     clearTrendZoom();
@@ -1526,7 +1541,11 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>refreshAnalysisViews());
   });
-  els.copyViewButton.addEventListener("click", () => void copyCurrentViewLink());
+  els.copyViewButton.addEventListener("click", () => {
+    const stored=storePendingRangeEdit();
+    if(stored===null) return;
+    void copyCurrentViewLink();
+  });
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
   els.dropZone.addEventListener("keydown", (event) => {
