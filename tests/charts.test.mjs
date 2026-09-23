@@ -106,7 +106,7 @@ test("single-metric comparison tooltips are structured as date plus WNMU and NPR
   const charts = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
   assert.match(app,/tooltipModel:\{/);
   assert.match(app,/label:"WNMU-FM"/);
-  assert.match(app,/label:benchmarkLabel \|\| "NPR benchmark"/);
+  assert.match(app,/\.\.\.\(hasBenchmark \? \[\{ tone:"benchmark", label:benchmarkLabel/);
   assert.match(app,/vs median/);
   assert.match(charts,/className="chart-tooltip"/);
   assert.match(charts,/chart-tooltip-row/);
@@ -150,4 +150,24 @@ test("multi-metric hover uses a real HTML comparison tooltip", async () => {
   assert.match(app,/metrics:comparable\.map/);
   assert.match(chartSource,/chart-tooltip-metric-row/);
   assert.match(chartSource,/bindChartTooltip/);
+});
+
+
+test("multi-metric legend maps every visible station and benchmark series directly", async () => {
+  const fs = await import("node:fs/promises");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(chartSource,/const legendItems=series\.flatMap/);
+  assert.match(chartSource,/\$\{item\.label\} · WNMU-FM/);
+  assert.match(chartSource,/\$\{item\.label\} · \$\{item\.benchmarkLabel \|\| options\.benchmarkLabel \|\| "NPR benchmark"\}/);
+  assert.doesNotMatch(chartSource,/addStyleLegend\("chart-station-key"/);
+  assert.doesNotMatch(chartSource,/addStyleLegend\("chart-benchmark-key"/);
+});
+
+test("chart zoom provides an actual keyboard selection path", async () => {
+  const fs = await import("node:fs/promises");
+  const chartSource = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(chartSource,/event\.key==="ArrowLeft"/);
+  assert.match(chartSource,/event\.key==="ArrowRight"/);
+  assert.match(chartSource,/keyboardStartIndex/);
+  assert.match(chartSource,/onZoomSelect\(points\[startIndex\],points\[endIndex\]/);
 });
