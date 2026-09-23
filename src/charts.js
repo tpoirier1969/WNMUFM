@@ -136,7 +136,10 @@ function bindChartTooltip(container, element, model) {
   if(!model) return;
   const tooltip=chartTooltip(container);
   const text=tooltipModelText(model);
-  if(text) element.setAttribute("aria-label",text.replace(/\n/g,". "));
+  if(text) {
+    const existing=element.getAttribute("aria-label");
+    element.setAttribute("aria-label",(existing ? existing+". " : "")+text.replace(/\n/g,". "));
+  }
   const show=(event)=>{
     populateTooltip(tooltip,model);
     tooltip.hidden=false;
