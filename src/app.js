@@ -46,7 +46,6 @@ const state = {
   trendZoomStart:initialTrendZoomStart,
   trendZoomEnd:initialTrendZoomEnd,
   trendZoomMode:false,
-  rangeNoticeArmed:false,
   scheduleProgram:"",
   startDate:initialStartDate,
   endDate:initialEndDate,
@@ -544,7 +543,6 @@ function validateAndStoreRange() {
   state.startDate=startDate;
   state.endDate=endDate;
   state.rangeMode="custom";
-  state.rangeNoticeArmed=true;
   clearTrendZoom();
   renderTrendQuickRanges();
   persistUiState();
@@ -707,7 +705,7 @@ async function renderTrend() {
   els.trendBenchmarkNote.textContent = "";
   if (multiple) {
     els.trendDescription.textContent =
-      `Multiple metrics are indexed to each metric's selected-range median = 100, so listeners, hours, users and other unlike units can be compared without pretending they share one raw scale. Hover a node for the actual value. NPR benchmark lines are shown in single-metric view only.` +
+      `Multiple metrics are indexed so each series' selected-range median = 100. Metric color identifies the metric; solid lines are WNMU-FM and dashed lines are the NPR benchmark. Hover a node for the actual values and percent above/below each series' median.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
   } else {
     els.trendDescription.textContent = `${METRIC_DESCRIPTIONS[metricKeys[0]] || ""}${filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : ""}`;
@@ -719,14 +717,21 @@ async function renderTrend() {
       ? rows.filter((row)=>matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
       : rows;
     const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value!==null && Number.isFinite(Number(value)));
+    const benchmarkValues = filteredRows.map((row)=>row.benchmark_value).filter((value)=>value!==null && Number.isFinite(Number(value)));
     const medianValue = median(numericValues);
+    const benchmarkMedian = median(benchmarkValues);
     const latest = [...filteredRows].reverse().find((row)=>row.station_value!==null);
+    const benchmarkSourceLabel = filteredRows.find((row)=>row.benchmark_value !== null)?.benchmark_label || "";
     return {
       key:metricKey,
       label:trendMetricLabel(metricKey),
       rows:filteredRows,
       numericValues,
+      benchmarkValues,
       median:medianValue,
+      benchmarkMedian,
+      benchmarkLabel:benchmarkDisplayLabel(benchmarkSourceLabel),
+      benchmarkSourceLabel,
       latest,
       unit:filteredRows.find((row)=>row.station_value!==null)?.unit || ""
     };
@@ -769,11 +774,13 @@ async function renderTrend() {
         weekend:grain === "day" && isWeekendDate(row.period_start),
         contextLabel:context ? notableContextLabel(context) : "",
         notableExact:context?.delta === 0,
-        tooltipLines:[
-          `${formatPeriod(row,grain)}${context ? ` · ${notableContextLabel(context)}` : ""}`,
-          `WNMU-FM: ${formatMetric(row.station_value,row.unit)} · ${signedPercent(percentFromMedian(row.station_value,medianValue))} vs median`,
-          `${benchmarkLabel || "NPR benchmark"}: ${row.benchmark_value === null ? "—" : formatMetric(row.benchmark_value,row.unit)} · ${row.benchmark_value === null || benchmarkMedian === null ? "—" : signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median`
-        ]
+        tooltipModel:{
+          title:`${formatPeriod(row,grain)}${context ? ` · ${notableContextLabel(context)}` : ""}`,
+          rows:[
+            { tone:"station", label:"WNMU-FM", value:formatMetric(row.station_value,row.unit), delta:`${signedPercent(percentFromMedian(row.station_value,medianValue))} vs median` },
+            { tone:"benchmark", label:benchmarkLabel || "NPR benchmark", value:row.benchmark_value === null ? "—" : formatMetric(row.benchmark_value,row.unit), delta:row.benchmark_value === null || benchmarkMedian === null ? "—" : `${signedPercent(percentFromMedian(row.benchmark_value,benchmarkMedian))} vs median` }
+          ]
+        }
       };
     });
     const chartPoints=zoomedTrendPoints(points);
@@ -822,29 +829,74 @@ async function renderTrend() {
 
   const rowMaps=new Map(comparable.map((item)=>[item.key,new Map(item.rows.map((row)=>[row.period_start,row]))]));
   const dates=[...new Set(comparable.flatMap((item)=>item.rows.map((row)=>row.period_start)))].sort();
-  const seriesDefs=comparable.map((item)=>({key:item.key,label:item.label,unit:item.unit,median:item.median}));
+  const seriesDefs=comparable.map((item)=>({
+    key:item.key,
+    label:item.label,
+    unit:item.unit,
+    median:item.median,
+    benchmarkMedian:item.benchmarkMedian,
+    benchmarkLabel:item.benchmarkLabel
+  }));
+  const firstBenchmarkSource=comparable.find((item)=>item.benchmarkSourceLabel)?.benchmarkSourceLabel || "";
+  if(firstBenchmarkSource) {
+    els.trendBenchmarkNote.textContent=benchmarkDefinition(firstBenchmarkSource);
+    setHidden(els.trendBenchmarkNote,false);
+  }
   const points=dates.map((date)=>{
     const exemplar=comparable.map((item)=>rowMaps.get(item.key).get(date)).find(Boolean);
     const context=grain === "day" ? notableDateContext(date) : null;
     const values={};
+    const benchmarkValues={};
     const actualValues={};
+    const actualBenchmarkValues={};
     comparable.forEach((item)=>{
       const row=rowMaps.get(item.key).get(date);
       if(!row || row.station_value===null) return;
       const indexed=indexToMedian(row.station_value,item.median);
-      if(indexed===null) return;
-      values[item.key]=indexed;
-      actualValues[item.key]=Number(row.station_value);
+      if(indexed!==null) {
+        values[item.key]=indexed;
+        actualValues[item.key]=Number(row.station_value);
+      }
+      if(row.benchmark_value!==null && item.benchmarkMedian!==null && Number(item.benchmarkMedian)!==0) {
+        const benchmarkIndexed=indexToMedian(row.benchmark_value,item.benchmarkMedian);
+        if(benchmarkIndexed!==null) {
+          benchmarkValues[item.key]=benchmarkIndexed;
+          actualBenchmarkValues[item.key]=Number(row.benchmark_value);
+        }
+      }
     });
+    const label=exemplar ? formatPeriod(exemplar,grain) : formatDayDate(date);
     return {
       date,
-      label:exemplar ? formatPeriod(exemplar,grain) : formatDayDate(date),
+      label,
       shortLabel:grain === "day" ? shortDayLabel(date) : grain === "week" ? `Wk ${shortDayLabel(date)}` : shortMonthLabel(date),
       weekend:grain === "day" && isWeekendDate(date),
       contextLabel:context ? notableContextLabel(context) : "",
       notableExact:context?.delta === 0,
       values,
-      actualValues
+      benchmarkValues,
+      actualValues,
+      actualBenchmarkValues,
+      tooltipModel:{
+        title:`${label}${context ? ` · ${notableContextLabel(context)}` : ""}`,
+        metrics:comparable.map((item)=>{
+          const row=rowMaps.get(item.key).get(date);
+          const stationValue=row?.station_value;
+          const benchmarkValue=row?.benchmark_value;
+          return {
+            label:item.label,
+            station:{
+              value:stationValue===null || stationValue===undefined ? "—" : formatMetric(stationValue,item.unit),
+              delta:stationValue===null || stationValue===undefined ? "—" : `${signedPercent(percentFromMedian(stationValue,item.median))} vs median`
+            },
+            benchmark:{
+              label:item.benchmarkLabel || "NPR benchmark",
+              value:benchmarkValue===null || benchmarkValue===undefined ? "—" : formatMetric(benchmarkValue,item.unit),
+              delta:benchmarkValue===null || benchmarkValue===undefined || item.benchmarkMedian===null ? "—" : `${signedPercent(percentFromMedian(benchmarkValue,item.benchmarkMedian))} vs median`
+            }
+          };
+        })
+      }
     };
   }).filter((point)=>Object.keys(point.values).length);
 
@@ -930,7 +982,7 @@ function renderListeningHourContext(context) {
   els.listeningHourPanel.classList.remove("compact-empty");
 
   const rangeWarning = rangeMismatch
-    ? `<span class="source-range-warning"><strong>Source range differs from Analysis Range.</strong> NPR supplies this hour-of-day profile only as a whole-report aggregate, so it is shown intact rather than clipped or estimated.</span> `
+    ? `<span class="source-range-warning" role="status"><strong>Source range notice</strong><span>Listening by Hour uses <b>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</b>; your Analysis Range is <b>${escapeHtml(formatDayDate(state.startDate))} – ${escapeHtml(formatDayDate(state.endDate))}</b>. NPR provides this profile only as a whole-report aggregate, so this graph remains on the NPR source period.</span></span> `
     : "";
   els.nprHourDescription.innerHTML=`${rangeWarning}NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
 
@@ -951,16 +1003,18 @@ function renderListeningHourContext(context) {
       shortLabel:hourLabel(hour).replace(":00",""),
       value:weekday ? Number(weekday.station_value) : null,
       secondaryValue:weekend ? Number(weekend.station_value) : null,
-      primaryTooltipLines:[
-        hourLabel(hour),
-        `Weekday: ${weekday ? formatMetric(weekday.station_value,weekday.unit) : "—"}`,
-        typicalContextLine(weekdayTypical)
-      ].filter(Boolean),
-      secondaryTooltipLines:[
-        hourLabel(hour),
-        `Weekend: ${weekend ? formatMetric(weekend.station_value,weekend.unit) : "—"}`,
-        typicalContextLine(weekendTypical)
-      ].filter(Boolean)
+      primaryTooltipModel:{
+        title:hourLabel(hour),
+        rows:[
+          { tone:"station", label:"Weekday", value:weekday ? formatMetric(weekday.station_value,weekday.unit) : "—", delta:typicalContextLine(weekdayTypical) }
+        ]
+      },
+      secondaryTooltipModel:{
+        title:hourLabel(hour),
+        rows:[
+          { tone:"benchmark", label:"Weekend", value:weekend ? formatMetric(weekend.station_value,weekend.unit) : "—", delta:typicalContextLine(weekendTypical) }
+        ]
+      }
     });
     if(matchesWeekday) weekdayRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekday ? escapeHtml(formatMetric(weekday.station_value,weekday.unit)) : "—"}</td><td>${programLines(dayTitles[1])}</td><td>${programLines(dayTitles[2])}</td><td>${programLines(dayTitles[3])}</td><td>${programLines(dayTitles[4])}</td><td>${programLines(dayTitles[5])}</td></tr>`);
     if(matchesWeekend) weekendRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekend ? escapeHtml(formatMetric(weekend.station_value,weekend.unit)) : "—"}</td><td>${programLines(dayTitles[6])}</td><td>${programLines(dayTitles[0])}</td></tr>`);
@@ -999,18 +1053,6 @@ async function renderListeningByHour(hours, requestId = breakdownRequestId, { ra
   setHidden(els.nprHourChart,false);
   const periodStart=hours[0].period_start;
   const periodEnd=hours[0].period_end;
-
-  if(rangeMismatch && state.rangeNoticeArmed) {
-    const noticeKey=`${state.startDate}|${state.endDate}|${periodStart}|${periodEnd}`;
-    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
-      listeningHourNoticeKey=noticeKey;
-      openDetailDialog(
-        "Listening by Hour uses a different source period",
-        `<p>The selected Analysis Range is <strong>${escapeHtml(formatDayDate(state.startDate))} – ${escapeHtml(formatDayDate(state.endDate))}</strong>, but NPR's available hour-of-day profile covers <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>.</p><p>This profile is a whole-report aggregate. It cannot be honestly trimmed to the selected dates, so the app is showing the complete source profile instead of estimating or leaving the panel blank.</p>`,
-        "Source range notice"
-      );
-    }
-  }
 
   let entries=[];
   let typicalEntries=[];
@@ -1386,7 +1428,6 @@ function bindEvents() {
     state.startDate=button.dataset.start || state.availableRange.startDate;
     state.endDate=button.dataset.end || state.availableRange.endDate;
     state.rangeMode=button.dataset.rangePreset === "full" ? "all" : "custom";
-    state.rangeNoticeArmed=true;
     clearTrendZoom();
     applyRangeControls();
     persistUiState();
@@ -1477,7 +1518,6 @@ function bindEvents() {
     }
     rangeEditPending=false;
     state.rangeMode="all";
-    state.rangeNoticeArmed=true;
     clearTrendZoom();
     state.startDate=state.availableRange.startDate;
     state.endDate=state.availableRange.endDate;
