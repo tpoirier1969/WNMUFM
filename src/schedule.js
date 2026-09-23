@@ -251,7 +251,9 @@ export function buildTypicalHourContext(entries, { titleThreshold = 0.7, genreTh
       });
       if(matches.length < minimumSamples) continue;
 
-      const titles=matches.map((entry)=>String(entry.program || "").trim()).filter(Boolean);
+      const titles=matches
+        .map((entry)=>String(entry.program || "").trim())
+        .filter((value)=>value && value.toLowerCase() !== "unknown program");
       const title=dominantLabel(titles,matches.length,titleThreshold);
       if(title) {
         result.set(`${weekpart}|${String(hour).padStart(2,"0")}`,{
