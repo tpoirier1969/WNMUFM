@@ -1,3 +1,11 @@
+export function validIsoDate(value) {
+  const text=String(value || "").trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(text)) return "";
+  const date=new Date(`${text}T12:00:00Z`);
+  if(Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0,10) === text ? text : "";
+}
+
 const PARAMS = Object.freeze({
   activeTab:"tab",
   startDate:"start",
@@ -37,8 +45,9 @@ export function parseViewState(search = "") {
 
 export function buildViewSearch(view = {}) {
   const params = new URLSearchParams();
-  const set = (key, value) => {
-    if (value === undefined || value === null || value === "") return;
+  const set = (key, value, { allowEmpty = false } = {}) => {
+    if (value === undefined || value === null) return;
+    if (value === "" && !allowEmpty) return;
     params.set(PARAMS[key], String(value));
   };
 
@@ -52,9 +61,9 @@ export function buildViewSearch(view = {}) {
   set("trendGrain", view.trendGrain);
   set("trendWeekpart", view.trendWeekpart);
   set("trendNotable", view.trendNotable);
-  set("trendProgram", view.trendProgram);
-  set("trendZoomStart", view.trendZoomStart);
-  set("trendZoomEnd", view.trendZoomEnd);
+  set("trendProgram", view.trendProgram, { allowEmpty:true });
+  set("trendZoomStart", view.trendZoomStart, { allowEmpty:true });
+  set("trendZoomEnd", view.trendZoomEnd, { allowEmpty:true });
   set("exploreView", view.exploreView);
 
   const text = params.toString();

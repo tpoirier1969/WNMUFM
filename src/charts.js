@@ -97,7 +97,7 @@ function populateTooltip(tooltip, model) {
   if(Array.isArray(model?.metrics)) {
     const head=document.createElement("div");
     head.className="chart-tooltip-metric-head";
-    ["Metric","WNMU-FM","NPR benchmark"].forEach((text)=>{
+    ["Metric","WNMU-FM",model.benchmarkLabel || "NPR benchmark"].forEach((text)=>{
       const cell=document.createElement("span");
       cell.textContent=text;
       head.appendChild(cell);
@@ -253,21 +253,40 @@ function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeigh
     class:"chart-zoom-hitbox",
     tabindex:"0",
     role:"button",
-    "aria-label":"Drag horizontally across the chart to zoom into a date range"
+    "aria-label":"Drag horizontally across the chart to zoom into a date range, or use Left and Right arrows and Enter."
   });
 
   let startX = null;
   let pointerId = null;
+  let keyboardStartIndex = null;
+  let keyboardEndIndex = 0;
   const clampX = (value) => Math.max(margin.left,Math.min(width-margin.right,value));
   const svgX = (event) => {
     const bounds=svg.getBoundingClientRect();
     if(!bounds.width) return margin.left;
     return clampX((event.clientX-bounds.left)*(width/bounds.width));
   };
+  const xForIndex=(index)=>margin.left+((index/(points.length-1))*plotWidth);
+  const showKeyboardSelection=()=>{
+    const endX=xForIndex(keyboardEndIndex);
+    if(keyboardStartIndex===null) {
+      selection.setAttribute("x",String(Math.max(margin.left,endX-1)));
+      selection.setAttribute("width","2");
+      hitbox.setAttribute("aria-label",`Zoom cursor at ${points[keyboardEndIndex]?.label || "selected point"}. Use Left and Right arrows, then Enter to set the start of the zoom range.`);
+      return;
+    }
+    const anchorX=xForIndex(keyboardStartIndex);
+    selection.setAttribute("x",String(Math.min(anchorX,endX)));
+    selection.setAttribute("width",String(Math.max(2,Math.abs(endX-anchorX))));
+    hitbox.setAttribute("aria-label",`Zoom start is ${points[keyboardStartIndex]?.label || "selected point"}; current end is ${points[keyboardEndIndex]?.label || "selected point"}. Use Left and Right arrows and press Enter to apply.`);
+  };
   const resetSelection = () => {
     startX=null;
     pointerId=null;
+    keyboardStartIndex=null;
+    keyboardEndIndex=0;
     selection.setAttribute("width","0");
+    hitbox.setAttribute("aria-label","Drag horizontally across the chart to zoom into a date range, or use Left and Right arrows and Enter.");
   };
 
   hitbox.addEventListener("pointerdown",(event)=>{
@@ -302,8 +321,43 @@ function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeigh
     onZoomSelect(points[startIndex],points[endIndex],startIndex,endIndex);
   });
   hitbox.addEventListener("pointercancel",resetSelection);
+  hitbox.addEventListener("focus",()=>{
+    if(startX===null) showKeyboardSelection();
+  });
+  hitbox.addEventListener("blur",()=>{
+    if(startX===null) resetSelection();
+  });
   hitbox.addEventListener("keydown",(event)=>{
-    if(event.key==="Escape") resetSelection();
+    if(event.key==="Escape") {
+      event.preventDefault();
+      resetSelection();
+      return;
+    }
+    if(event.key==="ArrowLeft" || event.key==="ArrowRight" || event.key==="Home" || event.key==="End") {
+      event.preventDefault();
+      if(event.key==="Home") keyboardEndIndex=0;
+      else if(event.key==="End") keyboardEndIndex=points.length-1;
+      else {
+        const delta=event.key==="ArrowLeft" ? -1 : 1;
+        keyboardEndIndex=Math.max(0,Math.min(points.length-1,keyboardEndIndex+delta));
+      }
+      showKeyboardSelection();
+      return;
+    }
+    if(event.key==="Enter" || event.key===" ") {
+      event.preventDefault();
+      if(keyboardStartIndex===null) {
+        keyboardStartIndex=keyboardEndIndex;
+        showKeyboardSelection();
+        return;
+      }
+      const startIndex=Math.min(keyboardStartIndex,keyboardEndIndex);
+      const endIndex=Math.max(keyboardStartIndex,keyboardEndIndex);
+      if(endIndex>startIndex) {
+        onZoomSelect(points[startIndex],points[endIndex],startIndex,endIndex);
+        resetSelection();
+      }
+    }
   });
 
   svg.appendChild(selection);
@@ -455,18 +509,32 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
   const right = 58;
   const bottom = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0)) ? 92 : 58;
   const labelAngle = Number(options.labelAngle ?? (points.some((point)=>point.date) ? -80 : 0));
+  const legendItems=series.flatMap((item,seriesIndex)=>{
+    const stationLabel=`${item.label} · WNMU-FM`;
+    const items=[{item,seriesIndex,benchmark:false,label:stationLabel}];
+    const hasBenchmark=points.some((point)=>finiteNumber(point.benchmarkValues?.[item.key]) !== null);
+    if(hasBenchmark) {
+      items.push({
+        item,
+        seriesIndex,
+        benchmark:true,
+        label:`${item.label} · ${item.benchmarkLabel || options.benchmarkLabel || "NPR benchmark"}`
+      });
+    }
+    return items;
+  });
   const legendAvailable = width-left-right;
   let legendRows=1;
   let legendUsed=0;
-  series.forEach((item)=>{
-    const estimated=Math.max(126,String(item.label).length*7+54);
+  legendItems.forEach((legendItem)=>{
+    const estimated=Math.max(150,String(legendItem.label).length*7+54);
     if(legendUsed && legendUsed+estimated>legendAvailable) {
       legendRows+=1;
       legendUsed=0;
     }
     legendUsed+=estimated;
   });
-  const metricLegendStart=42;
+  const metricLegendStart=20;
   const indexNoteY=metricLegendStart+(legendRows-1)*18+24;
   const margin = { top:indexNoteY+12, right, bottom, left };
   const plotHeight = 264;
@@ -538,31 +606,24 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
   indexNote.textContent="Index scale: 100 = each series' selected-range median";
   svg.appendChild(indexNote);
 
-  let styleX=margin.left;
-  const addStyleLegend=(className,labelText)=>{
-    svg.appendChild(svgElement("line",{x1:styleX,x2:styleX+24,y1:18,y2:18,class:className}));
-    const label=svgElement("text",{x:styleX+30,y:22,class:"chart-legend-label"});
-    label.textContent=labelText;
-    svg.appendChild(label);
-    styleX+=Math.max(150,labelText.length*7+62);
-  };
-  addStyleLegend("chart-station-key","WNMU-FM");
-  addStyleLegend("chart-benchmark-key",options.benchmarkLabel || "NPR benchmark");
-
   let legendX=margin.left;
   let legendY=metricLegendStart;
-  series.forEach((item,seriesIndex)=>{
-    const estimated=Math.max(126,String(item.label).length*7+54);
+  legendItems.forEach((legendItem)=>{
+    const estimated=Math.max(150,String(legendItem.label).length*7+54);
     if(legendX>margin.left && legendX+estimated>width-margin.right) {
       legendX=margin.left;
       legendY+=18;
     }
-    const metricClass="chart-metric-line chart-series-" + (seriesIndex % 8);
+    const metricClass="chart-metric-line chart-series-" + (legendItem.seriesIndex % 8) + (legendItem.benchmark ? " chart-benchmark-line" : "");
     svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+22,y1:legendY,y2:legendY,class:metricClass}));
     const legend=svgElement("text",{x:legendX+28,y:legendY+4,class:"chart-legend-label"});
-    legend.textContent=item.label;
+    legend.textContent=legendItem.label;
     svg.appendChild(legend);
     legendX+=estimated;
+  });
+
+  series.forEach((item,seriesIndex)=>{
+    const metricClass="chart-metric-line chart-series-" + (seriesIndex % 8);
 
     const pathFor=(bucket)=>{
       let path="";
