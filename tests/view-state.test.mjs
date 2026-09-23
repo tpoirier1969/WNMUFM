@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildViewSearch, parseViewState } from "../src/view-state.js";
+import { buildViewSearch, parseViewState, validIsoDate } from "../src/view-state.js";
 
 test("shareable view state round-trips through the query string", () => {
   const original = {
@@ -81,4 +81,38 @@ test("source-range mismatch stays inline and never opens the detail modal", asyn
   assert.match(app,/this graph remains on the NPR source period/);
   assert.doesNotMatch(app,/rangeNoticeArmed/);
   assert.doesNotMatch(app,/Listening by Hour uses a different source period/);
+});
+
+
+test("shared links explicitly clear stale program and zoom state", () => {
+  const search=buildViewSearch({
+    activeTab:"overview",
+    trendProgram:"",
+    trendZoomStart:"",
+    trendZoomEnd:""
+  });
+  assert.match(search,/program=/);
+  assert.match(search,/zoomStart=/);
+  assert.match(search,/zoomEnd=/);
+  const parsed=parseViewState(search);
+  assert.equal(parsed.trendProgram,"");
+  assert.equal(parsed.trendZoomStart,"");
+  assert.equal(parsed.trendZoomEnd,"");
+});
+
+test("shared date validation rejects impossible calendar dates", () => {
+  assert.equal(validIsoDate("2026-02-28"),"2026-02-28");
+  assert.equal(validIsoDate("2026-02-31"),"");
+  assert.equal(validIsoDate("2026-99-15"),"");
+  assert.equal(validIsoDate("not-a-date"),"");
+});
+
+test("range presets and toolbar actions cancel or flush pending manual edits", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/cancelRangeCommitTimer\(\);\s*rangeEditPending=false;\s*state\.startDate=button\.dataset\.start/s);
+  assert.match(app,/printButton\.addEventListener\("click", async \(\) => \{\s*const stored=storePendingRangeEdit\(\)/s);
+  assert.match(app,/copyViewButton\.addEventListener\("click", \(\) => \{\s*const stored=storePendingRangeEdit\(\)/s);
+  assert.match(app,/if\(rangeEditPending\) commitRangeEdit\(\);/);
+  assert.doesNotMatch(app,/event\.preventDefault\(\);\s*rangeEditPending=true;\s*commitRangeEdit\(\);/s);
 });
