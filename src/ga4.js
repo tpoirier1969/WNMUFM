@@ -1,7 +1,7 @@
 import { cleanNumber, normalizeLineEndings, parseCsv } from "./csv.js";
 
 export const GA4_REPORT_TYPE = "ga4_website";
-export const GA4_PARSER_VERSION = "ga4-export-parser-1";
+export const GA4_PARSER_VERSION = "ga4-export-parser-2";
 
 const NORMALIZED_LIMITS = Object.freeze({
   page_path: 1000,
@@ -22,8 +22,11 @@ function reportTitleFromComments(lines) {
     .filter((line)=>line.startsWith("#"))
     .map((line)=>line.replace(/^#\s?/,"").trim())
     .filter(Boolean);
+  const freeForm=comments.find((line)=>/^Free form(?:-|$)/i.test(line));
+  if(freeForm) return freeForm;
   return comments.find((line)=>
     !/^-+$/.test(line) &&
+    !/^\d{8}-\d{8}$/.test(line) &&
     !/^(Account|Property|Start date|End date|All Users)\s*:/i.test(line) &&
     !/^All Users$/i.test(line)
   ) || "";
@@ -34,8 +37,10 @@ export function parseGa4Metadata(text) {
   const lines=normalized.split("\n");
   const startLine=lines.find((line)=>/^#\s*Start date:/i.test(line)) || "";
   const endLine=lines.find((line)=>/^#\s*End date:/i.test(line)) || "";
-  const start=compactDate(startLine.split(":").slice(1).join(":").trim());
-  const end=compactDate(endLine.split(":").slice(1).join(":").trim());
+  const compactRangeLine=lines.find((line)=>/^#\s*\d{8}-\d{8}\s*$/.test(line)) || "";
+  const compactRange=compactRangeLine.replace(/^#\s*/,"").trim().split("-");
+  const start=compactDate(startLine.split(":").slice(1).join(":").trim()) || compactDate(compactRange[0]);
+  const end=compactDate(endLine.split(":").slice(1).join(":").trim()) || compactDate(compactRange[1]);
   return {
     title:reportTitleFromComments(lines),
     start,
@@ -90,6 +95,16 @@ export function detectGa4Report(title) {
   return "unknown";
 }
 
+export function detectGa4FreeFormReport(sections) {
+  const section=(sections || []).find((item)=>item.headers.includes("Date"));
+  if(!section) return "unknown";
+  if(section.headers.includes("Page path and screen class")) return "daily_pages";
+  if(section.headers.includes("Landing page")) return "daily_landing";
+  if(section.headers.includes("Session primary channel group (Default Channel Group)")) return "daily_session_channel";
+  if(section.headers.includes("Event name")) return "daily_events";
+  return "unknown";
+}
+
 function sourceSection(sections, firstHeader) {
   return sections.find((section)=>section.headers[0] === firstHeader) || null;
 }
@@ -135,6 +150,144 @@ function observationBase(context, metricKey, metricLabel, unit, dimensionType, d
     source_row:sourceRow,
     quality_flags:["ga4_aggregate_source_period"]
   };
+}
+
+
+function dailyObservationBase(context, metricKey, metricLabel, unit, dimensionType, dimensionValue, stationValue, sourceRow, date) {
+  return {
+    station_key:context.stationKey,
+    report_type:GA4_REPORT_TYPE,
+    grain:"day",
+    period_start:date,
+    period_end:date,
+    metric_key:metricKey,
+    metric_label:metricLabel,
+    unit,
+    dimension_type:dimensionType,
+    dimension_value:String(dimensionValue ?? "").trim(),
+    filter_signature:"{}",
+    station_value:stationValue,
+    benchmark_value:null,
+    benchmark_label:null,
+    text_value:null,
+    source_import_id:null,
+    source_csv:context.sourceName,
+    source_row:sourceRow,
+    quality_flags:["ga4_daily_exploration"]
+  };
+}
+
+const DAILY_FREE_FORM_SPECS=Object.freeze({
+  daily_pages:{
+    dimensionColumn:"Page path and screen class",
+    dimensionType:"ga4_page_path",
+    rankColumn:"Views",
+    limit:100,
+    metrics:[
+      {key:"ga4.page_views",label:"GA4 page views",column:"Views",unit:"views"},
+      {key:"ga4.page_active_users",label:"GA4 page active users",column:"Active users",unit:"users"},
+      {key:"ga4.page_views_per_user",label:"GA4 page views per active user",column:"Views per active user",unit:"views_per_user"},
+      {key:"ga4.page_engagement_seconds_per_session",label:"GA4 page engagement time per session",column:"Average engagement time per session",unit:"seconds"},
+      {key:"ga4.page_event_count",label:"GA4 page event count",column:"Event count",unit:"events"}
+    ],
+    totals:[{key:"ga4.site_page_views",label:"GA4 site page views",column:"Views",unit:"views"}]
+  },
+  daily_landing:{
+    dimensionColumn:"Landing page",
+    dimensionType:"ga4_landing_page",
+    rankColumn:"Sessions",
+    limit:100,
+    metrics:[
+      {key:"ga4.landing_sessions",label:"GA4 landing-page sessions",column:"Sessions",unit:"sessions"},
+      {key:"ga4.landing_active_users",label:"GA4 landing-page active users",column:"Active users",unit:"users"},
+      {key:"ga4.landing_new_users",label:"GA4 landing-page new users",column:"New users",unit:"users"},
+      {key:"ga4.landing_engagement_seconds_per_session",label:"GA4 landing-page engagement time per session",column:"Average engagement time per session",unit:"seconds"}
+    ],
+    totals:[{key:"ga4.site_sessions",label:"GA4 site sessions",column:"Sessions",unit:"sessions"}]
+  },
+  daily_session_channel:{
+    dimensionColumn:"Session primary channel group (Default Channel Group)",
+    dimensionType:"ga4_session_channel",
+    rankColumn:"Sessions",
+    limit:2000,
+    metrics:[
+      {key:"ga4.sessions_by_channel",label:"GA4 sessions by channel",column:"Sessions",unit:"sessions"},
+      {key:"ga4.engaged_sessions_by_channel",label:"GA4 engaged sessions by channel",column:"Engaged sessions",unit:"sessions"},
+      {key:"ga4.engagement_rate_by_channel",label:"GA4 engagement rate by channel",column:"Engagement rate",unit:"percent",transform:ratePercent},
+      {key:"ga4.engagement_seconds_per_session_by_channel",label:"GA4 engagement time per session by channel",column:"Average engagement time per session",unit:"seconds"},
+      {key:"ga4.channel_event_count",label:"GA4 event count by session channel",column:"Event count",unit:"events"},
+      {key:"ga4.channel_active_users",label:"GA4 active users by session channel",column:"Active users",unit:"users"},
+      {key:"ga4.channel_event_count_per_user",label:"GA4 events per active user by session channel",column:"Event count per active user",unit:"events_per_user"}
+    ]
+  },
+  daily_events:{
+    dimensionColumn:"Event name",
+    dimensionType:"ga4_event",
+    rankColumn:"Event count",
+    limit:2000,
+    metrics:[
+      {key:"ga4.event_count",label:"GA4 event count",column:"Event count",unit:"events"},
+      {key:"ga4.event_users",label:"GA4 event total users",column:"Total users",unit:"users"},
+      {key:"ga4.event_active_users",label:"GA4 event active users",column:"Active users",unit:"users"},
+      {key:"ga4.event_count_per_user",label:"GA4 events per active user",column:"Event count per active user",unit:"events_per_user"}
+    ]
+  }
+});
+
+function normalizeDailyFreeForm(output, sections, context, reportKey) {
+  const spec=DAILY_FREE_FORM_SPECS[reportKey];
+  const section=(sections || []).find((item)=>item.headers.includes("Date") && item.headers.includes(spec?.dimensionColumn));
+  if(!spec || !section) return;
+
+  const usable=(section.rows || []).map((row,index)=>({
+    row,
+    sourceRow:index+2,
+    date:compactDate(row.Date),
+    dimension:String(row[spec.dimensionColumn] ?? "").trim()
+  })).filter((item)=>item.date && item.dimension);
+
+  const rankColumn=section.headers.includes(spec.rankColumn)
+    ? spec.rankColumn
+    : spec.metrics.find((metric)=>section.headers.includes(metric.column))?.column;
+  const totalsByDimension=new Map();
+  usable.forEach((item)=>{
+    const value=rankColumn ? numeric(item.row[rankColumn]) : 0;
+    totalsByDimension.set(item.dimension,(totalsByDimension.get(item.dimension) || 0) + Number(value || 0));
+  });
+  const allowed=new Set([...totalsByDimension.entries()]
+    .sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))
+    .slice(0,spec.limit)
+    .map(([dimension])=>dimension));
+
+  usable.forEach((item)=>{
+    if(!allowed.has(item.dimension)) return;
+    spec.metrics.forEach((metric)=>{
+      if(!section.headers.includes(metric.column)) return;
+      const raw=item.row[metric.column];
+      const value=metric.transform ? metric.transform(raw) : numeric(raw);
+      if(value===null || value===undefined) return;
+      output.push(dailyObservationBase(
+        context,metric.key,metric.label,metric.unit || "count",
+        spec.dimensionType,item.dimension,value,item.sourceRow,item.date
+      ));
+    });
+  });
+
+  (spec.totals || []).forEach((metric)=>{
+    if(!section.headers.includes(metric.column)) return;
+    const byDate=new Map();
+    usable.forEach((item)=>{
+      const value=numeric(item.row[metric.column]);
+      if(value===null) return;
+      byDate.set(item.date,(byDate.get(item.date) || 0)+Number(value));
+    });
+    [...byDate.entries()].sort(([a],[b])=>a.localeCompare(b)).forEach(([date,value])=>{
+      output.push(dailyObservationBase(
+        context,metric.key,metric.label,metric.unit || "count",
+        "","",value,1,date
+      ));
+    });
+  });
 }
 
 function pushDimensionMetrics(output, rows, context, spec) {
@@ -349,7 +502,11 @@ const REPORT_LABELS=Object.freeze({
   lead_disqualification:"GA4 Lead disqualification",
   user_acquisition_cohorts:"GA4 User acquisition cohorts",
   traffic_overview:"GA4 Traffic overview",
-  engagement_overview:"GA4 Engagement & retention overview"
+  engagement_overview:"GA4 Engagement & retention overview",
+  daily_pages:"GA4 Daily page paths",
+  daily_landing:"GA4 Daily landing pages",
+  daily_session_channel:"GA4 Daily session channels",
+  daily_events:"GA4 Daily events"
 });
 
 export function ga4ReportLabel(reportKey, fallbackTitle="") {
@@ -358,11 +515,11 @@ export function ga4ReportLabel(reportKey, fallbackTitle="") {
 
 export function inspectGa4CsvText(text, { fileName="", stationKey="wnmu_fm" } = {}) {
   const metadata=parseGa4Metadata(text);
-  const reportKey=detectGa4Report(metadata.title);
+  const sections=parseGa4Sections(text);
+  const standardReportKey=detectGa4Report(metadata.title);
+  const reportKey=standardReportKey === "unknown" ? detectGa4FreeFormReport(sections) : standardReportKey;
   if(reportKey === "unknown") throw new Error("This CSV does not match a supported Google Analytics 4 export.");
   if(!metadata.start || !metadata.end) throw new Error("This GA4 CSV does not include a usable source start/end date.");
-
-  const sections=parseGa4Sections(text);
   const context={
     stationKey,
     sourceName:fileName || metadata.title || "ga4.csv",
@@ -371,7 +528,8 @@ export function inspectGa4CsvText(text, { fileName="", stationKey="wnmu_fm" } = 
   };
   const observations=[];
 
-  if(reportKey==="pages_and_screens") normalizePages(observations,sections,context);
+  if(reportKey.startsWith("daily_")) normalizeDailyFreeForm(observations,sections,context,reportKey);
+  else if(reportKey==="pages_and_screens") normalizePages(observations,sections,context);
   else if(reportKey==="landing_page") normalizeLanding(observations,sections,context);
   else if(reportKey==="events") normalizeEvents(observations,sections,context);
   else if(reportKey==="country") normalizeCountry(observations,sections,context);
@@ -388,14 +546,16 @@ export function inspectGa4CsvText(text, { fileName="", stationKey="wnmu_fm" } = 
     metadata,
     sections,
     normalized:{
-      range:{grain:"unknown",start:metadata.start,end:metadata.end},
+      range:{grain:reportKey.startsWith("daily_") ? "day" : "unknown",start:metadata.start,end:metadata.end},
       observations,
       status:observations.length ? "imported" : "partial"
     },
     dataRowCount:sections.reduce((sum,section)=>sum+section.rows.length,0),
     parserVersion:GA4_PARSER_VERSION,
     note:observations.length
-      ? "GA4 aggregate export. The full source CSV is archived; very large dimensions are normalized only to the highest-activity rows needed for interactive analysis."
+      ? (reportKey.startsWith("daily_")
+          ? "GA4 dated Free Form exploration. The full source CSV is archived; large page and landing-page dimensions are normalized to the 100 highest-activity values across the source period, while additive site totals are retained day by day."
+          : "GA4 aggregate export. The full source CSV is archived; very large dimensions are normalized only to the highest-activity rows needed for interactive analysis.")
       : "Recognized GA4 report retained as source evidence; it does not currently add a unique analytical metric."
   };
 }
