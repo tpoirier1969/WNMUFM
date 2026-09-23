@@ -22,6 +22,26 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function tooltipText(point, options, series = "primary") {
+  const explicit = series === "secondary"
+    ? (point.secondaryTooltipLines || point.tooltipLines)
+    : (point.primaryTooltipLines || point.tooltipLines);
+  if (Array.isArray(explicit) && explicit.length) return explicit.filter(Boolean).join("\n");
+
+  const parts=[];
+  if(point.label) parts.push(point.label);
+  if(series === "secondary") {
+    parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
+  } else {
+    parts.push((options.primaryLabel || options.title || "Value") + ": " + compactNumber(point.value));
+    if(finiteNumber(point.secondaryValue) !== null) {
+      parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
+    }
+  }
+  if(point.contextLabel) parts.push("Notable because: " + point.contextLabel);
+  return parts.join("\n");
+}
+
 function linePath(points, key, xFor, yFor) {
   let path = "";
   let drawing = false;
@@ -272,10 +292,8 @@ export function renderLineChart(container, points, options = {}) {
     if(finiteNumber(point.value) !== null) {
       const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.value),r:3,class:(point.weekend ? "chart-point weekend" : "chart-point") + (options.onPointClick ? " clickable" : ""),...(options.onPointClick ? {tabindex:"0",role:"button","aria-label":"Open details for " + point.label} : {})});
       const title=svgElement("title");
-      const parts=[point.label + ": " + compactNumber(point.value)];
-      if(finiteNumber(point.secondaryValue) !== null) parts.push((options.secondaryLabel || "Comparison") + ": " + compactNumber(point.secondaryValue));
-      if(point.contextLabel) parts.push("Notable because: " + point.contextLabel);
-      title.textContent=parts.join(" · "); circle.appendChild(title);
+      title.textContent=tooltipText(point,options,"primary");
+      circle.appendChild(title);
       if(options.onPointClick) {
         const activate=()=>options.onPointClick(point,index);
         circle.addEventListener("click",activate);
@@ -286,7 +304,7 @@ export function renderLineChart(container, points, options = {}) {
     if(finiteNumber(point.secondaryValue) !== null) {
       const circle=svgElement("circle",{cx:xFor(index),cy:yFor(point.secondaryValue),r:2.6,class:"chart-secondary-point"});
       const title=svgElement("title");
-      title.textContent=point.label + ": " + (options.secondaryLabel || "Comparison") + " " + compactNumber(point.secondaryValue) + (point.contextLabel ? " · Notable because: " + point.contextLabel : "");
+      title.textContent=tooltipText(point,options,"secondary");
       circle.appendChild(title); svg.appendChild(circle);
     }
   });
