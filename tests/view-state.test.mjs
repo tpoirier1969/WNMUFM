@@ -74,10 +74,11 @@ test("date-range edits do not refresh on intermediate date-part changes", async 
 });
 
 
-test("source-range modal is armed only after an intentional range change", async () => {
+test("source-range mismatch stays inline and never opens the detail modal", async () => {
   const fs = await import("node:fs/promises");
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
-  assert.match(app,/rangeNoticeArmed:false/);
-  assert.match(app,/if\(rangeMismatch && state\.rangeNoticeArmed\)/);
-  assert.match(app,/state\.rangeNoticeArmed=true/);
+  assert.match(app,/Source range notice/);
+  assert.match(app,/this graph remains on the NPR source period/);
+  assert.doesNotMatch(app,/rangeNoticeArmed/);
+  assert.doesNotMatch(app,/Listening by Hour uses a different source period/);
 });
