@@ -106,9 +106,10 @@ function ratePercent(value) {
 
 function topRows(rows, column, limitKey="default") {
   const limit=NORMALIZED_LIMITS[limitKey] || NORMALIZED_LIMITS.default;
-  return [...(rows || [])]
-    .filter((row)=>numeric(row[column]) !== null)
-    .sort((a,b)=>Number(numeric(b[column]) || 0)-Number(numeric(a[column]) || 0))
+  return (rows || [])
+    .map((row,index)=>({row,sourceRow:index+2}))
+    .filter((item)=>numeric(item.row[column]) !== null)
+    .sort((a,b)=>Number(numeric(b.row[column]) || 0)-Number(numeric(a.row[column]) || 0))
     .slice(0,limit);
 }
 
@@ -138,7 +139,7 @@ function observationBase(context, metricKey, metricLabel, unit, dimensionType, d
 
 function pushDimensionMetrics(output, rows, context, spec) {
   const selected=topRows(rows,spec.rankColumn,spec.limitKey);
-  selected.forEach((row,index)=>{
+  selected.forEach(({row,sourceRow})=>{
     const dimension=String(row[spec.dimensionColumn] ?? "").trim();
     if(!dimension) return;
     spec.metrics.forEach((metric)=>{
@@ -153,7 +154,7 @@ function pushDimensionMetrics(output, rows, context, spec) {
         spec.dimensionType,
         dimension,
         value,
-        index+2
+        sourceRow
       ));
     });
   });
