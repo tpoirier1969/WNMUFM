@@ -98,3 +98,23 @@ test("desktop tab strip wraps instead of creating an unnecessary scrollbar", asy
   assert.match(css,/\.tab-bar \{[^}]*overflow:\s*visible;[^}]*flex-wrap:\s*wrap;/s);
   assert.doesNotMatch(css,/\.tab-bar \{[^}]*overflow-x:\s*auto;/s);
 });
+
+
+test("single-metric comparison tooltips are structured as three rows", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  const charts = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(app,/tooltipLines:\[/);
+  assert.match(app,/WNMU-FM: .*vs median/s);
+  assert.match(app,/NPR benchmark.*vs median/s);
+  assert.match(charts,/join\("\\n"\)/);
+});
+
+test("Listening by Hour tooltip uses typical program or genre only when confidence exists", async () => {
+  const fs = await import("node:fs/promises");
+  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
+  assert.match(app,/Typical program:/);
+  assert.match(app,/Typical genre:/);
+  assert.match(app,/buildTypicalHourContext\(typicalEntries\)/);
+  assert.match(app,/Tooltip program context may use Composer recurring definitions only when one program or genre clearly dominates that hour/);
+});
