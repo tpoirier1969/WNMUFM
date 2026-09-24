@@ -49,6 +49,7 @@
       <div class="app-toolbar">
         <nav class="tab-bar" aria-label="Analytics sections">
           <button class="tab-button active" type="button" data-tab="overview">Overview</button>
+          <button class="tab-button" type="button" data-tab="takeaways">Takeaways</button>
           <button class="tab-button" type="button" data-tab="explore">Explore</button>
           <button class="tab-button" type="button" data-tab="imports">Imports</button>
         </nav>
@@ -204,6 +205,26 @@
             <div id="coverageTable" class="table-wrap"></div>
           </article>
         </div>
+      </section>
+
+      <section class="tab-panel" data-panel="takeaways" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">What the data is saying</p>
+            <h2>Takeaways</h2>
+            <p class="section-note">Automatically derived observations from the imported source facts in the current Analysis Range. These findings describe patterns and comparisons; they do not assign causes that the source data cannot prove.</p>
+          </div>
+        </div>
+
+        <div class="takeaway-toolbar">
+          <div>
+            <span class="control-label">Filter findings</span>
+            <div id="takeawayCategoryButtons" class="button-strip takeaway-category-strip" role="group" aria-label="Takeaway category"></div>
+          </div>
+          <p id="takeawaySummary" class="takeaway-summary" aria-live="polite"></p>
+        </div>
+
+        <div id="takeawayList" class="takeaway-grid" aria-live="polite"></div>
       </section>
 
       <section class="tab-panel" data-panel="explore" hidden>

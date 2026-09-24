@@ -10,12 +10,13 @@ import { fetchComposerSchedule } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets } from "./range-presets.js";
+import { analyzeTakeaways, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -51,8 +52,9 @@ const state = {
   endDate:initialEndDate,
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
-  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","explore","imports"], "overview"),
-  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs")
+  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","imports"], "overview"),
+  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs"),
+  takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
@@ -60,6 +62,8 @@ let exploreRequestId = 0;
 let breakdownRequestId = 0;
 let listeningHourContext = null;
 let listeningHourNoticeKey = "";
+let takeawayFindings = [];
+let takeawayRangeKey = "";
 let rangeEditPending = false;
 let rangeBlurCommitTimer = null;
 
@@ -76,7 +80,8 @@ function viewStateSnapshot() {
     trendNotable:state.trendNotable,
     trendProgram:state.trendProgram,
     trendZoomStart:state.trendZoomStart,
-    trendZoomEnd:state.trendZoomEnd
+    trendZoomEnd:state.trendZoomEnd,
+    takeawayCategory:state.takeawayCategory
   };
 }
 
@@ -562,6 +567,83 @@ function renderExploreControlButtons() {
   ).join("");
 }
 
+function renderTakeawayControlButtons() {
+  if(!els.takeawayCategoryButtons) return;
+  els.takeawayCategoryButtons.innerHTML = TAKEAWAY_CATEGORIES.map(([key,label]) =>
+    `<button type="button" class="filter-button" data-takeaway-category="${escapeHtml(key)}" aria-pressed="${String(key===state.takeawayCategory)}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
+function takeawayCategoryLabel(key) {
+  return TAKEAWAY_CATEGORIES.find(([value])=>value===key)?.[1] || key;
+}
+
+function takeawayAnalysisKey() {
+  return `${state.startDate || ""}|${state.endDate || ""}`;
+}
+
+function renderTakeawayCards() {
+  if(!els.takeawayList || !els.takeawaySummary) return;
+  renderTakeawayControlButtons();
+  const filtered=state.takeawayCategory==="all"
+    ? takeawayFindings
+    : takeawayFindings.filter((finding)=>finding.category===state.takeawayCategory);
+  const rangeText=state.startDate && state.endDate ? `${formatDayDate(state.startDate)} – ${formatDayDate(state.endDate)}` : "the available imported range";
+  els.takeawaySummary.textContent = filtered.length
+    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Each card shows the actual source span used, which may be shorter than the Analysis Range.`
+    : `No findings in ${takeawayCategoryLabel(state.takeawayCategory)} meet the current evidence thresholds for ${rangeText}.`;
+  if(!filtered.length) {
+    els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Nothing strong enough to call out here yet. The app leaves weak or unsupported patterns unstated.</p>';
+    return;
+  }
+
+  els.takeawayList.innerHTML=filtered.map((finding)=>{
+    const category=takeawayCategoryLabel(finding.category);
+    const grainLabel=finding.grain==="month" ? "Monthly" : finding.grain==="week" ? "Weekly" : "Daily";
+    const source=finding.sourceStart && finding.sourceEnd
+      ? `${formatDayDate(finding.sourceStart)} – ${formatDayDate(finding.sourceEnd)}`
+      : "Source span unavailable";
+    const sampleLabel=finding.kind==="cross-source-weekpart"
+      ? `${Number(finding.sampleSize || 0).toLocaleString()} metric-observations`
+      : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
+    const evidence=(finding.evidence || []).map((item)=>`<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("");
+    const action=finding.metricKey
+      ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metric="${escapeHtml(finding.metricKey)}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">Open evidence in Trend Explorer</button></div>`
+      : "";
+    const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : "";
+    return `<article class="takeaway-card${cardClass}">
+      <div class="takeaway-card-head">
+        <h3>${escapeHtml(finding.title)}</h3>
+        <span class="takeaway-category">${escapeHtml(category)}</span>
+      </div>
+      <p>${escapeHtml(finding.summary)}</p>
+      <div class="takeaway-evidence">${evidence}</div>
+      <p class="takeaway-meta">${escapeHtml(grainLabel)} evidence · ${escapeHtml(source)} · ${escapeHtml(sampleLabel)}</p>
+      ${action}
+    </article>`;
+  }).join("");
+}
+
+async function renderTakeaways({ force=false }={}) {
+  if(!els.takeawayList) return;
+  const key=takeawayAnalysisKey();
+  if(force || key!==takeawayRangeKey) {
+    els.takeawaySummary.textContent="Reviewing imported observations…";
+    els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Looking for repeatable patterns, comparisons, and data-quality signals.</p>';
+    const dailyKeys=TAKEAWAY_METRICS.map((metric)=>metric.key);
+    const monthlyKeys=TAKEAWAY_METRICS.filter((metric)=>metric.monthly).map((metric)=>metric.key);
+    const [dailySets,monthlySets]=await Promise.all([
+      Promise.all(dailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
+      Promise.all(monthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange())))
+    ]);
+    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
+    const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey,index)=>[metricKey,monthlySets[index]]));
+    takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric});
+    takeawayRangeKey=key;
+  }
+  renderTakeawayCards();
+}
+
 function setHidden(element, hidden) {
   if (!element) return;
   element.hidden = Boolean(hidden);
@@ -569,11 +651,12 @@ function setHidden(element, hidden) {
 }
 
 function activateTab(tab, persist = true) {
-  const target = ["overview","explore","imports"].includes(tab) ? tab : "overview";
+  const target = ["overview","takeaways","explore","imports"].includes(tab) ? tab : "overview";
   state.activeTab = target;
   document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
   document.querySelectorAll(".tab-panel").forEach((panel) => setHidden(panel, panel.dataset.panel !== target));
   if (persist) persistUiState();
+  if(target==="takeaways" && state.role) void withBusy(()=>renderTakeaways());
 }
 
 function formattedRange(range) {
@@ -628,7 +711,13 @@ async function syncAvailableDataRange() {
 }
 
 async function refreshAnalysisViews() {
-  await Promise.all([renderSummary(),renderTrend(),renderBreakdowns(),renderExplore()]);
+  await Promise.all([
+    renderSummary(),
+    renderTrend(),
+    renderBreakdowns(),
+    renderExplore(),
+    state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
+  ]);
 }
 
 function validateAndStoreRange() {
@@ -1438,7 +1527,17 @@ async function refreshDashboard() {
   setBusy(true);
   els.refreshButton.disabled = true;
   try {
-    await Promise.all([renderSummary(), renderTrend(), renderBreakdowns(), renderAnomalies(), renderCoverage(), renderImportHistory(), renderCollectionChecklist(), renderExplore()]);
+    await Promise.all([
+      renderSummary(),
+      renderTrend(),
+      renderBreakdowns(),
+      renderAnomalies(),
+      renderCoverage(),
+      renderImportHistory(),
+      renderCollectionChecklist(),
+      renderExplore(),
+      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
+    ]);
   } catch (error) {
     console.error(error);
     els.summaryCards.innerHTML = `<p class="empty-state">Could not load analytics: ${escapeHtml(error.message)}</p>`;
@@ -1504,6 +1603,7 @@ async function processFiles(fileList) {
       }
     }
     invalidateDataCache();
+    takeawayRangeKey="";
     importRangeChange=await syncAvailableDataRange();
     await renderProgramFilterOptions();
     await refreshDashboard();
@@ -1622,6 +1722,7 @@ function bindEvents() {
   els.refreshButton.addEventListener("click", async () => {
     const stored=storePendingRangeEdit();
     if(stored===null) return;
+    takeawayRangeKey="";
     await refreshDashboard();
   });
   els.trendMetricButtons.addEventListener("click", (event) => {
@@ -1694,6 +1795,34 @@ function bindEvents() {
     state.exploreView=button.dataset.exploreView;
     persistUiState();
     void withBusy(()=>renderExplore());
+  });
+  els.takeawayCategoryButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-takeaway-category]");
+    if(!button) return;
+    state.takeawayCategory=button.dataset.takeawayCategory;
+    persistUiState();
+    renderTakeawayCards();
+  });
+  els.takeawayList.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-takeaway-evidence]");
+    if(!button) return;
+    const metric=button.dataset.metric;
+    if(!metric) return;
+    state.trendMetrics=[metric];
+    state.trendGrain=button.dataset.grain || "day";
+    state.trendWeekpart="all";
+    state.trendNotable="all";
+    state.trendProgram="";
+    if(button.dataset.start && button.dataset.end) {
+      state.startDate=button.dataset.start;
+      state.endDate=button.dataset.end;
+      state.rangeMode="custom";
+    }
+    clearTrendZoom();
+    applyRangeControls();
+    activateTab("overview");
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
   });
   rangeInputs.forEach((input)=>{
     input.addEventListener("input",markRangeEdit);
@@ -1772,6 +1901,7 @@ async function boot() {
     els.versionBadge.textContent = `v${APP_VERSION}`;
     renderTrendControlButtons();
     renderExploreControlButtons();
+    renderTakeawayControlButtons();
     els.trendGrain.value = state.trendGrain;
     applyRangeControls();
     activateTab(state.activeTab,false);

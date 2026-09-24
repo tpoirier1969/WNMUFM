@@ -15,7 +15,8 @@ test("shareable view state round-trips through the query string", () => {
     trendProgram:"Classical Music",
     trendZoomStart:"2026-01-01",
     trendZoomEnd:"2026-03-31",
-    exploreView:"website-channels"
+    exploreView:"website-channels",
+    takeawayCategory:"website"
   };
 
   const search = buildViewSearch(original);
