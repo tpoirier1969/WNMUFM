@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -812,7 +812,10 @@ async function renderTrend() {
   }
 
   const loaded = await Promise.all(metricKeys.map(async (metricKey)=>{
-    const rows = await loadTimeSeries(metricKey,grain,filterSignature,selectedRange());
+    const [rows,coverage] = await Promise.all([
+      loadTimeSeries(metricKey,grain,filterSignature,selectedRange()),
+      loadTimeSeriesRange(metricKey,grain,filterSignature)
+    ]);
     const filteredRows = grain === "day"
       ? rows.filter((row)=>matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
       : rows;
@@ -833,10 +836,24 @@ async function renderTrend() {
       benchmarkLabel:benchmarkDisplayLabel(benchmarkSourceLabel),
       benchmarkSourceLabel,
       latest,
-      unit:filteredRows.find((row)=>row.station_value!==null)?.unit || ""
+      unit:filteredRows.find((row)=>row.station_value!==null)?.unit || "",
+      coverage
     };
   }));
   if(requestId !== trendRequestId) return;
+
+  const grainLabel=grain === "day" ? "Day" : grain === "week" ? "Week" : "Month";
+  const coverageItems=loaded.filter((item)=>item.coverage?.startDate && item.coverage?.endDate);
+  if(coverageItems.length) {
+    const coverageText=multiple
+      ? coverageItems.map((item)=>`${item.label}: ${formatDayDate(item.coverage.startDate)} – ${formatDayDate(item.coverage.endDate)}`).join("; ")
+      : `${formatDayDate(coverageItems[0].coverage.startDate)} – ${formatDayDate(coverageItems[0].coverage.endDate)}`;
+    els.trendDescription.textContent += multiple
+      ? ` Source coverage at ${grainLabel} grain: ${coverageText}.`
+      : ` Source coverage for ${coverageItems[0].label} at ${grainLabel} grain: ${coverageText}.`;
+  } else {
+    els.trendDescription.textContent += ` No imported source coverage is available at ${grainLabel} grain for this selection.`;
+  }
 
   if (!multiple) {
     const result=loaded[0];
