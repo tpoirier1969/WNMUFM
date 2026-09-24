@@ -364,7 +364,6 @@ function beforeAfterMetricEffect(metric,rows,effectiveDate) {
   const benchmarkDelta=benchmarkBefore!==null && benchmarkAfter!==null ? percentChange(benchmarkAfter,benchmarkBefore) : null;
   const relativeGap=benchmarkDelta===null ? null : delta-benchmarkDelta;
   const material=Math.abs(delta)>=12 || (relativeGap!==null && Math.abs(delta)>=6 && Math.abs(relativeGap)>=12);
-  if(!material) return null;
 
   return {
     metricKey:metric.key,
@@ -376,6 +375,7 @@ function beforeAfterMetricEffect(metric,rows,effectiveDate) {
     benchmarkDelta,
     benchmarkLabel:benchmarkLabelForRows([...windows.before,...windows.after]),
     relativeGap,
+    material,
     beforeCount:windows.before.length,
     afterCount:windows.after.length,
     sourceStart:windows.before[0].period_start,
@@ -388,31 +388,19 @@ function formatScheduleWindow(change) {
 }
 
 function persistentScheduleEffectFinding(group,dailyByMetric) {
-  const effects=SCHEDULE_EFFECT_METRICS
+  const availableEffects=SCHEDULE_EFFECT_METRICS
     .map((metric)=>beforeAfterMetricEffect(metric,dailyByMetric[metric.key] || [],group.effectiveDate))
     .filter(Boolean);
-  if(!effects.length) return null;
+  const materialEffects=availableEffects.filter((effect)=>effect.material);
 
-  const primary=effects.find((effect)=>effect.metricKey==="streaming.listeners") ||
-    [...effects].sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta))[0];
   const dayName=DAY_NAMES[group.weekday] || "Same weekday";
   const pluralDay=`${dayName}s`;
-  const direction=primary.delta<0 ? "fell" : "rose";
   const primaryChange=group.changes
     .slice()
     .sort((a,b)=>b.changedHours-a.changedHours || a.startSlot-b.startSlot)[0];
   const scheduleTitle=group.changes.length===1
     ? `${primaryChange.fromProgram} was replaced by ${primaryChange.toProgram} on ${pluralDay} at ${primaryChange.startTime}`
     : `the ${pluralDay} schedule changed in ${group.changes.length} recurring blocks`;
-
-  const effectParts=effects.map((effect)=>
-    `${effect.label} ${effect.delta<0 ? "fell" : "rose"} ${Math.abs(effect.delta).toFixed(1)}%`
-  );
-  const listenerEffect=effects.find((effect)=>effect.metricKey==="streaming.listeners");
-  let benchmarkContext="";
-  if(listenerEffect?.benchmarkDelta!==null && listenerEffect?.benchmarkLabel) {
-    benchmarkContext=` NPR ${listenerEffect.benchmarkLabel} ${pluralDay} changed ${formatPercent(listenerEffect.benchmarkDelta)}, so WNMU-FM moved ${Math.abs(listenerEffect.relativeGap).toFixed(1)} percentage points ${listenerEffect.relativeGap<0 ? "more negatively" : "more positively"}.`;
-  }
 
   const scheduleDetails=group.changes
     .slice()
@@ -421,23 +409,54 @@ function persistentScheduleEffectFinding(group,dailyByMetric) {
     .map(formatScheduleWindow)
     .join("; ");
 
-  return {
-    id:`schedule-regime:${group.weekday}:${group.effectiveDate}`,
-    kind:"schedule-regime-effect",
+  if(!availableEffects.length) {
+    return {
+      id:`schedule-regime-unmeasured:${group.weekday}:${group.effectiveDate}`,
+      kind:"schedule-regime-unmeasured",
+      category:"scheduling",
+      actionability:62,
+      importance:70,
+      title:`${scheduleTitle}, but there is not enough daily streaming data to measure the before/after effect`,
+      summary:`Recurring schedule change: ${scheduleDetails}. The app could not find at least four same-day-of-week streaming observations on both sides of ${formatDate(group.effectiveDate)}, so it does not infer an audience effect.`,
+      evidence:[],
+      sourceStart:group.effectiveDate,
+      sourceEnd:group.effectiveDate,
+      sampleSize:0,
+      grain:"day",
+      metricKeys:[],
+      scheduleChange:{
+        effectiveDate:group.effectiveDate,
+        weekday:group.weekday,
+        changedHours:group.changedHours,
+        changes:group.changes
+      }
+    };
+  }
+
+  const primary=availableEffects.find((effect)=>effect.metricKey==="streaming.listeners") ||
+    [...availableEffects].sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta))[0];
+  const listenerEffect=availableEffects.find((effect)=>effect.metricKey==="streaming.listeners");
+  let benchmarkContext="";
+  if(listenerEffect?.benchmarkDelta!==null && listenerEffect?.benchmarkLabel) {
+    benchmarkContext=` NPR ${listenerEffect.benchmarkLabel} ${pluralDay} changed ${formatPercent(listenerEffect.benchmarkDelta)}, so WNMU-FM moved ${Math.abs(listenerEffect.relativeGap).toFixed(1)} percentage points ${listenerEffect.relativeGap<0 ? "more negatively" : "more positively"}.`;
+  }
+
+  const effectParts=availableEffects.map((effect)=>{
+    if(Math.abs(effect.delta)<0.05) return `${effect.label} were essentially unchanged`;
+    return `${effect.label} ${effect.delta<0 ? "fell" : "rose"} ${Math.abs(effect.delta).toFixed(1)}%`;
+  });
+
+  const base={
     category:"scheduling",
-    actionability:98,
-    importance:Math.max(...effects.map((effect)=>effect.importance+Math.min(20,Math.abs(effect.delta)/2))),
-    title:`After ${scheduleTitle}, ${dayName} ${primary.label} ${direction} ${Math.abs(primary.delta).toFixed(1)}%`,
-    summary:`Comparing the ${primary.beforeCount} ${pluralDay} before ${formatDate(group.effectiveDate)} with the ${primary.afterCount} after, ${effectParts.join(" and ")}.${benchmarkContext} Recurring schedule change: ${scheduleDetails}. This is an association in daily totals, not proof that the changed program caused the audience movement.`,
-    evidence:effects.flatMap((effect)=>[
-      {label:`${effect.label} before/after`,value:`${formatPercent(effect.delta)}`},
+    evidence:availableEffects.flatMap((effect)=>[
+      {label:`${effect.label} before/after`,value:formatPercent(effect.delta)},
       ...(effect.benchmarkDelta!==null ? [{label:`NPR ${effect.benchmarkLabel || "benchmark"} trend`,value:formatPercent(effect.benchmarkDelta)}] : [])
     ]),
-    sourceStart:effects.map((effect)=>effect.sourceStart).sort()[0] || "",
-    sourceEnd:effects.map((effect)=>effect.sourceEnd).sort().at(-1) || "",
+    sourceStart:availableEffects.map((effect)=>effect.sourceStart).sort()[0] || "",
+    sourceEnd:availableEffects.map((effect)=>effect.sourceEnd).sort().at(-1) || "",
     sampleSize:primary.beforeCount+primary.afterCount,
     grain:"day",
-    metricKeys:effects.map((effect)=>effect.metricKey),
+    metricKeys:availableEffects.map((effect)=>effect.metricKey),
     scheduleChange:{
       effectiveDate:group.effectiveDate,
       weekday:group.weekday,
@@ -445,6 +464,32 @@ function persistentScheduleEffectFinding(group,dailyByMetric) {
       changes:group.changes
     },
     deltaPct:primary.delta
+  };
+
+  if(!materialEffects.length) {
+    return {
+      ...base,
+      id:`schedule-regime-neutral:${group.weekday}:${group.effectiveDate}`,
+      kind:"schedule-regime-neutral",
+      actionability:72,
+      importance:76,
+      title:`${scheduleTitle}; no material change in ${dayName} streaming followed`,
+      summary:`Comparing the ${primary.beforeCount} ${pluralDay} before ${formatDate(group.effectiveDate)} with the ${primary.afterCount} after, ${effectParts.join(" and ")}.${benchmarkContext} None crossed the app's material-change threshold. Recurring schedule change: ${scheduleDetails}. That lack of a marked daily change is itself a useful result, though it does not prove the changed program had no effect within its own time slot.`
+    };
+  }
+
+  const materialPrimary=materialEffects.find((effect)=>effect.metricKey==="streaming.listeners") ||
+    [...materialEffects].sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta))[0];
+  const direction=materialPrimary.delta<0 ? "fell" : "rose";
+
+  return {
+    ...base,
+    id:`schedule-regime:${group.weekday}:${group.effectiveDate}`,
+    kind:"schedule-regime-effect",
+    actionability:98,
+    importance:Math.max(...materialEffects.map((effect)=>effect.importance+Math.min(20,Math.abs(effect.delta)/2))),
+    title:`After ${scheduleTitle}, ${dayName} ${materialPrimary.label} ${direction} ${Math.abs(materialPrimary.delta).toFixed(1)}%`,
+    summary:`Comparing the ${primary.beforeCount} ${pluralDay} before ${formatDate(group.effectiveDate)} with the ${primary.afterCount} after, ${effectParts.join(" and ")}.${benchmarkContext} Recurring schedule change: ${scheduleDetails}. This is an association in daily totals, not proof that the changed program caused the audience movement.`
   };
 }
 

@@ -110,6 +110,66 @@ test("persistent series changes compare same-weekday daily streaming before and 
   assert.equal(finding.scheduleChange.effectiveDate,effectiveDate);
 });
 
+test("persistent schedule changes remain visible when streaming does not materially change", () => {
+  const dates=weeklyDates("2026-01-03",14);
+  const effectiveDate=dates[7];
+  const entries=dates.flatMap((date,index)=>
+    saturdaySeriesDay(date,index<7 ? "Prairie Home Companion" : "Replacement Show")
+  );
+  const listeners=dates.map((date,index)=>({
+    period_start:date,
+    period_end:date,
+    station_value:index<7 ? 400 : 408,
+    benchmark_value:index<7 ? 1000 : 1010,
+    benchmark_label:"Typical Station",
+    unit:"listeners"
+  }));
+  const hours=dates.map((date,index)=>({
+    period_start:date,
+    period_end:date,
+    station_value:index<7 ? 600 : 594,
+    unit:"hours"
+  }));
+
+  const result=analyzeScheduleTakeaways({
+    entries,
+    dailyByMetric:{
+      "streaming.listeners":listeners,
+      "streaming.listener_hours":hours
+    }
+  });
+  const finding=result.findings.find((item)=>item.kind==="schedule-regime-neutral");
+  assert.ok(finding);
+  assert.match(finding.title,/no material change in Saturday streaming followed/i);
+  assert.match(finding.summary,/live-stream listeners rose 2\.0%/i);
+  assert.match(finding.summary,/live-stream listener hours fell 1\.0%/i);
+  assert.match(finding.summary,/lack of a marked daily change is itself a useful result/i);
+  assert.equal(finding.scheduleChange.effectiveDate,effectiveDate);
+});
+
+test("persistent schedule changes remain visible when daily streaming coverage is insufficient", () => {
+  const dates=weeklyDates("2026-01-03",14);
+  const effectiveDate=dates[7];
+  const entries=dates.flatMap((date,index)=>
+    saturdaySeriesDay(date,index<7 ? "Prairie Home Companion" : "Replacement Show")
+  );
+  const listeners=dates.slice(0,3).map((date)=>({
+    period_start:date,
+    period_end:date,
+    station_value:400,
+    unit:"listeners"
+  }));
+  const result=analyzeScheduleTakeaways({
+    entries,
+    dailyByMetric:{"streaming.listeners":listeners}
+  });
+  const finding=result.findings.find((item)=>item.kind==="schedule-regime-unmeasured");
+  assert.ok(finding);
+  assert.match(finding.title,/not enough daily streaming data/i);
+  assert.match(finding.summary,/does not infer an audience effect/i);
+  assert.equal(finding.scheduleChange.effectiveDate,effectiveDate);
+});
+
 test("one-day special programming can produce a specific daily audience takeaway", () => {
   const dates=weeklyDates("2026-01-03",12);
   const specialDate=dates[5];
