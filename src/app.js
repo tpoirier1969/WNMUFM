@@ -658,15 +658,16 @@ async function renderTakeaways({ force=false }={}) {
     const dailyKeys=TAKEAWAY_METRICS.map((metric)=>metric.key);
     const monthlyKeys=TAKEAWAY_METRICS.filter((metric)=>metric.monthly).map((metric)=>metric.key);
     const benchmarkKeys=[...new Set(TAKEAWAY_BENCHMARK_METRICS.map((metric)=>metric.key))];
-    const [dailySets,monthlySets,benchmarkSets,reviewedAnomalies]=await Promise.all([
-      Promise.all(dailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
+    const allDailyKeys=[...new Set([...dailyKeys,...benchmarkKeys])];
+    const [allDailySets,monthlySets,reviewedAnomalies]=await Promise.all([
+      Promise.all(allDailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
       Promise.all(monthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange()))),
-      Promise.all(benchmarkKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
       loadReviewedAnomalies()
     ]);
-    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
+    const allDailyByMetric=Object.fromEntries(allDailyKeys.map((metricKey,index)=>[metricKey,allDailySets[index]]));
+    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
     const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey,index)=>[metricKey,monthlySets[index]]));
-    const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey,index)=>[metricKey,benchmarkSets[index]]));
+    const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
     takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric,benchmarkByMetric,reviewedAnomalies});
     takeawayScheduleNotice="";
     const scheduleRange=takeawayScheduleRange();
