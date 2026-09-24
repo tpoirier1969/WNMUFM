@@ -91,34 +91,42 @@ test("reviewed legitimate anomalies stop generating data-quality Takeaways witho
   assert.equal(rows[30].station_value,10000);
 });
 
-test("large WNMU-FM versus NPR benchmark gaps become comparison Takeaways", () => {
-  const rows=dayRows("2026-01-01",70,400,400,{unit:"listeners"}).map((row)=>({
-    ...row,
-    benchmark_value:1000,
-    benchmark_label:"Typical Station"
-  }));
+test("NPR comparisons use monthly trend movement rather than raw audience size", () => {
+  const rows=[
+    {period_start:"2026-01-01",period_end:"2026-01-31",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station",unit:"listeners"},
+    {period_start:"2026-02-01",period_end:"2026-02-28",station_value:120,benchmark_value:900,benchmark_label:"Typical Station",unit:"listeners"}
+  ];
   const findings=analyzeTakeaways({
     benchmarkByMetric:{ "streaming.listeners":rows }
   });
-  const comparison=findings.find((item)=>item.id==="benchmark:streaming.listeners");
+  const comparison=findings.find((item)=>item.id==="benchmark-trend:streaming.listeners:2026-02");
   assert.ok(comparison);
   assert.equal(comparison.category,"npr-comparison");
-  assert.match(comparison.title,/below NPR's Typical Station benchmark/i);
-  assert.match(comparison.summary,/WNMU-FM's median daily value is 400 listeners versus 1,000 listeners/i);
-  assert.match(comparison.summary,/does not identify the stations behind it/i);
+  assert.match(comparison.title,/February 2026: WNMU-FM live-stream listeners rose while NPR Typical Station fell/i);
+  assert.match(comparison.summary,/WNMU-FM changed \+20\.0% while NPR Typical Station changed -10\.0%/i);
+  assert.doesNotMatch(comparison.summary,/100 listeners|1,000 listeners/);
 });
 
-test("related benchmark gaps from the same NPR source are grouped into one comparison", () => {
-  const active=dayRows("2026-01-01",70,400,400,{unit:"users"}).map((row)=>({
-    ...row,
-    benchmark_value:1000,
-    benchmark_label:"Typical Station Website"
-  }));
-  const views=dayRows("2026-01-01",70,800,800,{unit:"views"}).map((row)=>({
-    ...row,
-    benchmark_value:2000,
-    benchmark_label:"Typical Station Website"
-  }));
+test("a large raw NPR audience gap alone does not become a Takeaway", () => {
+  const rows=[
+    {period_start:"2026-01-01",period_end:"2026-01-31",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station",unit:"listeners"},
+    {period_start:"2026-02-01",period_end:"2026-02-28",station_value:110,benchmark_value:1100,benchmark_label:"Typical Station",unit:"listeners"}
+  ];
+  const findings=analyzeTakeaways({
+    benchmarkByMetric:{ "streaming.listeners":rows }
+  });
+  assert.equal(findings.some((item)=>item.category==="npr-comparison"),false);
+});
+
+test("related monthly trend divergences from the same NPR source are grouped", () => {
+  const active=[
+    {period_start:"2026-01-01",period_end:"2026-01-31",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station Website",unit:"users"},
+    {period_start:"2026-02-01",period_end:"2026-02-28",station_value:150,benchmark_value:1050,benchmark_label:"Typical Station Website",unit:"users"}
+  ];
+  const views=[
+    {period_start:"2026-01-01",period_end:"2026-01-31",station_value:200,benchmark_value:2000,benchmark_label:"Typical Station Website",unit:"views"},
+    {period_start:"2026-02-01",period_end:"2026-02-28",station_value:300,benchmark_value:2100,benchmark_label:"Typical Station Website",unit:"views"}
+  ];
   const findings=analyzeTakeaways({
     benchmarkByMetric:{
       "website.active_users":active,
@@ -127,21 +135,11 @@ test("related benchmark gaps from the same NPR source are grouped into one compa
   });
   const comparisons=findings.filter((item)=>item.category==="npr-comparison");
   assert.equal(comparisons.length,1);
-  assert.equal(comparisons[0].kind,"benchmark-comparison-group");
+  assert.equal(comparisons[0].kind,"benchmark-trend-group");
+  assert.match(comparisons[0].title,/February 2026/i);
   assert.match(comparisons[0].title,/active users and NPR website pageviews/i);
   assert.deepEqual(comparisons[0].metricKeys,["website.active_users","website.pageviews"]);
-});
-
-test("small benchmark differences stay unstated", () => {
-  const rows=dayRows("2026-01-01",70,900,900,{unit:"listeners"}).map((row)=>({
-    ...row,
-    benchmark_value:1000,
-    benchmark_label:"Typical Station"
-  }));
-  const findings=analyzeTakeaways({
-    benchmarkByMetric:{ "streaming.listeners":rows }
-  });
-  assert.equal(findings.some((item)=>item.kind==="benchmark-comparison"),false);
+  assert.match(comparisons[0].summary,/percentage movement, not the stations' raw audience totals/i);
 });
 
 test("Takeaways sort data-quality and other actionable items ahead of context", () => {
@@ -197,6 +195,8 @@ test("the app exposes Takeaways as a top-level evidence-backed module", async ()
   assert.doesNotMatch(app,/class="takeaway-evidence"/);
   assert.doesNotMatch(app,/class="takeaway-meta"/);
   assert.match(app,/loadReviewedAnomalies/);
+  assert.match(app,/loadTimeSeries\(metricKey,"month","\{\}",selectedRange\(\)\)/);
+  assert.match(app,/addScheduleContextToTrendFindings/);
   assert.match(app,/takeawayRangeKey="";\s*await Promise\.all\(\[renderAnomalies\(\), refreshAnalysisViews\(\)\]\)/s);
   assert.match(app,/sorted with the most actionable items first/);
 });
