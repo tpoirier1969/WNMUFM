@@ -389,8 +389,8 @@ Deno.serve(async (req: Request) => {
         source:"WNMU-FM archived Composer recurring schedule",
         source_type:archived.complete ? "archive_recurrences" : "archive_recurrences_partial",
         note:archived.complete
-          ? "Composer historical episodes were unavailable; using WNMU-FM's daily archived recurring schedule snapshots."
-          : "Composer historical episodes were unavailable; using the portion of the range covered by WNMU-FM's daily archived recurring schedule snapshots.",
+          ? "Composer historical episodes were unavailable; reconstructing the recurring schedule from WNMU-FM's archived Composer recurrence definitions and their effective dates."
+          : "Composer historical episodes were unavailable; reconstructing the covered portion of the recurring schedule from WNMU-FM's archived Composer recurrence definitions and their effective dates.",
         archive_start:archived.coverageStart,
         archive_end:archived.coverageEnd,
         archive_missing_dates:archived.missingDates.length,
