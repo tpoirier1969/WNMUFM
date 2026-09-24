@@ -317,7 +317,7 @@ function groupDataQualityOutliers(findings) {
       other.push(items[0]);
       return;
     }
-    const labels=items.map((item)=>item.metricLabel);
+    const labels=items.map((item)=>BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel);
     const details=items.map((item)=>
       `${item.metricLabel} reached ${formatValue(item.spikeValue,item.unit)} (${item.ratio.toFixed(1)}× its median)`
     );
@@ -354,6 +354,24 @@ function benchmarkLabel(rows) {
   return [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))[0]?.[0] || "NPR benchmark";
 }
 
+const BENCHMARK_TREND_LABELS = Object.freeze({
+  "streaming.listeners":"streaming listeners",
+  "streaming.minutes_per_session":"streaming minutes per session",
+  "streaming.sessions_per_listener":"streaming sessions per listener",
+  "website.active_users":"website active users",
+  "website.pageviews":"website pageviews",
+  "website.engaged_seconds_per_user":"website engaged seconds per user",
+  "website.views_per_user":"website views per user",
+  "audio.downloads":"on-demand audio downloads",
+  "audio.users":"on-demand audio users",
+  "audio.downloads_per_user":"on-demand downloads per user",
+  "npr_one.average_minutes":"NPR One average listening minutes"
+});
+
+function benchmarkTrendMetricLabel(metric) {
+  return BENCHMARK_TREND_LABELS[metric.key] || String(metric.label || metric.key);
+}
+
 function movementLabel(value) {
   const number=Number(value);
   if(!Number.isFinite(number)) return "changed";
@@ -366,7 +384,7 @@ function benchmarkTrendTitle(metric, periodStart, stationChange, benchmarkChange
   const month=formatMonth(periodStart);
   const stationMovement=movementLabel(stationChange);
   const benchmarkMovement=movementLabel(benchmarkChange);
-  const metricName=metric.label.toLowerCase();
+  const metricName=benchmarkTrendMetricLabel(metric);
   if(stationMovement!==benchmarkMovement) {
     return `${month}: WNMU-FM ${metricName} ${stationMovement} while NPR ${label} ${benchmarkMovement}`;
   }
@@ -375,7 +393,7 @@ function benchmarkTrendTitle(metric, periodStart, stationChange, benchmarkChange
     return `${month}: WNMU-FM ${metricName} rose ${gap>=0 ? "faster" : "more slowly"} than NPR ${label}`;
   }
   if(stationMovement==="fell") {
-    return `${month}: WNMU-FM ${metricName} fell ${gap<0 ? "faster" : "less"} than NPR ${label}`;
+    return `${month}: WNMU-FM ${metricName} fell ${gap<0 ? "faster" : "less sharply"} than NPR ${label}`;
   }
   return `${month}: WNMU-FM ${metricName} moved differently from NPR ${label}`;
 }
