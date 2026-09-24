@@ -29,3 +29,17 @@ test("common comparison windows use the overlap, not the union", () => {
     endDate:"2026-09-11"
   });
 });
+
+
+test("the app shows a compact coverage ribbon and recommended common daily window", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,html]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../index.html",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/id="dataAvailability"/);
+  assert.match(html,/id="dataAvailabilityRows"/);
+  assert.match(app,/Best cross-source daily comparison/);
+  assert.match(app,/Use common daily window/);
+  assert.match(app,/Google Analytics 4 dated detail/);
+});
