@@ -11,7 +11,7 @@ import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets, defaultRecentRange } from "./range-presets.js";
 import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
-import { analyzeScheduleTakeaways } from "./schedule-analysis.js";
+import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 
 const els = Object.fromEntries([
@@ -658,16 +658,16 @@ async function renderTakeaways({ force=false }={}) {
     const dailyKeys=TAKEAWAY_METRICS.map((metric)=>metric.key);
     const monthlyKeys=TAKEAWAY_METRICS.filter((metric)=>metric.monthly).map((metric)=>metric.key);
     const benchmarkKeys=[...new Set(TAKEAWAY_BENCHMARK_METRICS.map((metric)=>metric.key))];
-    const allDailyKeys=[...new Set([...dailyKeys,...benchmarkKeys])];
-    const [allDailySets,monthlySets,reviewedAnomalies]=await Promise.all([
-      Promise.all(allDailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
-      Promise.all(monthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange()))),
+    const allMonthlyKeys=[...new Set([...monthlyKeys,...benchmarkKeys])];
+    const [dailySets,allMonthlySets,reviewedAnomalies]=await Promise.all([
+      Promise.all(dailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
+      Promise.all(allMonthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange()))),
       loadReviewedAnomalies()
     ]);
-    const allDailyByMetric=Object.fromEntries(allDailyKeys.map((metricKey,index)=>[metricKey,allDailySets[index]]));
-    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
-    const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey,index)=>[metricKey,monthlySets[index]]));
-    const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
+    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
+    const allMonthlyByMetric=Object.fromEntries(allMonthlyKeys.map((metricKey,index)=>[metricKey,allMonthlySets[index]]));
+    const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey)=>[metricKey,allMonthlyByMetric[metricKey] || []]));
+    const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey)=>[metricKey,allMonthlyByMetric[metricKey] || []]));
     takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric,benchmarkByMetric,reviewedAnomalies});
     takeawayScheduleNotice="";
     const scheduleRange=takeawayScheduleRange();
@@ -675,6 +675,7 @@ async function renderTakeaways({ force=false }={}) {
       const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
       if(schedule.complete && schedule.entries.length) {
         const scheduleAnalysis=analyzeScheduleTakeaways({entries:schedule.entries,dailyByMetric});
+        takeawayFindings=addScheduleContextToTrendFindings(takeawayFindings,scheduleAnalysis.profile);
         takeawayFindings=sortTakeaways([...takeawayFindings,...scheduleAnalysis.findings]);
         takeawayScheduleNotice=scheduleRange.capped
           ? `Scheduling findings use the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}) so historical Composer lookups stay bounded.`

@@ -57,7 +57,7 @@ export async function loadOpenAnomalies() {
 export async function loadReviewedAnomalies() {
   const query = new URLSearchParams({
     select: "id,import_id,anomaly_key,status,evidence,reviewed_at",
-    status: "in.(expected,resolved)",
+    status: "in.(expected,resolved,excluded)",
     order: "reviewed_at.desc",
     limit: "500"
   }).toString();

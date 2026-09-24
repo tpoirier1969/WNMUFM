@@ -13,25 +13,25 @@ export const TAKEAWAY_CATEGORIES = Object.freeze([
 ]);
 
 export const TAKEAWAY_METRICS = Object.freeze([
-  { key:"streaming.listeners", label:"Live-stream listeners", category:"audience", sourceFamily:"streaming", monthly:true, benchmarkThreshold:25 },
+  { key:"streaming.listeners", label:"Live-stream listeners", category:"audience", sourceFamily:"streaming", monthly:true, benchmarkTrend:true },
   { key:"streaming.listener_hours", label:"Live-stream listener hours", category:"audience", sourceFamily:"streaming", monthly:true },
-  { key:"website.active_users", label:"NPR website active users", category:"website", sourceFamily:"website", monthly:true, benchmarkThreshold:25 },
-  { key:"website.pageviews", label:"NPR website pageviews", category:"website", sourceFamily:"website", monthly:true, benchmarkThreshold:25 },
+  { key:"website.active_users", label:"NPR website active users", category:"website", sourceFamily:"website", monthly:true, benchmarkTrend:true },
+  { key:"website.pageviews", label:"NPR website pageviews", category:"website", sourceFamily:"website", monthly:true, benchmarkTrend:true },
   { key:"ga4.site_page_views", label:"Google Analytics 4 page views", category:"website", sourceFamily:"ga4", monthly:false },
   { key:"ga4.site_sessions", label:"Google Analytics 4 sessions", category:"website", sourceFamily:"ga4", monthly:false },
-  { key:"audio.downloads", label:"On-demand audio downloads", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkThreshold:25 },
-  { key:"audio.users", label:"On-demand audio users", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkThreshold:25 },
+  { key:"audio.downloads", label:"On-demand audio downloads", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkTrend:true },
+  { key:"audio.users", label:"On-demand audio users", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkTrend:true },
   { key:"npr_one.localized_listeners", label:"NPR One localized listeners", category:"npr-one", sourceFamily:"npr-one", monthly:true },
-  { key:"npr_one.average_minutes", label:"NPR One average listening minutes", category:"npr-one", sourceFamily:"npr-one", monthly:true, benchmarkThreshold:15 }
+  { key:"npr_one.average_minutes", label:"NPR One average listening minutes", category:"npr-one", sourceFamily:"npr-one", monthly:true, benchmarkTrend:true }
 ]);
 
 export const TAKEAWAY_BENCHMARK_METRICS = Object.freeze([
-  ...TAKEAWAY_METRICS.filter((metric)=>Number.isFinite(metric.benchmarkThreshold)),
-  { key:"streaming.minutes_per_session", label:"Live-stream minutes per session", category:"audience", sourceFamily:"streaming", benchmarkThreshold:15 },
-  { key:"streaming.sessions_per_listener", label:"Live-stream sessions per listener", category:"audience", sourceFamily:"streaming", benchmarkThreshold:15 },
-  { key:"website.engaged_seconds_per_user", label:"NPR website engaged seconds per user", category:"website", sourceFamily:"website", benchmarkThreshold:15 },
-  { key:"website.views_per_user", label:"NPR website views per user", category:"website", sourceFamily:"website", benchmarkThreshold:15 },
-  { key:"audio.downloads_per_user", label:"On-demand downloads per user", category:"on-demand", sourceFamily:"audio", benchmarkThreshold:15 }
+  ...TAKEAWAY_METRICS.filter((metric)=>metric.benchmarkTrend),
+  { key:"streaming.minutes_per_session", label:"Live-stream minutes per session", category:"audience", sourceFamily:"streaming", benchmarkTrend:true },
+  { key:"streaming.sessions_per_listener", label:"Live-stream sessions per listener", category:"audience", sourceFamily:"streaming", benchmarkTrend:true },
+  { key:"website.engaged_seconds_per_user", label:"NPR website engaged seconds per user", category:"website", sourceFamily:"website", benchmarkTrend:true },
+  { key:"website.views_per_user", label:"NPR website views per user", category:"website", sourceFamily:"website", benchmarkTrend:true },
+  { key:"audio.downloads_per_user", label:"On-demand downloads per user", category:"on-demand", sourceFamily:"audio", benchmarkTrend:true }
 ]);
 
 function toDate(value) {
@@ -141,6 +141,18 @@ function reviewedOutlierKeys(anomalies=[]) {
     const family=anomalySourceFamily(anomaly);
     const date=String(anomaly?.evidence?.date || "");
     if(family && date) keys.add(`${family}|${date}`);
+  });
+  return keys;
+}
+
+function excludedMonthKeys(anomalies=[]) {
+  const keys=new Set();
+  anomalies.forEach((anomaly)=>{
+    if(String(anomaly?.status || "")!=="excluded") return;
+    if(anomaly?.evidence?.selected_program) return;
+    const family=anomalySourceFamily(anomaly);
+    const date=String(anomaly?.evidence?.date || "");
+    if(family && /^\d{4}-\d{2}-\d{2}$/.test(date)) keys.add(`${family}|${date.slice(0,7)}`);
   });
   return keys;
 }
@@ -305,7 +317,7 @@ function groupDataQualityOutliers(findings) {
       other.push(items[0]);
       return;
     }
-    const labels=items.map((item)=>item.metricLabel);
+    const labels=items.map((item)=>BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel);
     const details=items.map((item)=>
       `${item.metricLabel} reached ${formatValue(item.spikeValue,item.unit)} (${item.ratio.toFixed(1)}× its median)`
     );
@@ -342,46 +354,130 @@ function benchmarkLabel(rows) {
   return [...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]))[0]?.[0] || "NPR benchmark";
 }
 
-function benchmarkFinding(metric, rows) {
-  const paired=numericRows(rows).filter((row)=>row.benchmark_value!==null && row.benchmark_value!==undefined && Number.isFinite(Number(row.benchmark_value)));
-  if(paired.length<28) return null;
-  const stationMedian=median(paired.map((row)=>row.station_value));
-  const benchmarkMedian=median(paired.map((row)=>Number(row.benchmark_value)));
-  const delta=percentChange(stationMedian,benchmarkMedian);
-  const threshold=Number(metric.benchmarkThreshold || 25);
-  if(delta===null || Math.abs(delta)<threshold) return null;
-  const label=benchmarkLabel(paired);
-  const unit=paired.find((row)=>row.unit)?.unit || "";
-  const direction=delta<0 ? "below" : "above";
-  const magnitude=Math.abs(delta);
-  return {
-    ...findingBase(metric,paired,"day"),
-    id:`benchmark:${metric.key}`,
-    kind:"benchmark-comparison",
-    category:"npr-comparison",
-    importance:78+Math.min(18,magnitude/5),
-    actionability:delta<0 ? 82 : 62,
-    title:`${metric.label} are notably ${direction} NPR's ${label} benchmark`,
-    summary:`WNMU-FM's median daily value is ${formatValue(stationMedian,unit)} versus ${formatValue(benchmarkMedian,unit)} for NPR's ${label}, a ${formatPercent(delta)} difference. NPR supplies this benchmark but does not identify the stations behind it or say they are matched to WNMU-FM.`,
-    evidence:[
-      { label:"WNMU-FM median", value:formatValue(stationMedian,unit) },
-      { label:`NPR ${label}`, value:formatValue(benchmarkMedian,unit) },
-      { label:"Difference", value:formatPercent(delta) }
-    ],
-    deltaPct:delta,
-    benchmarkLabel:label,
-    stationMedian,
-    benchmarkMedian,
-    unit
-  };
+const BENCHMARK_TREND_LABELS = Object.freeze({
+  "streaming.listeners":"streaming listeners",
+  "streaming.minutes_per_session":"streaming minutes per session",
+  "streaming.sessions_per_listener":"streaming sessions per listener",
+  "website.active_users":"website active users",
+  "website.pageviews":"website pageviews",
+  "website.engaged_seconds_per_user":"website engaged seconds per user",
+  "website.views_per_user":"website views per user",
+  "audio.downloads":"on-demand audio downloads",
+  "audio.users":"on-demand audio users",
+  "audio.downloads_per_user":"on-demand downloads per user",
+  "npr_one.average_minutes":"NPR One average listening minutes"
+});
+
+function benchmarkTrendMetricLabel(metric) {
+  return BENCHMARK_TREND_LABELS[metric.key] || String(metric.label || metric.key);
 }
 
-function groupBenchmarkComparisons(findings) {
-  const other=findings.filter((finding)=>finding.kind!=="benchmark-comparison");
+function movementLabel(value) {
+  const number=Number(value);
+  if(!Number.isFinite(number)) return "changed";
+  if(number>=3) return "rose";
+  if(number<=-3) return "fell";
+  return "was nearly flat";
+}
+
+function benchmarkTrendTitle(metric, periodStart, stationChange, benchmarkChange, label) {
+  const month=formatMonth(periodStart);
+  const stationMovement=movementLabel(stationChange);
+  const benchmarkMovement=movementLabel(benchmarkChange);
+  const metricName=benchmarkTrendMetricLabel(metric);
+  if(stationMovement!==benchmarkMovement) {
+    return `${month}: WNMU-FM ${metricName} ${stationMovement} while NPR ${label} ${benchmarkMovement}`;
+  }
+  const gap=stationChange-benchmarkChange;
+  if(stationMovement==="rose") {
+    return `${month}: WNMU-FM ${metricName} rose ${gap>=0 ? "faster" : "more slowly"} than NPR ${label}`;
+  }
+  if(stationMovement==="fell") {
+    return `${month}: WNMU-FM ${metricName} fell ${gap<0 ? "faster" : "less sharply"} than NPR ${label}`;
+  }
+  return `${month}: WNMU-FM ${metricName} moved differently from NPR ${label}`;
+}
+
+function priorMonthLabel(periodStart) {
+  const date=toDate(periodStart);
+  if(!date) return "the previous month";
+  date.setUTCMonth(date.getUTCMonth()-1);
+  return date.toLocaleDateString(undefined,{month:"long",year:"numeric",timeZone:"UTC"});
+}
+
+function benchmarkTrendCandidates(metric, rows, excludedMonths = new Set()) {
+  const paired=numericRows(rows)
+    .filter((row)=>row.benchmark_value!==null && row.benchmark_value!==undefined && Number.isFinite(Number(row.benchmark_value)))
+    .map((row)=>({...row,benchmark_value:Number(row.benchmark_value)}));
+  if(paired.length<2) return [];
+
+  const label=benchmarkLabel(paired);
+  const candidates=[];
+  for(let index=1;index<paired.length;index+=1) {
+    const previous=paired[index-1];
+    const current=paired[index];
+    const previousMonth=String(previous.period_start).slice(0,7);
+    const currentMonth=String(current.period_start).slice(0,7);
+    if(excludedMonths.has(`${metric.sourceFamily}|${previousMonth}`) || excludedMonths.has(`${metric.sourceFamily}|${currentMonth}`)) continue;
+    const stationChange=percentChange(current.station_value,previous.station_value);
+    const benchmarkChange=percentChange(current.benchmark_value,previous.benchmark_value);
+    if(stationChange===null || benchmarkChange===null) continue;
+    const gap=stationChange-benchmarkChange;
+    const opposite=(stationChange>=3 && benchmarkChange<=-3) || (stationChange<=-3 && benchmarkChange>=3);
+    const material=Math.abs(gap)>=10 && (opposite || Math.max(Math.abs(stationChange),Math.abs(benchmarkChange))>=7);
+    if(!material) continue;
+
+    const priorYearKey=`${Number(currentMonth.slice(0,4))-1}-${currentMonth.slice(5,7)}`;
+    const priorYear=paired.find((row)=>String(row.period_start).slice(0,7)===priorYearKey);
+    let yearOverYear="";
+    if(priorYear) {
+      const stationYoY=percentChange(current.station_value,priorYear.station_value);
+      const benchmarkYoY=percentChange(current.benchmark_value,priorYear.benchmark_value);
+      if(stationYoY!==null && benchmarkYoY!==null) {
+        yearOverYear=` Year over year, WNMU-FM is ${formatPercent(stationYoY)} and NPR ${label} is ${formatPercent(benchmarkYoY)}.`;
+      }
+    }
+
+    const score=Math.abs(gap)+(opposite ? 15 : 0);
+    candidates.push({
+      ...findingBase(metric,[previous,current],"month"),
+      id:`benchmark-trend:${metric.key}:${currentMonth}`,
+      kind:"benchmark-trend",
+      category:"npr-comparison",
+      importance:80+Math.min(18,score/4),
+      actionability:84,
+      title:benchmarkTrendTitle(metric,current.period_start,stationChange,benchmarkChange,label),
+      summary:`Compared with ${priorMonthLabel(current.period_start)}, WNMU-FM changed ${formatPercent(stationChange)} while NPR ${label} changed ${formatPercent(benchmarkChange)}, a ${Math.abs(gap).toFixed(1)}-point divergence.${yearOverYear} This compares movement, not raw audience size.`,
+      evidence:[
+        { label:"WNMU-FM monthly change", value:formatPercent(stationChange) },
+        { label:`NPR ${label} monthly change`, value:formatPercent(benchmarkChange) },
+        { label:"Trend divergence", value:`${Math.abs(gap).toFixed(1)} points` }
+      ],
+      sourceStart:previous.period_start,
+      sourceEnd:current.period_end || current.period_start,
+      sampleSize:2,
+      metricKeys:[metric.key],
+      periodStart:current.period_start,
+      periodEnd:current.period_end || current.period_start,
+      stationChangePct:stationChange,
+      benchmarkChangePct:benchmarkChange,
+      trendGapPct:gap,
+      trendDirection:gap>=0 ? "stronger" : "weaker",
+      benchmarkLabel:label,
+      score
+    });
+  }
+
+  return candidates
+    .sort((a,b)=>b.score-a.score || String(b.periodStart).localeCompare(String(a.periodStart)))
+    .slice(0,1);
+}
+
+function groupBenchmarkTrendComparisons(findings) {
+  const other=findings.filter((finding)=>finding.kind!=="benchmark-trend");
   const grouped=new Map();
-  findings.filter((finding)=>finding.kind==="benchmark-comparison").forEach((finding)=>{
-    const direction=Number(finding.deltaPct)<0 ? "below" : "above";
-    const key=`${finding.sourceFamily || "unknown"}|${direction}|${finding.benchmarkLabel || ""}`;
+  findings.filter((finding)=>finding.kind==="benchmark-trend").forEach((finding)=>{
+    const key=`${finding.sourceFamily || "unknown"}|${finding.periodStart || ""}|${finding.trendDirection || ""}|${finding.benchmarkLabel || ""}`;
     if(!grouped.has(key)) grouped.set(key,[]);
     grouped.get(key).push(finding);
   });
@@ -391,29 +487,33 @@ function groupBenchmarkComparisons(findings) {
       other.push(items[0]);
       return;
     }
-    const direction=Number(items[0].deltaPct)<0 ? "below" : "above";
-    const label=items[0].benchmarkLabel || "NPR benchmark";
-    const labels=items.map((item)=>item.metricLabel);
+    const labels=items.map((item)=>BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel);
+    const month=formatMonth(items[0].periodStart);
+    const benchmark=items[0].benchmarkLabel || "NPR benchmark";
+    const stronger=items[0].trendDirection==="stronger";
     const details=items.map((item)=>
-      `${item.metricLabel}: ${formatValue(item.stationMedian,item.unit)} WNMU-FM vs ${formatValue(item.benchmarkMedian,item.unit)} NPR (${formatPercent(item.deltaPct)})`
+      `${BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel}: WNMU-FM ${formatPercent(item.stationChangePct)} vs NPR ${formatPercent(item.benchmarkChangePct)}`
     );
     other.push({
-      id:`benchmark-group:${items[0].sourceFamily}:${direction}`,
-      kind:"benchmark-comparison-group",
+      id:`benchmark-trend-group:${items[0].sourceFamily}:${String(items[0].periodStart).slice(0,7)}:${items[0].trendDirection}`,
+      kind:"benchmark-trend-group",
       category:"npr-comparison",
       sourceFamily:items[0].sourceFamily,
-      grain:"day",
+      grain:"month",
       importance:Math.max(...items.map((item)=>Number(item.importance || 0)))+1,
-      actionability:direction==="below" ? 82 : 62,
-      title:`${joinWithAnd(labels)} are notably ${direction} NPR's ${label} benchmark`,
-      summary:`${joinWithAnd(details)}. NPR supplies this benchmark but does not identify the stations behind it or say they are matched to WNMU-FM.`,
+      actionability:84,
+      title:`${month}: ${joinWithAnd(labels)} moved ${stronger ? "more strongly" : "more weakly"} at WNMU-FM than at NPR ${benchmark}`,
+      summary:`${joinWithAnd(details)}. The comparison is based on percentage movement, not the stations' raw audience totals.`,
       evidence:items.flatMap((item)=>item.evidence || []),
-      sourceStart:items.map((item)=>item.sourceStart).sort().at(-1) || "",
-      sourceEnd:items.map((item)=>item.sourceEnd).sort()[0] || "",
+      sourceStart:items.map((item)=>item.sourceStart).sort()[0] || "",
+      sourceEnd:items.map((item)=>item.sourceEnd).sort().at(-1) || "",
       sampleSize:items.reduce((sum,item)=>sum+Number(item.sampleSize || 0),0),
-      metricKeys:items.map((item)=>item.metricKey),
-      deltaPct:median(items.map((item)=>item.deltaPct)),
-      benchmarkLabel:label
+      metricKeys:items.flatMap((item)=>item.metricKeys || []),
+      periodStart:items[0].periodStart,
+      periodEnd:items[0].periodEnd,
+      trendDirection:items[0].trendDirection,
+      benchmarkLabel:benchmark,
+      score:Math.max(...items.map((item)=>item.score || 0))
     });
   });
   return other;
@@ -424,7 +524,7 @@ export function takeawayActionability(finding) {
   if(finding?.category==="data-quality") return 100;
   if(finding?.kind==="schedule-correlation") return 90;
   if(finding?.kind==="recent-change") return 84;
-  if(finding?.kind==="benchmark-comparison") return Number(finding.deltaPct)<0 ? 82 : 62;
+  if(finding?.kind==="benchmark-trend" || finding?.kind==="benchmark-trend-group") return 84;
   if(finding?.kind==="weekpart" || finding?.kind==="day-of-week") return 74;
   if(finding?.kind==="schedule-change-days") return 68;
   if(finding?.kind==="year-over-year") return 58;
@@ -505,6 +605,7 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={}, benchma
   const findings=[];
   const weekpartSignals=[];
   const reviewedKeys=reviewedOutlierKeys(reviewedAnomalies);
+  const excludedMonths=excludedMonthKeys(reviewedAnomalies);
 
   TAKEAWAY_METRICS.forEach((metric)=>{
     const daily=numericRows(dailyByMetric[metric.key] || []);
@@ -528,13 +629,12 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={}, benchma
   });
 
   TAKEAWAY_BENCHMARK_METRICS.forEach((metric)=>{
-    const rows=benchmarkByMetric[metric.key] || dailyByMetric[metric.key] || [];
-    const comparison=benchmarkFinding(metric,rows);
-    if(comparison) findings.push(comparison);
+    const rows=benchmarkByMetric[metric.key] || monthlyByMetric[metric.key] || [];
+    findings.push(...benchmarkTrendCandidates(metric,rows,excludedMonths));
   });
 
   const crossSource=crossSourceWeekendFinding(weekpartSignals);
   if(crossSource) findings.push(crossSource);
 
-  return sortTakeaways(groupBenchmarkComparisons(groupDataQualityOutliers(findings)));
+  return sortTakeaways(groupBenchmarkTrendComparisons(groupDataQualityOutliers(findings)));
 }
