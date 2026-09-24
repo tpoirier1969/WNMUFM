@@ -428,19 +428,13 @@ body.app-busy * {
 .takeaway-card h3 { margin:0; font-size:.9rem; line-height:1.25; }
 .takeaway-category { flex:0 0 auto; padding:3px 7px; border-radius:999px; background:var(--surface-alt); color:var(--muted); font-size:.67rem; font-weight:850; letter-spacing:.03em; text-transform:uppercase; }
 .takeaway-card p { margin:0; font-size:.82rem; line-height:1.38; }
-.takeaway-evidence { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:13px 0; }
-.takeaway-evidence > div { min-width:0; padding:8px 9px; border-radius:8px; background:var(--surface-alt); }
-.takeaway-evidence span { display:block; color:var(--muted); font-size:.68rem; line-height:1.25; }
-.takeaway-evidence strong { display:block; margin-top:3px; font-size:.86rem; overflow-wrap:anywhere; }
-.takeaway-meta { color:var(--muted); font-size:.73rem; }
 .takeaway-actions { display:flex; justify-content:flex-end; margin-top:7px; }
 .takeaway-actions .small-button { min-height:28px; padding:3px 8px; font-size:.72rem; }
 .takeaway-empty { grid-column:1 / -1; }
 @media (max-width:760px) {
   .takeaway-grid { grid-template-columns:1fr; }
   .takeaway-card.cross-source { grid-column:auto; }
-  .takeaway-evidence { grid-template-columns:1fr; }
-}
+  }
 
 .data-availability { margin:-8px 0 20px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-alt); }
 .data-availability-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:7px; }
