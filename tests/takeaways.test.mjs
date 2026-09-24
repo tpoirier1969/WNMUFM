@@ -108,6 +108,30 @@ test("large WNMU-FM versus NPR benchmark gaps become comparison Takeaways", () =
   assert.match(comparison.summary,/does not identify the stations behind it/i);
 });
 
+test("related benchmark gaps from the same NPR source are grouped into one comparison", () => {
+  const active=dayRows("2026-01-01",70,400,400,{unit:"users"}).map((row)=>({
+    ...row,
+    benchmark_value:1000,
+    benchmark_label:"Typical Station Website"
+  }));
+  const views=dayRows("2026-01-01",70,800,800,{unit:"views"}).map((row)=>({
+    ...row,
+    benchmark_value:2000,
+    benchmark_label:"Typical Station Website"
+  }));
+  const findings=analyzeTakeaways({
+    benchmarkByMetric:{
+      "website.active_users":active,
+      "website.pageviews":views
+    }
+  });
+  const comparisons=findings.filter((item)=>item.category==="npr-comparison");
+  assert.equal(comparisons.length,1);
+  assert.equal(comparisons[0].kind,"benchmark-comparison-group");
+  assert.match(comparisons[0].title,/active users and NPR website pageviews/i);
+  assert.deepEqual(comparisons[0].metricKeys,["website.active_users","website.pageviews"]);
+});
+
 test("small benchmark differences stay unstated", () => {
   const rows=dayRows("2026-01-01",70,900,900,{unit:"listeners"}).map((row)=>({
     ...row,
@@ -173,6 +197,7 @@ test("the app exposes Takeaways as a top-level evidence-backed module", async ()
   assert.doesNotMatch(app,/class="takeaway-evidence"/);
   assert.doesNotMatch(app,/class="takeaway-meta"/);
   assert.match(app,/loadReviewedAnomalies/);
+  assert.match(app,/takeawayRangeKey="";\s*await Promise\.all\(\[renderAnomalies\(\), refreshAnalysisViews\(\)\]\)/s);
   assert.match(app,/sorted with the most actionable items first/);
 });
 
