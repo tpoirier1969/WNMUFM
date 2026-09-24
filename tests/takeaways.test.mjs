@@ -86,3 +86,18 @@ test("cross-source weekend consensus requires several source families", () => {
   assert.equal(cross.category,"cross-source");
   assert.match(cross.summary,/source families/);
 });
+
+
+test("the app exposes Takeaways as a top-level evidence-backed module", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,html]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../index.html",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/data-tab="takeaways"/);
+  assert.match(html,/data-panel="takeaways"/);
+  assert.match(html,/id="takeawayCategoryButtons"/);
+  assert.match(app,/analyzeTakeaways/);
+  assert.match(app,/Open evidence in Trend Explorer/);
+  assert.match(app,/Each card shows the actual source span used/);
+});
