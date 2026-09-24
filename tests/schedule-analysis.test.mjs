@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeScheduleTakeaways, detectMajorScheduleChanges } from "../src/schedule-analysis.js";
+import { addScheduleContextToTrendFindings, analyzeScheduleTakeaways, detectMajorScheduleChanges } from "../src/schedule-analysis.js";
 
 function addDays(value,days) {
   const date=new Date(`${value}T12:00:00Z`);
@@ -73,4 +73,41 @@ test("small schedule differences do not become major-change findings", () => {
   const result=analyzeScheduleTakeaways({entries,dailyByMetric:{}});
   assert.equal(result.profile.changes.length,0);
   assert.equal(result.findings.length,0);
+});
+
+
+test("monthly NPR trend findings gain concise FM schedule context when major changes occur", () => {
+  const dates=mondayDates("2026-01-05",12);
+  const changed=new Set([dates[4],dates[8]]);
+  const entries=dates.flatMap((date)=>changed.has(date) ? changedDay(date) : normalDay(date));
+  const profile=detectMajorScheduleChanges(entries);
+  const finding={
+    id:"benchmark-trend:streaming.listeners:2026-02",
+    kind:"benchmark-trend",
+    category:"npr-comparison",
+    sourceFamily:"streaming",
+    periodStart:"2026-02-01",
+    periodEnd:"2026-02-28",
+    summary:"WNMU-FM rose while NPR fell."
+  };
+  const enriched=addScheduleContextToTrendFindings([finding],profile)[0];
+  assert.ok(enriched.scheduleContext);
+  assert.match(enriched.summary,/FM schedule context:/);
+  assert.match(enriched.summary,/Special Programming/);
+  assert.match(enriched.summary,/not evidence that the schedule caused the audience movement/i);
+});
+
+test("schedule context is not attached to non-streaming NPR trend findings", () => {
+  const profile={
+    changes:[{date:"2026-02-10",changedHours:6,windows:[]}],
+    coverage:{startDate:"2026-02-01",endDate:"2026-02-28",dates:28}
+  };
+  const finding={
+    kind:"benchmark-trend",
+    sourceFamily:"website",
+    periodStart:"2026-02-01",
+    periodEnd:"2026-02-28",
+    summary:"Website trend."
+  };
+  assert.deepEqual(addScheduleContextToTrendFindings([finding],profile),[finding]);
 });
