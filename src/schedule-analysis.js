@@ -290,6 +290,42 @@ function correlationFinding(metric,rows,profile) {
   };
 }
 
+function conciseProgramList(values=[]) {
+  return [...new Set(values.filter(Boolean))].slice(0,3).join(", ");
+}
+
+export function addScheduleContextToTrendFindings(findings=[],profile={changes:[]}) {
+  if(!Array.isArray(profile?.changes) || !profile.changes.length) return findings;
+  return findings.map((finding)=>{
+    if(!["benchmark-trend","benchmark-trend-group"].includes(finding?.kind)) return finding;
+    if(finding.sourceFamily!=="streaming") return finding;
+    if(!finding.periodStart || !finding.periodEnd) return finding;
+    const changes=profile.changes.filter((change)=>change.date>=finding.periodStart && change.date<=finding.periodEnd);
+    if(!changes.length) return finding;
+
+    const largest=[...changes].sort((a,b)=>b.changedHours-a.changedHours || a.date.localeCompare(b.date))[0];
+    const window=largest?.windows?.[0] || null;
+    const actual=conciseProgramList(window?.actual || []);
+    const expected=conciseProgramList(window?.expected || []);
+    let detail=` FM schedule context: ${changes.length} major schedule-change ${changes.length===1 ? "date was" : "dates were"} detected during this month; the largest affected ${formatHours(largest.changedHours)} on ${formatDate(largest.date)}.`;
+    if(actual || expected) {
+      detail += ` The largest changed block included ${actual || "different programming"}${expected ? ` where ${expected} was typical` : ""}.`;
+    }
+    detail += " This is context for investigation, not evidence that the schedule caused the audience movement.";
+    return {
+      ...finding,
+      summary:`${finding.summary}${detail}`,
+      scheduleContext:{
+        changeCount:changes.length,
+        largestDate:largest.date,
+        largestChangedHours:largest.changedHours,
+        actualPrograms:actual,
+        expectedPrograms:expected
+      }
+    };
+  });
+}
+
 export function analyzeScheduleTakeaways({entries=[],dailyByMetric={}}={}) {
   const profile=detectMajorScheduleChanges(entries);
   if(!profile.coverage.dates) return { findings:[], profile };
