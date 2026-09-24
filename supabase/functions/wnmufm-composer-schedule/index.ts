@@ -100,20 +100,41 @@ async function archiveCatalog(payload: unknown, sourceUrl: string) {
     const capturedAt=new Date().toISOString();
     const captureDate=detroitDate();
     const payloadHash=await sha256(payload);
-    const versions=await dbRequest(
-      "wnmufm_schedule_catalog_versions?on_conflict=payload_hash&select=id,payload_hash",
-      {
-        method:"POST",
-        headers:{Prefer:"resolution=merge-duplicates,return=representation"},
-        body:JSON.stringify({
-          payload_hash:payloadHash,
-          payload,
-          source_url:sourceUrl,
-          last_seen_at:capturedAt
-        })
-      }
+    const existing=await dbRequest(
+      `wnmufm_schedule_catalog_versions?select=id,payload_hash&payload_hash=eq.${payloadHash}&limit=1`
     ) as Array<{id:number,payload_hash:string}>;
-    const version=versions?.[0];
+    let version=existing?.[0];
+
+    if(version?.id) {
+      await dbRequest(
+        `wnmufm_schedule_catalog_versions?id=eq.${version.id}`,
+        {
+          method:"PATCH",
+          headers:{Prefer:"return=minimal"},
+          body:JSON.stringify({
+            source_url:sourceUrl,
+            last_seen_at:capturedAt
+          })
+        }
+      );
+    } else {
+      const inserted=await dbRequest(
+        "wnmufm_schedule_catalog_versions?select=id,payload_hash",
+        {
+          method:"POST",
+          headers:{Prefer:"return=representation"},
+          body:JSON.stringify({
+            payload_hash:payloadHash,
+            payload,
+            source_url:sourceUrl,
+            first_seen_at:capturedAt,
+            last_seen_at:capturedAt
+          })
+        }
+      ) as Array<{id:number,payload_hash:string}>;
+      version=inserted?.[0];
+    }
+
     if(!version?.id) throw new Error("Schedule catalog archive did not return a version id.");
 
     await dbRequest(
