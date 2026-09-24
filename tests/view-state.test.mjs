@@ -117,3 +117,13 @@ test("range presets and toolbar actions cancel or flush pending manual edits", a
   assert.match(app,/if\(rangeEditPending\) commitRangeEdit\(\);/);
   assert.doesNotMatch(app,/event\.preventDefault\(\);\s*rangeEditPending=true;\s*commitRangeEdit\(\);/s);
 });
+
+
+test("new app sessions default to the latest 13 months while preserving explicit range state", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/\["all","custom","recent13"\]/);
+  assert.match(app,/\? "custom" : "recent13"/);
+  assert.match(app,/defaultRecentRange\(next,13\)/);
+  assert.match(app,/data-range-preset.*last-13m|rangePreset === "last-13m"/s);
+});
