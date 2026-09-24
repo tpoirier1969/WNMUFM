@@ -19,7 +19,7 @@ test("Composer proxy archives the recurring catalog and can return archived recu
   assert.match(source,/wnmufm_schedule_catalog_versions/);
   assert.match(source,/wnmufm_schedule_daily_archive/);
   assert.match(source,/archive_recurrences_partial/);
-  assert.match(source,/normalizeProgramsForDate/);
+  assert.match(source,/normalizeProgramsForDate/);\n  assert.match(source,/recurrenceDateBounds/);\n  assert.match(source,/preCaptureDates/);
   assert.match(source,/ARCHIVE_STALE_DAYS = 7/);
 });
 
