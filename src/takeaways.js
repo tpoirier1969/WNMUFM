@@ -369,8 +369,54 @@ function benchmarkFinding(metric, rows) {
       { label:"Difference", value:formatPercent(delta) }
     ],
     deltaPct:delta,
-    benchmarkLabel:label
+    benchmarkLabel:label,
+    stationMedian,
+    benchmarkMedian,
+    unit
   };
+}
+
+function groupBenchmarkComparisons(findings) {
+  const other=findings.filter((finding)=>finding.kind!=="benchmark-comparison");
+  const grouped=new Map();
+  findings.filter((finding)=>finding.kind==="benchmark-comparison").forEach((finding)=>{
+    const direction=Number(finding.deltaPct)<0 ? "below" : "above";
+    const key=`${finding.sourceFamily || "unknown"}|${direction}|${finding.benchmarkLabel || ""}`;
+    if(!grouped.has(key)) grouped.set(key,[]);
+    grouped.get(key).push(finding);
+  });
+
+  grouped.forEach((items)=>{
+    if(items.length===1) {
+      other.push(items[0]);
+      return;
+    }
+    const direction=Number(items[0].deltaPct)<0 ? "below" : "above";
+    const label=items[0].benchmarkLabel || "NPR benchmark";
+    const labels=items.map((item)=>item.metricLabel);
+    const details=items.map((item)=>
+      `${item.metricLabel}: ${formatValue(item.stationMedian,item.unit)} WNMU-FM vs ${formatValue(item.benchmarkMedian,item.unit)} NPR (${formatPercent(item.deltaPct)})`
+    );
+    other.push({
+      id:`benchmark-group:${items[0].sourceFamily}:${direction}`,
+      kind:"benchmark-comparison-group",
+      category:"npr-comparison",
+      sourceFamily:items[0].sourceFamily,
+      grain:"day",
+      importance:Math.max(...items.map((item)=>Number(item.importance || 0)))+1,
+      actionability:direction==="below" ? 82 : 62,
+      title:`${joinWithAnd(labels)} are notably ${direction} NPR's ${label} benchmark`,
+      summary:`${joinWithAnd(details)}. NPR supplies this benchmark but does not identify the stations behind it or say they are matched to WNMU-FM.`,
+      evidence:items.flatMap((item)=>item.evidence || []),
+      sourceStart:items.map((item)=>item.sourceStart).sort().at(-1) || "",
+      sourceEnd:items.map((item)=>item.sourceEnd).sort()[0] || "",
+      sampleSize:items.reduce((sum,item)=>sum+Number(item.sampleSize || 0),0),
+      metricKeys:items.map((item)=>item.metricKey),
+      deltaPct:median(items.map((item)=>item.deltaPct)),
+      benchmarkLabel:label
+    });
+  });
+  return other;
 }
 
 export function takeawayActionability(finding) {
@@ -490,5 +536,5 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={}, benchma
   const crossSource=crossSourceWeekendFinding(weekpartSignals);
   if(crossSource) findings.push(crossSource);
 
-  return sortTakeaways(groupDataQualityOutliers(findings));
+  return sortTakeaways(groupBenchmarkComparisons(groupDataQualityOutliers(findings)));
 }
