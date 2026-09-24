@@ -72,3 +72,5 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 51. Keep a compact, always-visible data-coverage summary near the Analysis Range showing which source families and grains exist for which source periods. When possible, identify a shared daily comparison window across the core NPR sources, but keep grain-specific coverage distinct so older weekly/monthly history is not mistaken for daily history.
 52. User-facing copy should write out “Google Analytics 4” rather than relying on the abbreviation “GA4”. Internal metric keys, parser constants, database values, and filenames may retain ga4 identifiers for compatibility.
 
+53. When the same data-quality event appears in multiple measures from the same source on the same date, group those measures into one Takeaway and name them together with “and” rather than presenting near-duplicate cards. Preserve each metric's separate evidence inside the grouped finding and allow the grouped evidence to open together in Trend Explorer.
+

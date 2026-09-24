@@ -241,8 +241,63 @@ function outlierFinding(metric, rows) {
       { label:"Multiple of median", value:`${ratio.toFixed(1)}×` }
     ],
     sourceStart:rows[0].period_start,
-    sourceEnd:rows[rows.length-1].period_start
+    sourceEnd:rows[rows.length-1].period_start,
+    outlierDate:maxRow.period_start,
+    spikeValue:maxRow.station_value,
+    medianValue:baseMedian,
+    ratio,
+    unit
   };
+}
+
+function joinWithAnd(values) {
+  const items=values.filter(Boolean);
+  if(items.length<=1) return items[0] || "";
+  if(items.length===2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0,-1).join(", ")}, and ${items.at(-1)}`;
+}
+
+function groupDataQualityOutliers(findings) {
+  const other=findings.filter((finding)=>finding.kind!=="outlier");
+  const grouped=new Map();
+
+  findings.filter((finding)=>finding.kind==="outlier").forEach((finding)=>{
+    const key=`${finding.sourceFamily || "unknown"}|${finding.outlierDate || ""}`;
+    if(!grouped.has(key)) grouped.set(key,[]);
+    grouped.get(key).push(finding);
+  });
+
+  grouped.forEach((items)=>{
+    if(items.length===1) {
+      other.push(items[0]);
+      return;
+    }
+    const labels=items.map((item)=>item.metricLabel);
+    const details=items.map((item)=>
+      `${item.metricLabel} reached ${formatValue(item.spikeValue,item.unit)} (${item.ratio.toFixed(1)}× its median)`
+    );
+    other.push({
+      id:`outlier-group:${items[0].sourceFamily}:${items[0].outlierDate}`,
+      kind:"outlier-group",
+      category:"data-quality",
+      sourceFamily:items[0].sourceFamily,
+      grain:"day",
+      importance:Math.max(...items.map((item)=>Number(item.importance || 0)))+2,
+      title:`${joinWithAnd(labels)} spike together on ${formatDate(items[0].outlierDate)}`,
+      summary:`${joinWithAnd(details)}. Because multiple measures from the same source moved together on the same date, they are grouped as one data-quality event. The spike may be legitimate and should be reviewed before being treated as normal audience behavior.`,
+      evidence:items.map((item)=>({
+        label:item.metricLabel,
+        value:`${formatValue(item.spikeValue,item.unit)} · ${item.ratio.toFixed(1)}× median`
+      })),
+      sourceStart:items.map((item)=>item.sourceStart).sort()[0] || "",
+      sourceEnd:items.map((item)=>item.sourceEnd).sort().at(-1) || "",
+      sampleSize:items.reduce((sum,item)=>sum+Number(item.sampleSize || 0),0),
+      metricKeys:items.map((item)=>item.metricKey),
+      outlierDate:items[0].outlierDate
+    });
+  });
+
+  return other;
 }
 
 function yearOverYearFinding(metric, rows) {
@@ -334,5 +389,6 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={} }={}) {
   const crossSource=crossSourceWeekendFinding(weekpartSignals);
   if(crossSource) findings.push(crossSource);
 
-  return findings.sort((a,b)=>Number(b.importance||0)-Number(a.importance||0) || String(a.title).localeCompare(String(b.title)));
+  return groupDataQualityOutliers(findings)
+    .sort((a,b)=>Number(b.importance||0)-Number(a.importance||0) || String(a.title).localeCompare(String(b.title)));
 }

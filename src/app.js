@@ -623,7 +623,7 @@ function renderTakeawayCards() {
     const source=finding.sourceStart && finding.sourceEnd
       ? `${formatDayDate(finding.sourceStart)} – ${formatDayDate(finding.sourceEnd)}`
       : "Source span unavailable";
-    const sampleLabel=finding.kind==="cross-source-weekpart"
+    const sampleLabel=finding.kind==="cross-source-weekpart" || finding.kind==="outlier-group"
       ? `${Number(finding.sampleSize || 0).toLocaleString()} metric-observations`
       : finding.kind==="schedule-change-days"
         ? `${Number(finding.sampleSize || 0).toLocaleString()} dated schedule days`
@@ -631,8 +631,11 @@ function renderTakeawayCards() {
           ? `${Number(finding.sampleSize || 0).toLocaleString()} matched schedule-change dates`
           : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
     const evidence=(finding.evidence || []).map((item)=>`<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("");
-    const action=finding.metricKey
-      ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metric="${escapeHtml(finding.metricKey)}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">Open evidence in Trend Explorer</button></div>`
+    const evidenceMetricKeys=Array.isArray(finding.metricKeys) && finding.metricKeys.length
+      ? finding.metricKeys
+      : (finding.metricKey ? [finding.metricKey] : []);
+    const action=evidenceMetricKeys.length
+      ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metrics="${escapeHtml(evidenceMetricKeys.join(","))}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">Open evidence in Trend Explorer</button></div>`
       : "";
     const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : "";
     return `<article class="takeaway-card${cardClass}">
@@ -1901,9 +1904,11 @@ function bindEvents() {
   els.takeawayList.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-takeaway-evidence]");
     if(!button) return;
-    const metric=button.dataset.metric;
-    if(!metric) return;
-    state.trendMetrics=[metric];
+    const metrics=String(button.dataset.metrics || "").split(",").map((item)=>item.trim()).filter(Boolean);
+    if(!metrics.length) return;
+    const validMetrics=new Set(TREND_METRICS.map((item)=>item.key));
+    state.trendMetrics=metrics.filter((metric)=>validMetrics.has(metric));
+    if(!state.trendMetrics.length) return;
     state.trendGrain=button.dataset.grain || "day";
     state.trendWeekpart="all";
     state.trendNotable="all";

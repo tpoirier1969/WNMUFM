@@ -60,6 +60,21 @@ test("extreme spikes are framed as reviewable data-quality findings, not invalid
   assert.doesNotMatch(outlier.summary,/bot|invalid|bad data/i);
 });
 
+test("same-source data-quality spikes on the same date are grouped with and", () => {
+  const dailyByMetric={
+    "website.active_users":dayRows("2026-01-01",70,500,400,{unit:"users",spike:{index:30,value:12000}}),
+    "website.pageviews":dayRows("2026-01-01",70,900,700,{unit:"views",spike:{index:30,value:20000}})
+  };
+  const findings=analyzeTakeaways({dailyByMetric});
+  const quality=findings.filter((item)=>item.category==="data-quality");
+  assert.equal(quality.length,1);
+  assert.equal(quality[0].kind,"outlier-group");
+  assert.match(quality[0].title,/active users and NPR website pageviews/i);
+  assert.match(quality[0].summary,/grouped as one data-quality event/i);
+  assert.deepEqual(quality[0].metricKeys,["website.active_users","website.pageviews"]);
+  assert.equal(quality[0].evidence.length,2);
+});
+
 test("monthly comparisons use source-valid month rows rather than summing daily uniques", () => {
   const rows=monthRows(2025,1,20,100,{unit:"users"});
   rows[7].station_value=100;
@@ -99,6 +114,8 @@ test("the app exposes Takeaways as a top-level evidence-backed module", async ()
   assert.match(html,/id="takeawayCategoryButtons"/);
   assert.match(app,/analyzeTakeaways/);
   assert.match(app,/Open evidence in Trend Explorer/);
+  assert.match(app,/data-metrics=/);
+  assert.match(app,/button\.dataset\.metrics/);
   assert.match(app,/Each card shows the actual source span used/);
 });
 
