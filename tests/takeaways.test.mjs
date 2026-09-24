@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeTakeaways, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "../src/takeaways.js";
+import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "../src/takeaways.js";
 
 function dayRows(start,count,weekdayValue,weekendValue,{unit="listeners",spike=null}={}) {
   const rows=[];
@@ -33,6 +33,7 @@ function monthRows(startYear,startMonth,count,base,{unit="listeners",growth=0}={
 test("Takeaways exposes the expected user-facing categories and source metrics", () => {
   assert.ok(TAKEAWAY_CATEGORIES.some(([key])=>key==="cross-source"));
   assert.ok(TAKEAWAY_CATEGORIES.some(([key])=>key==="data-quality"));
+  assert.ok(TAKEAWAY_CATEGORIES.some(([key])=>key==="npr-comparison"));
   assert.ok(TAKEAWAY_METRICS.some((item)=>item.key==="streaming.listeners"));
   assert.ok(TAKEAWAY_METRICS.some((item)=>item.key==="ga4.site_sessions"));
 });
@@ -75,6 +76,59 @@ test("same-source data-quality spikes on the same date are grouped with and", ()
   assert.equal(quality[0].evidence.length,2);
 });
 
+test("reviewed legitimate anomalies stop generating data-quality Takeaways without removing the underlying data", () => {
+  const rows=dayRows("2026-01-01",70,500,400,{unit:"views",spike:{index:30,value:10000}});
+  const spikeDate=rows[30].period_start;
+  const findings=analyzeTakeaways({
+    dailyByMetric:{ "website.pageviews":rows },
+    reviewedAnomalies:[{
+      anomaly_key:`website_spike_${spikeDate}`,
+      status:"expected",
+      evidence:{date:spikeDate}
+    }]
+  });
+  assert.equal(findings.some((item)=>item.id==="outlier:website.pageviews"),false);
+  assert.equal(rows[30].station_value,10000);
+});
+
+test("large WNMU-FM versus NPR benchmark gaps become comparison Takeaways", () => {
+  const rows=dayRows("2026-01-01",70,400,400,{unit:"listeners"}).map((row)=>({
+    ...row,
+    benchmark_value:1000,
+    benchmark_label:"Typical Station"
+  }));
+  const findings=analyzeTakeaways({
+    benchmarkByMetric:{ "streaming.listeners":rows }
+  });
+  const comparison=findings.find((item)=>item.id==="benchmark:streaming.listeners");
+  assert.ok(comparison);
+  assert.equal(comparison.category,"npr-comparison");
+  assert.match(comparison.title,/below NPR's Typical Station benchmark/i);
+  assert.match(comparison.summary,/WNMU-FM's median daily value is 400 listeners versus 1,000 listeners/i);
+  assert.match(comparison.summary,/does not identify the stations behind it/i);
+});
+
+test("small benchmark differences stay unstated", () => {
+  const rows=dayRows("2026-01-01",70,900,900,{unit:"listeners"}).map((row)=>({
+    ...row,
+    benchmark_value:1000,
+    benchmark_label:"Typical Station"
+  }));
+  const findings=analyzeTakeaways({
+    benchmarkByMetric:{ "streaming.listeners":rows }
+  });
+  assert.equal(findings.some((item)=>item.kind==="benchmark-comparison"),false);
+});
+
+test("Takeaways sort data-quality and other actionable items ahead of context", () => {
+  const sorted=sortTakeaways([
+    {id:"context",kind:"year-over-year",title:"Context",importance:99},
+    {id:"quality",category:"data-quality",kind:"outlier",title:"Review",importance:1},
+    {id:"recent",kind:"recent-change",title:"Recent",importance:1}
+  ]);
+  assert.deepEqual(sorted.map((item)=>item.id),["quality","recent","context"]);
+});
+
 test("monthly comparisons use source-valid month rows rather than summing daily uniques", () => {
   const rows=monthRows(2025,1,20,100,{unit:"users"});
   rows[7].station_value=100;
@@ -113,10 +167,13 @@ test("the app exposes Takeaways as a top-level evidence-backed module", async ()
   assert.match(html,/data-panel="takeaways"/);
   assert.match(html,/id="takeawayCategoryButtons"/);
   assert.match(app,/analyzeTakeaways/);
-  assert.match(app,/Open evidence in Trend Explorer/);
+  assert.match(app,/View in Trend Explorer/);
   assert.match(app,/data-metrics=/);
   assert.match(app,/button\.dataset\.metrics/);
-  assert.match(app,/Each card shows the actual source span used/);
+  assert.doesNotMatch(app,/class="takeaway-evidence"/);
+  assert.doesNotMatch(app,/class="takeaway-meta"/);
+  assert.match(app,/loadReviewedAnomalies/);
+  assert.match(app,/sorted with the most actionable items first/);
 });
 
 
