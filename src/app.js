@@ -610,7 +610,7 @@ function renderTakeawayCards() {
   const rangeText=state.startDate && state.endDate ? `${formatDayDate(state.startDate)} – ${formatDayDate(state.endDate)}` : "the available imported range";
   const scheduleSuffix=takeawayScheduleNotice ? ` ${takeawayScheduleNotice}` : "";
   els.takeawaySummary.textContent = filtered.length
-    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Each card shows the actual source span used, which may be shorter than the Analysis Range.${scheduleSuffix}`
+    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Findings are sorted with the most actionable items first and use source-valid coverage even when it is shorter than the Analysis Range.${scheduleSuffix}`
     : `No findings in ${takeawayCategoryLabel(state.takeawayCategory)} meet the current evidence thresholds for ${rangeText}.${scheduleSuffix}`;
   if(!filtered.length) {
     els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Nothing strong enough to call out here yet. The app leaves weak or unsupported patterns unstated.</p>';
