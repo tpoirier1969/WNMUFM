@@ -667,6 +667,55 @@ function formattedRange(range) {
   return `${formatDayDate(range.startDate)} – ${formatDayDate(range.endDate)}`;
 }
 
+function shortCoverageDate(value) {
+  if(!value) return "";
+  const date=new Date(`${value}T12:00:00Z`);
+  if(Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric",timeZone:"UTC"});
+}
+
+function shortCoverageSpan(range) {
+  if(!range?.startDate || !range?.endDate) return "No coverage";
+  return `${shortCoverageDate(range.startDate)} – ${shortCoverageDate(range.endDate)}`;
+}
+
+function coverageGrainLabel(grain) {
+  if(grain==="day") return "Day";
+  if(grain==="week") return "Week";
+  if(grain==="month") return "Month";
+  return "Aggregate";
+}
+
+async function renderDataAvailability() {
+  if(!els.dataAvailabilityRows || !els.dataAvailabilityHint) return;
+  const [imports,streaming,website,audio,nprOne,google] = await Promise.all([
+    loadImports(),
+    loadTimeSeriesRange("streaming.listeners","day","{}"),
+    loadTimeSeriesRange("website.active_users","day","{}"),
+    loadTimeSeriesRange("audio.downloads","day","{}"),
+    loadTimeSeriesRange("npr_one.localized_listeners","day","{}"),
+    loadTimeSeriesRange("ga4.site_sessions","day","{}")
+  ]);
+  const rows=buildCoverageRows(imports);
+  const commonDaily=intersectRanges([streaming,website,audio,nprOne]);
+  const commonText=commonDaily.startDate
+    ? `Best cross-source daily comparison: ${shortCoverageSpan(commonDaily)}.`
+    : "No shared daily comparison window is available across the four core NPR sources.";
+  const googleText=google.startDate
+    ? ` Google Analytics 4 dated detail: ${shortCoverageSpan(google)}.`
+    : "";
+  els.dataAvailabilityHint.innerHTML = `${escapeHtml(commonText+googleText)}${commonDaily.startDate ? ` <button type="button" class="coverage-use-range" data-coverage-start="${escapeHtml(commonDaily.startDate)}" data-coverage-end="${escapeHtml(commonDaily.endDate)}">Use common daily window</button>` : ""}`;
+
+  els.dataAvailabilityRows.innerHTML=rows.map((row)=>`
+    <div class="data-availability-row">
+      <strong>${escapeHtml(row.label)}</strong>
+      <div class="data-availability-grains">
+        ${row.grains.map((grain)=>`<span class="coverage-grain"><b>${escapeHtml(coverageGrainLabel(grain.grain))}</b> ${escapeHtml(shortCoverageSpan(grain))}</span>`).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
 function applyRangeControls() {
   els.globalStartDate.value = state.startDate;
   els.globalEndDate.value = state.endDate;
@@ -1545,6 +1594,7 @@ async function refreshDashboard() {
       renderImportHistory(),
       renderCollectionChecklist(),
       renderExplore(),
+      renderDataAvailability(),
       state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
     ]);
   } catch (error) {
@@ -1858,6 +1908,20 @@ function bindEvents() {
     const stored=storePendingRangeEdit();
     if(stored===null) return;
     void copyCurrentViewLink();
+  });
+
+  els.dataAvailability.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-coverage-start][data-coverage-end]");
+    if(!button) return;
+    cancelRangeCommitTimer();
+    rangeEditPending=false;
+    state.startDate=button.dataset.coverageStart;
+    state.endDate=button.dataset.coverageEnd;
+    state.rangeMode="custom";
+    clearTrendZoom();
+    applyRangeControls();
+    persistUiState();
+    void withBusy(()=>refreshAnalysisViews());
   });
 
   els.dropZone.addEventListener("click", () => els.fileInput.click());
