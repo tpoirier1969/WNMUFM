@@ -18,7 +18,8 @@ const PARAMS = Object.freeze({
   trendProgram:"program",
   trendZoomStart:"zoomStart",
   trendZoomEnd:"zoomEnd",
-  exploreView:"explore"
+  exploreView:"explore",
+  takeawayCategory:"takeaways"
 });
 
 export function parseViewState(search = "") {
@@ -30,7 +31,7 @@ export function parseViewState(search = "") {
     return params.has(param) ? params.get(param) ?? "" : undefined;
   };
 
-  for (const key of ["activeTab","startDate","endDate","rangeMode","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView"]) {
+  for (const key of ["activeTab","startDate","endDate","rangeMode","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory"]) {
     const value = read(key);
     if (value !== undefined) view[key] = value;
   }
@@ -65,6 +66,7 @@ export function buildViewSearch(view = {}) {
   set("trendZoomStart", view.trendZoomStart, { allowEmpty:true });
   set("trendZoomEnd", view.trendZoomEnd, { allowEmpty:true });
   set("exploreView", view.exploreView);
+  set("takeawayCategory", view.takeawayCategory);
 
   const text = params.toString();
   return text ? `?${text}` : "";
