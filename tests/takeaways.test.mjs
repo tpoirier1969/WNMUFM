@@ -70,7 +70,7 @@ test("same-source data-quality spikes on the same date are grouped with and", ()
   const quality=findings.filter((item)=>item.category==="data-quality");
   assert.equal(quality.length,1);
   assert.equal(quality[0].kind,"outlier-group");
-  assert.match(quality[0].title,/active users and NPR website pageviews/i);
+  assert.match(quality[0].title,);
   assert.match(quality[0].summary,/grouped as one data-quality event/i);
   assert.deepEqual(quality[0].metricKeys,["website.active_users","website.pageviews"]);
   assert.equal(quality[0].evidence.length,2);
@@ -137,9 +137,25 @@ test("related monthly trend divergences from the same NPR source are grouped", (
   assert.equal(comparisons.length,1);
   assert.equal(comparisons[0].kind,"benchmark-trend-group");
   assert.match(comparisons[0].title,/February 2026/i);
-  assert.match(comparisons[0].title,/active users and NPR website pageviews/i);
+  assert.match(comparisons[0].title,/website active users and website pageviews/i);
   assert.deepEqual(comparisons[0].metricKeys,["website.active_users","website.pageviews"]);
   assert.match(comparisons[0].summary,/percentage movement, not the stations' raw audience totals/i);
+});
+
+test("excluded daily anomalies suppress monthly NPR trend comparisons that still contain that date", () => {
+  const rows=[
+    {period_start:"2026-01-01",period_end:"2026-01-31",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station Website",unit:"users"},
+    {period_start:"2026-02-01",period_end:"2026-02-28",station_value:160,benchmark_value:1000,benchmark_label:"Typical Station Website",unit:"users"}
+  ];
+  const findings=analyzeTakeaways({
+    benchmarkByMetric:{ "website.active_users":rows },
+    reviewedAnomalies:[{
+      anomaly_key:"website_spike_2026-02-14",
+      status:"excluded",
+      evidence:{date:"2026-02-14"}
+    }]
+  });
+  assert.equal(findings.some((item)=>item.category==="npr-comparison"),false);
 });
 
 test("Takeaways sort data-quality and other actionable items ahead of context", () => {
