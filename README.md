@@ -21,7 +21,7 @@ Read `PROJECT_RULES.md` before modifying the application.
 - Persistent storage: existing Supabase project `WNMUProgramming data`
 - FM database ownership: every FM analytics database object uses the `wnmufm_` prefix
 - Authentication/authorization: Supabase Auth via GitHub OAuth or email/password, plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
-- GA4 import: source-period CSV exports for pages, landing pages, events, acquisition, geography and technical diagnostics; GA4 aggregate reports remain separate from dated NPR website metrics
+- Google Analytics 4 import: source-period CSV exports for pages, landing pages, events, acquisition, geography and technical diagnostics; Google Analytics 4 aggregate reports remain separate from dated NPR website metrics
 - Authoritative application version: `src/version.js`
 
 ## Run locally
