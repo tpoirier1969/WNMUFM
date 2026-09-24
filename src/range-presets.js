@@ -52,7 +52,7 @@ export function buildRangePresets(available) {
   if (!end) return [];
   const year = end.getUTCFullYear();
 
-  const rolling = [3,6,9].map((months) => {
+  const rolling = [3,6,9,13].map((months) => {
     const start = addDays(addMonthsClamped(end,-months),1);
     return {
       key:`last-${months}m`,
@@ -82,4 +82,10 @@ export function buildRangePresets(available) {
     ...calendar,
     ...seasons
   ];
+}
+
+
+export function defaultRecentRange(available, months = 13) {
+  const preset=buildRangePresets(available).find((item)=>item.key===`last-${months}m`);
+  return preset ? { startDate:preset.startDate, endDate:preset.endDate } : { startDate:available?.startDate || "", endDate:available?.endDate || "" };
 }
