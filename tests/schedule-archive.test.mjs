@@ -35,5 +35,5 @@ test("historical schedule client accepts archived recurrence coverage but marks 
 test("schedule Takeaways disable one-day special inference for archived recurring snapshots", async () => {
   const source=await readFile(new URL("../src/schedule-analysis.js",import.meta.url),"utf8");
   assert.match(source,/supportsSpecials=true/);
-  assert.match(source,/supportsSpecials\\s*\\?\\s*detectMajorScheduleChanges/);
+  assert.match(source,/supportsSpecials\s*\?\s*detectMajorScheduleChanges/);
 });
