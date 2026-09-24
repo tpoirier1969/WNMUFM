@@ -29,3 +29,17 @@ test("available analysis range uses earliest and latest usable observation dates
   ]);
   assert.deepEqual(range,{startDate:"2025-09-12",endDate:"2026-09-20"});
 });
+
+
+test("Trend Explorer distinguishes global Analysis Range from metric/grain source coverage", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,data]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../src/data.js",import.meta.url),"utf8")
+  ]);
+  assert.match(data,/export async function loadTimeSeriesRange/);
+  assert.match(app,/loadTimeSeriesRange\(metricKey,grain,filterSignature\)/);
+  assert.match(app,/Source coverage for/);
+  assert.match(app,/Source coverage at/);
+  assert.match(app,/No imported source coverage is available/);
+});
