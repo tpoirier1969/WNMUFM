@@ -180,6 +180,18 @@ function recurrenceDays(recurrence) {
   return new Set();
 }
 
+function truthy(value) {
+  if(value===true || value===1) return true;
+  return ["true","1","yes"].includes(String(value || "").trim().toLowerCase());
+}
+
+function recurrenceDateBounds(recurrence) {
+  const start=datePart(recurrence?.start_date || recurrence?._start_date || recurrence?.startDate);
+  const noEnd=truthy(recurrence?.no_end_date || recurrence?.noEndDate);
+  const end=noEnd ? null : datePart(recurrence?.end_date || recurrence?._end_date || recurrence?.endDate);
+  return {start,end};
+}
+
 function addDays(dateText, amount) {
   const date = new Date(`${dateText}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + amount);
@@ -203,7 +215,12 @@ export function normalizeComposerPrograms(payload, startDate, endDate) {
       const days = recurrenceDays(recurrence);
       if (!start || !end || !days.size) return;
 
-      for (let dateText = startDate; dateText <= endDate; dateText = addDays(dateText, 1)) {
+      const bounds=recurrenceDateBounds(recurrence);
+      const effectiveStart=bounds.start && bounds.start>startDate ? bounds.start : startDate;
+      const effectiveEnd=bounds.end && bounds.end<endDate ? bounds.end : endDate;
+      if(effectiveStart>effectiveEnd) return;
+
+      for (let dateText = effectiveStart; dateText <= effectiveEnd; dateText = addDays(dateText, 1)) {
         const date = new Date(`${dateText}T12:00:00Z`);
         if (!days.has(date.getUTCDay())) continue;
         output.push({
