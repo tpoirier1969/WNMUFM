@@ -688,7 +688,7 @@ async function renderTakeaways({ force=false }={}) {
         } else {
           const coverageStart=schedule.coverageStart || scheduleRange.start;
           const coverageEnd=schedule.coverageEnd || scheduleRange.end;
-          takeawayScheduleNotice=`Scheduling findings use WNMU-FM's archived recurring schedule snapshots for ${shortCoverageDate(coverageStart)} – ${shortCoverageDate(coverageEnd)}. These snapshots support recurring-series change analysis but not one-day special-programming detection.`;
+          takeawayScheduleNotice=`Scheduling findings use WNMU-FM's archived Composer recurrence definitions to reconstruct the recurring schedule for ${shortCoverageDate(coverageStart)} – ${shortCoverageDate(coverageEnd)}. This supports recurring-series change analysis but not one-day special-programming detection.`;
         }
       } else {
         takeawayScheduleNotice=`Scheduling findings are unavailable for this range because Composer did not provide a complete exact dated schedule: ${schedule.reason || "historical schedule unavailable"}`;
