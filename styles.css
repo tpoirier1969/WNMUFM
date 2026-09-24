@@ -441,3 +441,21 @@ body.app-busy * {
   .takeaway-evidence { grid-template-columns:1fr; }
 }
 
+.data-availability { margin:-8px 0 20px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-alt); }
+.data-availability-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:7px; }
+.data-availability-head strong { font-size:.8rem; }
+.data-availability-head span { color:var(--muted); font-size:.73rem; line-height:1.35; }
+.coverage-use-range { margin-left:6px; padding:2px 7px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--brand); font:inherit; font-weight:800; cursor:pointer; }
+.coverage-use-range:hover, .coverage-use-range:focus { text-decoration:underline; }
+.data-availability-rows { display:grid; gap:5px; }
+.data-availability-row { display:grid; grid-template-columns:minmax(108px,150px) 1fr; gap:10px; align-items:start; }
+.data-availability-row > strong { font-size:.74rem; line-height:1.4; }
+.data-availability-grains { display:flex; flex-wrap:wrap; gap:5px 10px; min-width:0; }
+.coverage-grain { color:var(--muted); font-size:.7rem; white-space:nowrap; }
+.coverage-grain b { color:var(--text); font-weight:850; }
+.takeaway-card.scheduling { border-left:4px solid var(--accent); }
+@media (max-width:700px) {
+  .data-availability-row { grid-template-columns:1fr; gap:2px; }
+  .coverage-grain { white-space:normal; }
+}
+

@@ -101,3 +101,16 @@ test("the app exposes Takeaways as a top-level evidence-backed module", async ()
   assert.match(app,/Open evidence in Trend Explorer/);
   assert.match(app,/Each card shows the actual source span used/);
 });
+
+
+test("Takeaways can add exact dated FM schedule-change findings without claiming causation", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,takeaways]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../src/takeaways.js",import.meta.url),"utf8")
+  ]);
+  assert.match(takeaways,/\["scheduling","Scheduling"\]/);
+  assert.match(app,/fetchExactComposerScheduleRange/);
+  assert.match(app,/analyzeScheduleTakeaways/);
+  assert.match(app,/Scheduling findings use exact dated Composer schedules/);
+});

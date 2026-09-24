@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildRangePresets } from "../src/range-presets.js";
+import { buildRangePresets, defaultRecentRange } from "../src/range-presets.js";
 
 test("Trend Explorer quick ranges anchor to the latest imported date", () => {
   const presets=buildRangePresets({startDate:"2025-09-12",endDate:"2026-09-20"});
@@ -43,4 +43,17 @@ test("season shortcuts use meteorological seasons and clip to imported coverage"
     {startDate:byKey.get("fall").startDate,endDate:byKey.get("fall").endDate},
     {startDate:"2026-09-01",endDate:"2026-09-20"}
   );
+});
+
+
+test("the default recent range is the latest 13 months of imported coverage", () => {
+  const available={startDate:"2023-09-01",endDate:"2026-09-22"};
+  assert.deepEqual(defaultRecentRange(available,13),{
+    startDate:"2025-08-23",
+    endDate:"2026-09-22"
+  });
+  const presets=buildRangePresets(available);
+  const recent=presets.find((item)=>item.key==="last-13m");
+  assert.equal(recent.label,"Last 13 months");
+  assert.equal(recent.startDate,"2025-08-23");
 });

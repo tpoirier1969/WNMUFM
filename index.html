@@ -68,6 +68,14 @@
         </div>
       </div>
 
+      <div id="dataAvailability" class="data-availability" aria-live="polite">
+        <div class="data-availability-head">
+          <strong>Data coverage</strong>
+          <span id="dataAvailabilityHint"></span>
+        </div>
+        <div id="dataAvailabilityRows" class="data-availability-rows"></div>
+      </div>
+
       <section class="tab-panel" data-panel="overview">
         <div class="section-heading">
           <div>
@@ -263,12 +271,12 @@
             <h3>Upload</h3>
             <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP or Google Analytics CSV files">
               <strong>Drop ZIP or CSV reports here</strong>
-              <span>NPR Analytics ZIPs and GA4 CSV exports are supported</span>
+              <span>NPR Analytics ZIPs and Google Analytics 4 CSV exports are supported</span>
               <input id="fileInput" type="file" accept=".zip,.csv,application/zip,text/csv" multiple hidden>
             </div>
             <div class="filter-context">
               <h4>Optional export filter</h4>
-              <p>If an NPR Analytics ZIP was exported with a dashboard filter, record it here. GA4 CSV source details are read from the export itself.</p>
+              <p>If an NPR Analytics ZIP was exported with a dashboard filter, record it here. Google Analytics 4 CSV source details are read from the export itself.</p>
               <div class="inline-controls">
                 <label>Filter name
                   <input id="filterName" type="text" placeholder="e.g. device_type">
