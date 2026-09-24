@@ -184,13 +184,13 @@ const DAILY_FREE_FORM_SPECS=Object.freeze({
     rankColumn:"Views",
     limit:100,
     metrics:[
-      {key:"ga4.page_views",label:"GA4 page views",column:"Views",unit:"views"},
-      {key:"ga4.page_active_users",label:"GA4 page active users",column:"Active users",unit:"users"},
-      {key:"ga4.page_views_per_user",label:"GA4 page views per active user",column:"Views per active user",unit:"views_per_user"},
-      {key:"ga4.page_engagement_seconds_per_session",label:"GA4 page engagement time per session",column:"Average engagement time per session",unit:"seconds"},
-      {key:"ga4.page_event_count",label:"GA4 page event count",column:"Event count",unit:"events"}
+      {key:"ga4.page_views",label:"Google Analytics 4 page views",column:"Views",unit:"views"},
+      {key:"ga4.page_active_users",label:"Google Analytics 4 page active users",column:"Active users",unit:"users"},
+      {key:"ga4.page_views_per_user",label:"Google Analytics 4 page views per active user",column:"Views per active user",unit:"views_per_user"},
+      {key:"ga4.page_engagement_seconds_per_session",label:"Google Analytics 4 page engagement time per session",column:"Average engagement time per session",unit:"seconds"},
+      {key:"ga4.page_event_count",label:"Google Analytics 4 page event count",column:"Event count",unit:"events"}
     ],
-    totals:[{key:"ga4.site_page_views",label:"GA4 site page views",column:"Views",unit:"views"}]
+    totals:[{key:"ga4.site_page_views",label:"Google Analytics 4 site page views",column:"Views",unit:"views"}]
   },
   daily_landing:{
     dimensionColumn:"Landing page",
@@ -198,12 +198,12 @@ const DAILY_FREE_FORM_SPECS=Object.freeze({
     rankColumn:"Sessions",
     limit:100,
     metrics:[
-      {key:"ga4.landing_sessions",label:"GA4 landing-page sessions",column:"Sessions",unit:"sessions"},
-      {key:"ga4.landing_active_users",label:"GA4 landing-page active users",column:"Active users",unit:"users"},
-      {key:"ga4.landing_new_users",label:"GA4 landing-page new users",column:"New users",unit:"users"},
-      {key:"ga4.landing_engagement_seconds_per_session",label:"GA4 landing-page engagement time per session",column:"Average engagement time per session",unit:"seconds"}
+      {key:"ga4.landing_sessions",label:"Google Analytics 4 landing-page sessions",column:"Sessions",unit:"sessions"},
+      {key:"ga4.landing_active_users",label:"Google Analytics 4 landing-page active users",column:"Active users",unit:"users"},
+      {key:"ga4.landing_new_users",label:"Google Analytics 4 landing-page new users",column:"New users",unit:"users"},
+      {key:"ga4.landing_engagement_seconds_per_session",label:"Google Analytics 4 landing-page engagement time per session",column:"Average engagement time per session",unit:"seconds"}
     ],
-    totals:[{key:"ga4.site_sessions",label:"GA4 site sessions",column:"Sessions",unit:"sessions"}]
+    totals:[{key:"ga4.site_sessions",label:"Google Analytics 4 site sessions",column:"Sessions",unit:"sessions"}]
   },
   daily_session_channel:{
     dimensionColumn:"Session primary channel group (Default Channel Group)",
@@ -211,13 +211,13 @@ const DAILY_FREE_FORM_SPECS=Object.freeze({
     rankColumn:"Sessions",
     limit:2000,
     metrics:[
-      {key:"ga4.sessions_by_channel",label:"GA4 sessions by channel",column:"Sessions",unit:"sessions"},
-      {key:"ga4.engaged_sessions_by_channel",label:"GA4 engaged sessions by channel",column:"Engaged sessions",unit:"sessions"},
-      {key:"ga4.engagement_rate_by_channel",label:"GA4 engagement rate by channel",column:"Engagement rate",unit:"percent",transform:ratePercent},
-      {key:"ga4.engagement_seconds_per_session_by_channel",label:"GA4 engagement time per session by channel",column:"Average engagement time per session",unit:"seconds"},
-      {key:"ga4.channel_event_count",label:"GA4 event count by session channel",column:"Event count",unit:"events"},
-      {key:"ga4.channel_active_users",label:"GA4 active users by session channel",column:"Active users",unit:"users"},
-      {key:"ga4.channel_event_count_per_user",label:"GA4 events per active user by session channel",column:"Event count per active user",unit:"events_per_user"}
+      {key:"ga4.sessions_by_channel",label:"Google Analytics 4 sessions by channel",column:"Sessions",unit:"sessions"},
+      {key:"ga4.engaged_sessions_by_channel",label:"Google Analytics 4 engaged sessions by channel",column:"Engaged sessions",unit:"sessions"},
+      {key:"ga4.engagement_rate_by_channel",label:"Google Analytics 4 engagement rate by channel",column:"Engagement rate",unit:"percent",transform:ratePercent},
+      {key:"ga4.engagement_seconds_per_session_by_channel",label:"Google Analytics 4 engagement time per session by channel",column:"Average engagement time per session",unit:"seconds"},
+      {key:"ga4.channel_event_count",label:"Google Analytics 4 event count by session channel",column:"Event count",unit:"events"},
+      {key:"ga4.channel_active_users",label:"Google Analytics 4 active users by session channel",column:"Active users",unit:"users"},
+      {key:"ga4.channel_event_count_per_user",label:"Google Analytics 4 events per active user by session channel",column:"Event count per active user",unit:"events_per_user"}
     ]
   },
   daily_events:{
@@ -226,10 +226,10 @@ const DAILY_FREE_FORM_SPECS=Object.freeze({
     rankColumn:"Event count",
     limit:2000,
     metrics:[
-      {key:"ga4.event_count",label:"GA4 event count",column:"Event count",unit:"events"},
-      {key:"ga4.event_users",label:"GA4 event total users",column:"Total users",unit:"users"},
-      {key:"ga4.event_active_users",label:"GA4 event active users",column:"Active users",unit:"users"},
-      {key:"ga4.event_count_per_user",label:"GA4 events per active user",column:"Event count per active user",unit:"events_per_user"}
+      {key:"ga4.event_count",label:"Google Analytics 4 event count",column:"Event count",unit:"events"},
+      {key:"ga4.event_users",label:"Google Analytics 4 event total users",column:"Total users",unit:"users"},
+      {key:"ga4.event_active_users",label:"Google Analytics 4 event active users",column:"Active users",unit:"users"},
+      {key:"ga4.event_count_per_user",label:"Google Analytics 4 events per active user",column:"Event count per active user",unit:"events_per_user"}
     ]
   }
 });
@@ -322,11 +322,11 @@ function normalizePages(output, sections, context) {
     rankColumn:"Views",
     limitKey:"page_path",
     metrics:[
-      {key:"ga4.page_views",label:"GA4 page views",column:"Views",unit:"views"},
-      {key:"ga4.page_active_users",label:"GA4 page active users",column:"Active users",unit:"users"},
-      {key:"ga4.page_views_per_user",label:"GA4 page views per active user",column:"Views per active user",unit:"views_per_user"},
-      {key:"ga4.page_engagement_seconds_per_user",label:"GA4 page engagement time per active user",column:"Average engagement time per active user",unit:"seconds"},
-      {key:"ga4.page_event_count",label:"GA4 page event count",column:"Event count",unit:"events"}
+      {key:"ga4.page_views",label:"Google Analytics 4 page views",column:"Views",unit:"views"},
+      {key:"ga4.page_active_users",label:"Google Analytics 4 page active users",column:"Active users",unit:"users"},
+      {key:"ga4.page_views_per_user",label:"Google Analytics 4 page views per active user",column:"Views per active user",unit:"views_per_user"},
+      {key:"ga4.page_engagement_seconds_per_user",label:"Google Analytics 4 page engagement time per active user",column:"Average engagement time per active user",unit:"seconds"},
+      {key:"ga4.page_event_count",label:"Google Analytics 4 page event count",column:"Event count",unit:"events"}
     ]
   });
 }
@@ -340,10 +340,10 @@ function normalizeLanding(output, sections, context) {
     rankColumn:"Sessions",
     limitKey:"landing_page",
     metrics:[
-      {key:"ga4.landing_sessions",label:"GA4 landing-page sessions",column:"Sessions",unit:"sessions"},
-      {key:"ga4.landing_active_users",label:"GA4 landing-page active users",column:"Active users",unit:"users"},
-      {key:"ga4.landing_new_users",label:"GA4 landing-page new users",column:"New users",unit:"users"},
-      {key:"ga4.landing_engagement_seconds_per_session",label:"GA4 landing-page engagement time per session",column:"Average engagement time per session",unit:"seconds"}
+      {key:"ga4.landing_sessions",label:"Google Analytics 4 landing-page sessions",column:"Sessions",unit:"sessions"},
+      {key:"ga4.landing_active_users",label:"Google Analytics 4 landing-page active users",column:"Active users",unit:"users"},
+      {key:"ga4.landing_new_users",label:"Google Analytics 4 landing-page new users",column:"New users",unit:"users"},
+      {key:"ga4.landing_engagement_seconds_per_session",label:"Google Analytics 4 landing-page engagement time per session",column:"Average engagement time per session",unit:"seconds"}
     ]
   });
 }
@@ -356,9 +356,9 @@ function normalizeEvents(output, sections, context) {
     dimensionType:"ga4_event",
     rankColumn:"Event count",
     metrics:[
-      {key:"ga4.event_count",label:"GA4 event count",column:"Event count",unit:"events"},
-      {key:"ga4.event_users",label:"GA4 event users",column:"Total users",unit:"users"},
-      {key:"ga4.event_count_per_user",label:"GA4 events per active user",column:"Event count per active user",unit:"events_per_user"}
+      {key:"ga4.event_count",label:"Google Analytics 4 event count",column:"Event count",unit:"events"},
+      {key:"ga4.event_users",label:"Google Analytics 4 event users",column:"Total users",unit:"users"},
+      {key:"ga4.event_count_per_user",label:"Google Analytics 4 events per active user",column:"Event count per active user",unit:"events_per_user"}
     ]
   });
 }
@@ -371,12 +371,12 @@ function normalizeCountry(output, sections, context) {
     dimensionType:"ga4_country",
     rankColumn:"Active users",
     metrics:[
-      {key:"ga4.country_active_users",label:"GA4 active users by country",column:"Active users",unit:"users"},
-      {key:"ga4.country_new_users",label:"GA4 new users by country",column:"New users",unit:"users"},
-      {key:"ga4.country_engaged_sessions",label:"GA4 engaged sessions by country",column:"Engaged sessions",unit:"sessions"},
-      {key:"ga4.country_engagement_rate",label:"GA4 engagement rate by country",column:"Engagement rate",unit:"percent",transform:ratePercent},
-      {key:"ga4.country_engaged_sessions_per_user",label:"GA4 engaged sessions per active user by country",column:"Engaged sessions per active user",unit:"sessions_per_user"},
-      {key:"ga4.country_engagement_seconds_per_user",label:"GA4 engagement time per active user by country",column:"Average engagement time per active user",unit:"seconds"}
+      {key:"ga4.country_active_users",label:"Google Analytics 4 active users by country",column:"Active users",unit:"users"},
+      {key:"ga4.country_new_users",label:"Google Analytics 4 new users by country",column:"New users",unit:"users"},
+      {key:"ga4.country_engaged_sessions",label:"Google Analytics 4 engaged sessions by country",column:"Engaged sessions",unit:"sessions"},
+      {key:"ga4.country_engagement_rate",label:"Google Analytics 4 engagement rate by country",column:"Engagement rate",unit:"percent",transform:ratePercent},
+      {key:"ga4.country_engaged_sessions_per_user",label:"Google Analytics 4 engaged sessions per active user by country",column:"Engaged sessions per active user",unit:"sessions_per_user"},
+      {key:"ga4.country_engagement_seconds_per_user",label:"Google Analytics 4 engagement time per active user by country",column:"Average engagement time per active user",unit:"seconds"}
     ]
   });
 }
@@ -389,11 +389,11 @@ function normalizeTrafficAcquisition(output, sections, context) {
     dimensionType:"ga4_session_channel",
     rankColumn:"Sessions",
     metrics:[
-      {key:"ga4.sessions_by_channel",label:"GA4 sessions by channel",column:"Sessions",unit:"sessions"},
-      {key:"ga4.engaged_sessions_by_channel",label:"GA4 engaged sessions by channel",column:"Engaged sessions",unit:"sessions"},
-      {key:"ga4.engagement_rate_by_channel",label:"GA4 engagement rate by channel",column:"Engagement rate",unit:"percent",transform:ratePercent},
-      {key:"ga4.engagement_seconds_per_session_by_channel",label:"GA4 engagement time per session by channel",column:"Average engagement time per session",unit:"seconds"},
-      {key:"ga4.events_per_session_by_channel",label:"GA4 events per session by channel",column:"Events per session",unit:"events_per_session"}
+      {key:"ga4.sessions_by_channel",label:"Google Analytics 4 sessions by channel",column:"Sessions",unit:"sessions"},
+      {key:"ga4.engaged_sessions_by_channel",label:"Google Analytics 4 engaged sessions by channel",column:"Engaged sessions",unit:"sessions"},
+      {key:"ga4.engagement_rate_by_channel",label:"Google Analytics 4 engagement rate by channel",column:"Engagement rate",unit:"percent",transform:ratePercent},
+      {key:"ga4.engagement_seconds_per_session_by_channel",label:"Google Analytics 4 engagement time per session by channel",column:"Average engagement time per session",unit:"seconds"},
+      {key:"ga4.events_per_session_by_channel",label:"Google Analytics 4 events per session by channel",column:"Events per session",unit:"events_per_session"}
     ]
   });
 }
@@ -406,11 +406,11 @@ function normalizeUserAcquisition(output, sections, context) {
     dimensionType:"ga4_first_user_channel",
     rankColumn:"Total users",
     metrics:[
-      {key:"ga4.users_by_first_channel",label:"GA4 users by first acquisition channel",column:"Total users",unit:"users"},
-      {key:"ga4.new_users_by_first_channel",label:"GA4 new users by first acquisition channel",column:"New users",unit:"users"},
-      {key:"ga4.returning_users_by_first_channel",label:"GA4 returning users by first acquisition channel",column:"Returning users",unit:"users"},
-      {key:"ga4.engagement_seconds_by_first_channel",label:"GA4 engagement time by first acquisition channel",column:"Average engagement time per active user",unit:"seconds"},
-      {key:"ga4.engaged_sessions_per_user_by_first_channel",label:"GA4 engaged sessions per active user by first acquisition channel",column:"Engaged sessions per active user",unit:"sessions_per_user"}
+      {key:"ga4.users_by_first_channel",label:"Google Analytics 4 users by first acquisition channel",column:"Total users",unit:"users"},
+      {key:"ga4.new_users_by_first_channel",label:"Google Analytics 4 new users by first acquisition channel",column:"New users",unit:"users"},
+      {key:"ga4.returning_users_by_first_channel",label:"Google Analytics 4 returning users by first acquisition channel",column:"Returning users",unit:"users"},
+      {key:"ga4.engagement_seconds_by_first_channel",label:"Google Analytics 4 engagement time by first acquisition channel",column:"Average engagement time per active user",unit:"seconds"},
+      {key:"ga4.engaged_sessions_per_user_by_first_channel",label:"Google Analytics 4 engaged sessions per active user by first acquisition channel",column:"Engaged sessions per active user",unit:"sessions_per_user"}
     ]
   });
 }
@@ -420,11 +420,11 @@ function normalizeBrowser(output, sections, context) {
   if(!section) return;
   const metrics=section.headers.includes("Engagement rate")
     ? [
-        {key:"ga4.browser_active_users",label:"GA4 active users by browser",column:"Active users",unit:"users"},
-        {key:"ga4.browser_engagement_rate",label:"GA4 engagement rate by browser",column:"Engagement rate",unit:"percent",transform:ratePercent},
-        {key:"ga4.browser_engagement_seconds_per_user",label:"GA4 engagement time per active user by browser",column:"Average engagement time per active user",unit:"seconds"}
+        {key:"ga4.browser_active_users",label:"Google Analytics 4 active users by browser",column:"Active users",unit:"users"},
+        {key:"ga4.browser_engagement_rate",label:"Google Analytics 4 engagement rate by browser",column:"Engagement rate",unit:"percent",transform:ratePercent},
+        {key:"ga4.browser_engagement_seconds_per_user",label:"Google Analytics 4 engagement time per active user by browser",column:"Average engagement time per active user",unit:"seconds"}
       ]
-    : [{key:"ga4.browser_active_users",label:"GA4 active users by browser",column:"Active users",unit:"users"}];
+    : [{key:"ga4.browser_active_users",label:"Google Analytics 4 active users by browser",column:"Active users",unit:"users"}];
   pushDimensionMetrics(output,section.rows,context,{
     dimensionColumn:"Browser",
     dimensionType:"ga4_browser",
@@ -435,9 +435,9 @@ function normalizeBrowser(output, sections, context) {
 
 function normalizeTechOverview(output, sections, context) {
   const specs=[
-    ["Operating system","ga4_operating_system","ga4.os_active_users","GA4 active users by operating system","default"],
-    ["Device category","ga4_device_category","ga4.device_active_users","GA4 active users by device category","default"],
-    ["Screen resolution","ga4_screen_resolution","ga4.screen_active_users","GA4 active users by screen resolution","screen_resolution"]
+    ["Operating system","ga4_operating_system","ga4.os_active_users","Google Analytics 4 active users by operating system","default"],
+    ["Device category","ga4_device_category","ga4.device_active_users","Google Analytics 4 active users by device category","default"],
+    ["Screen resolution","ga4_screen_resolution","ga4.screen_active_users","Google Analytics 4 active users by screen resolution","screen_resolution"]
   ];
   specs.forEach(([header,dimensionType,key,label,limitKey])=>{
     const section=sourceSection(sections,header);
@@ -461,7 +461,7 @@ function normalizeUserAttributesOverview(output, sections, context) {
       dimensionType:"ga4_city",
       rankColumn:"Active users",
       limitKey:"city",
-      metrics:[{key:"ga4.city_active_users",label:"GA4 active users by city",column:"Active users",unit:"users"}]
+      metrics:[{key:"ga4.city_active_users",label:"Google Analytics 4 active users by city",column:"Active users",unit:"users"}]
     });
   }
   const language=sourceSection(sections,"Language");
@@ -470,7 +470,7 @@ function normalizeUserAttributesOverview(output, sections, context) {
       dimensionColumn:"Language",
       dimensionType:"ga4_language",
       rankColumn:"Active users",
-      metrics:[{key:"ga4.language_active_users",label:"GA4 active users by language",column:"Active users",unit:"users"}]
+      metrics:[{key:"ga4.language_active_users",label:"Google Analytics 4 active users by language",column:"Active users",unit:"users"}]
     });
   }
 }
@@ -482,31 +482,31 @@ function normalizeGenerateLeadsOverview(output, sections, context) {
     dimensionColumn:"Session manual source",
     dimensionType:"ga4_manual_source",
     rankColumn:"Sessions",
-    metrics:[{key:"ga4.sessions_by_manual_source",label:"GA4 sessions by manual source",column:"Sessions",unit:"sessions"}]
+    metrics:[{key:"ga4.sessions_by_manual_source",label:"Google Analytics 4 sessions by manual source",column:"Sessions",unit:"sessions"}]
   });
 }
 
 const REPORT_LABELS=Object.freeze({
-  pages_and_screens:"GA4 Pages and screens",
-  landing_page:"GA4 Landing pages",
-  events:"GA4 Events",
-  country:"GA4 Country",
-  traffic_acquisition:"GA4 Traffic acquisition",
-  user_acquisition:"GA4 User acquisition",
-  tech_details_browser:"GA4 Browser details",
-  tech_overview:"GA4 Tech overview",
-  user_attributes_overview:"GA4 User attributes overview",
-  generate_leads_overview:"GA4 Generate leads overview",
-  audiences:"GA4 Audiences",
-  lead_acquisition:"GA4 Lead acquisition",
-  lead_disqualification:"GA4 Lead disqualification",
-  user_acquisition_cohorts:"GA4 User acquisition cohorts",
-  traffic_overview:"GA4 Traffic overview",
-  engagement_overview:"GA4 Engagement & retention overview",
-  daily_pages:"GA4 Daily page paths",
-  daily_landing:"GA4 Daily landing pages",
-  daily_session_channel:"GA4 Daily session channels",
-  daily_events:"GA4 Daily events"
+  pages_and_screens:"Google Analytics 4 Pages and screens",
+  landing_page:"Google Analytics 4 Landing pages",
+  events:"Google Analytics 4 Events",
+  country:"Google Analytics 4 Country",
+  traffic_acquisition:"Google Analytics 4 Traffic acquisition",
+  user_acquisition:"Google Analytics 4 User acquisition",
+  tech_details_browser:"Google Analytics 4 Browser details",
+  tech_overview:"Google Analytics 4 Tech overview",
+  user_attributes_overview:"Google Analytics 4 User attributes overview",
+  generate_leads_overview:"Google Analytics 4 Generate leads overview",
+  audiences:"Google Analytics 4 Audiences",
+  lead_acquisition:"Google Analytics 4 Lead acquisition",
+  lead_disqualification:"Google Analytics 4 Lead disqualification",
+  user_acquisition_cohorts:"Google Analytics 4 User acquisition cohorts",
+  traffic_overview:"Google Analytics 4 Traffic overview",
+  engagement_overview:"Google Analytics 4 Engagement & retention overview",
+  daily_pages:"Google Analytics 4 Daily page paths",
+  daily_landing:"Google Analytics 4 Daily landing pages",
+  daily_session_channel:"Google Analytics 4 Daily session channels",
+  daily_events:"Google Analytics 4 Daily events"
 });
 
 export function ga4ReportLabel(reportKey, fallbackTitle="") {
@@ -519,7 +519,7 @@ export function inspectGa4CsvText(text, { fileName="", stationKey="wnmu_fm" } = 
   const standardReportKey=detectGa4Report(metadata.title);
   const reportKey=standardReportKey === "unknown" ? detectGa4FreeFormReport(sections) : standardReportKey;
   if(reportKey === "unknown") throw new Error("This CSV does not match a supported Google Analytics 4 export.");
-  if(!metadata.start || !metadata.end) throw new Error("This GA4 CSV does not include a usable source start/end date.");
+  if(!metadata.start || !metadata.end) throw new Error("This Google Analytics 4 CSV does not include a usable source start/end date.");
   const context={
     stationKey,
     sourceName:fileName || metadata.title || "ga4.csv",
@@ -554,8 +554,8 @@ export function inspectGa4CsvText(text, { fileName="", stationKey="wnmu_fm" } = 
     parserVersion:GA4_PARSER_VERSION,
     note:observations.length
       ? (reportKey.startsWith("daily_")
-          ? "GA4 dated Free Form exploration. The full source CSV is archived; large page and landing-page dimensions are normalized to the 100 highest-activity values across the source period, while additive site totals are retained day by day."
-          : "GA4 aggregate export. The full source CSV is archived; very large dimensions are normalized only to the highest-activity rows needed for interactive analysis.")
-      : "Recognized GA4 report retained as source evidence; it does not currently add a unique analytical metric."
+          ? "Google Analytics 4 dated Free Form exploration. The full source CSV is archived; large page and landing-page dimensions are normalized to the 100 highest-activity values across the source period, while additive site totals are retained day by day."
+          : "Google Analytics 4 aggregate export. The full source CSV is archived; very large dimensions are normalized only to the highest-activity rows needed for interactive analysis.")
+      : "Recognized Google Analytics 4 report retained as source evidence; it does not currently add a unique analytical metric."
   };
 }
