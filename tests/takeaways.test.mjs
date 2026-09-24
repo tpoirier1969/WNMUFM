@@ -70,7 +70,7 @@ test("same-source data-quality spikes on the same date are grouped with and", ()
   const quality=findings.filter((item)=>item.category==="data-quality");
   assert.equal(quality.length,1);
   assert.equal(quality[0].kind,"outlier-group");
-  assert.match(quality[0].title,/active users and NPR website pageviews/i);
+  assert.match(quality[0].title,/website active users and website pageviews/i);
   assert.match(quality[0].summary,/grouped as one data-quality event/i);
   assert.deepEqual(quality[0].metricKeys,["website.active_users","website.pageviews"]);
   assert.equal(quality[0].evidence.length,2);
