@@ -585,6 +585,22 @@ function takeawayAnalysisKey() {
   return `${state.startDate || ""}|${state.endDate || ""}`;
 }
 
+function shiftIsoDate(value,days) {
+  const date=new Date(`${value}T12:00:00Z`);
+  if(Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate()+days);
+  return date.toISOString().slice(0,10);
+}
+
+function takeawayScheduleRange() {
+  const start=state.startDate || state.availableRange.startDate || "";
+  const end=state.endDate || state.availableRange.endDate || "";
+  if(!start || !end) return {start:"",end:"",capped:false};
+  const earliest=shiftIsoDate(end,-399);
+  if(earliest && start<earliest) return {start:earliest,end,capped:true};
+  return {start,end,capped:false};
+}
+
 function renderTakeawayCards() {
   if(!els.takeawayList || !els.takeawaySummary) return;
   renderTakeawayControlButtons();
@@ -592,9 +608,10 @@ function renderTakeawayCards() {
     ? takeawayFindings
     : takeawayFindings.filter((finding)=>finding.category===state.takeawayCategory);
   const rangeText=state.startDate && state.endDate ? `${formatDayDate(state.startDate)} – ${formatDayDate(state.endDate)}` : "the available imported range";
+  const scheduleSuffix=takeawayScheduleNotice ? ` ${takeawayScheduleNotice}` : "";
   els.takeawaySummary.textContent = filtered.length
-    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Each card shows the actual source span used, which may be shorter than the Analysis Range.`
-    : `No findings in ${takeawayCategoryLabel(state.takeawayCategory)} meet the current evidence thresholds for ${rangeText}.`;
+    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Each card shows the actual source span used, which may be shorter than the Analysis Range.${scheduleSuffix}`
+    : `No findings in ${takeawayCategoryLabel(state.takeawayCategory)} meet the current evidence thresholds for ${rangeText}.${scheduleSuffix}`;
   if(!filtered.length) {
     els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Nothing strong enough to call out here yet. The app leaves weak or unsupported patterns unstated.</p>';
     return;
@@ -608,12 +625,16 @@ function renderTakeawayCards() {
       : "Source span unavailable";
     const sampleLabel=finding.kind==="cross-source-weekpart"
       ? `${Number(finding.sampleSize || 0).toLocaleString()} metric-observations`
-      : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
+      : finding.kind==="schedule-change-days"
+        ? `${Number(finding.sampleSize || 0).toLocaleString()} dated schedule days`
+        : finding.kind==="schedule-correlation"
+          ? `${Number(finding.sampleSize || 0).toLocaleString()} matched schedule-change dates`
+          : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
     const evidence=(finding.evidence || []).map((item)=>`<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("");
     const action=finding.metricKey
       ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metric="${escapeHtml(finding.metricKey)}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">Open evidence in Trend Explorer</button></div>`
       : "";
-    const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : "";
+    const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : "";
     return `<article class="takeaway-card${cardClass}">
       <div class="takeaway-card-head">
         <h3>${escapeHtml(finding.title)}</h3>
@@ -642,6 +663,21 @@ async function renderTakeaways({ force=false }={}) {
     const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
     const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey,index)=>[metricKey,monthlySets[index]]));
     takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric});
+    takeawayScheduleNotice="";
+    const scheduleRange=takeawayScheduleRange();
+    if(scheduleRange.start && scheduleRange.end) {
+      const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
+      if(schedule.complete && schedule.entries.length) {
+        const scheduleAnalysis=analyzeScheduleTakeaways({entries:schedule.entries,dailyByMetric});
+        takeawayFindings=[...takeawayFindings,...scheduleAnalysis.findings]
+          .sort((a,b)=>Number(b.importance||0)-Number(a.importance||0) || String(a.title).localeCompare(String(b.title)));
+        takeawayScheduleNotice=scheduleRange.capped
+          ? `Scheduling findings use the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}) so historical Composer lookups stay bounded.`
+          : `Scheduling findings use exact dated Composer schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`;
+      } else {
+        takeawayScheduleNotice=`Scheduling findings are unavailable for this range because Composer did not provide a complete exact dated schedule: ${schedule.reason || "historical schedule unavailable"}`;
+      }
+    }
     takeawayRangeKey=key;
   }
   renderTakeawayCards();
