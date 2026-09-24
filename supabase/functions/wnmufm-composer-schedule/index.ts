@@ -163,6 +163,24 @@ function timePart(value: unknown) {
   return `${match[1].padStart(2,"0")}:${match[2]}`;
 }
 
+function datePart(value: unknown) {
+  if(!value) return null;
+  const match=String(value).match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+function truthy(value: unknown) {
+  if(value===true || value===1) return true;
+  return ["true","1","yes"].includes(String(value || "").trim().toLowerCase());
+}
+
+function recurrenceDateBounds(recurrence: Record<string,unknown>) {
+  const start=datePart(recurrence.start_date || recurrence._start_date || recurrence.startDate);
+  const noEnd=truthy(recurrence.no_end_date || recurrence.noEndDate);
+  const end=noEnd ? null : datePart(recurrence.end_date || recurrence._end_date || recurrence.endDate);
+  return {start,end};
+}
+
 function parseRecurrence(value: unknown): Record<string,unknown> | null {
   if (!value) return null;
   if (typeof value === "object") return value as Record<string,unknown>;
@@ -259,7 +277,10 @@ function normalizeProgramsForDate(payload: unknown,dateText: string) {
       const start=timePart(recurrence.start || recurrence._start || recurrence.start_time || recurrence.time);
       const end=timePart(recurrence.end || recurrence._end || recurrence.end_time);
       const days=recurrenceDays(recurrence);
+      const bounds=recurrenceDateBounds(recurrence);
       if(!start || !end || !days.has(day)) return;
+      if(bounds.start && dateText<bounds.start) return;
+      if(bounds.end && dateText>bounds.end) return;
       output.push({
         date:dateText,
         start,
@@ -276,9 +297,8 @@ function normalizeProgramsForDate(payload: unknown,dateText: string) {
 
 async function loadArchiveRange(start: string,end: string) {
   try {
-    const queryStart=addDays(start,-ARCHIVE_STALE_DAYS);
     const captures=await dbRequest(
-      `wnmufm_schedule_daily_archive?select=capture_date,catalog_version_id&capture_date=gte.${encodeURIComponent(queryStart)}&capture_date=lte.${encodeURIComponent(end)}&order=capture_date.asc`
+      "wnmufm_schedule_daily_archive?select=capture_date,catalog_version_id&order=capture_date.asc&limit=1000"
     ) as Array<{capture_date:string,catalog_version_id:number}>;
     if(!captures?.length) return null;
 
@@ -293,13 +313,23 @@ async function loadArchiveRange(start: string,end: string) {
     const entries:Array<{date:string,start:string,end:string,program:string,genre:string}>=[];
     const missingDates:string[]=[];
     const staleDates:string[]=[];
+    const preCaptureDates:string[]=[];
     let coverageStart="";
     let coverageEnd="";
+    const firstCapture=sortedCaptures[0] || null;
 
     for(let dateText=start;dateText<=end;dateText=addDays(dateText,1)) {
       const candidates=sortedCaptures.filter((capture)=>capture.capture_date<=dateText);
-      const capture=candidates.at(-1);
-      if(!capture || dayDistance(capture.capture_date,dateText)>ARCHIVE_STALE_DAYS) {
+      let capture=candidates.at(-1);
+      if(!capture && firstCapture && dateText<firstCapture.capture_date) {
+        capture=firstCapture;
+        preCaptureDates.push(dateText);
+      }
+      if(!capture) {
+        missingDates.push(dateText);
+        continue;
+      }
+      if(dateText>=capture.capture_date && dayDistance(capture.capture_date,dateText)>ARCHIVE_STALE_DAYS) {
         missingDates.push(dateText);
         continue;
       }
@@ -321,6 +351,7 @@ async function loadArchiveRange(start: string,end: string) {
       coverageEnd,
       missingDates,
       staleDates,
+      preCaptureDates,
       complete:missingDates.length===0
     };
   } catch(error) {
@@ -364,6 +395,7 @@ Deno.serve(async (req: Request) => {
         archive_end:archived.coverageEnd,
         archive_missing_dates:archived.missingDates.length,
         archive_stale_dates:archived.staleDates.length,
+        archive_pre_capture_dates:archived.preCaptureDates.length,
         archive_write:archiveWrite.archived,
         payload:archived.entries
       });
