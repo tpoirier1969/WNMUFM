@@ -145,6 +145,18 @@ function reviewedOutlierKeys(anomalies=[]) {
   return keys;
 }
 
+function excludedMonthKeys(anomalies=[]) {
+  const keys=new Set();
+  anomalies.forEach((anomaly)=>{
+    if(String(anomaly?.status || "")!=="excluded") return;
+    if(anomaly?.evidence?.selected_program) return;
+    const family=anomalySourceFamily(anomaly);
+    const date=String(anomaly?.evidence?.date || "");
+    if(family && /^\d{4}-\d{2}-\d{2}$/.test(date)) keys.add(`${family}|${date.slice(0,7)}`);
+  });
+  return keys;
+}
+
 function weekdayWeekendFinding(metric, rows) {
   if(rows.length<28) return null;
   const weekdays=rows.filter((row)=>{
@@ -375,7 +387,7 @@ function priorMonthLabel(periodStart) {
   return date.toLocaleDateString(undefined,{month:"long",year:"numeric",timeZone:"UTC"});
 }
 
-function benchmarkTrendCandidates(metric, rows) {
+function benchmarkTrendCandidates(metric, rows, excludedMonths = new Set()) {
   const paired=numericRows(rows)
     .filter((row)=>row.benchmark_value!==null && row.benchmark_value!==undefined && Number.isFinite(Number(row.benchmark_value)))
     .map((row)=>({...row,benchmark_value:Number(row.benchmark_value)}));
@@ -386,6 +398,9 @@ function benchmarkTrendCandidates(metric, rows) {
   for(let index=1;index<paired.length;index+=1) {
     const previous=paired[index-1];
     const current=paired[index];
+    const previousMonth=String(previous.period_start).slice(0,7);
+    const currentMonth=String(current.period_start).slice(0,7);
+    if(excludedMonths.has(`${metric.sourceFamily}|${previousMonth}`) || excludedMonths.has(`${metric.sourceFamily}|${currentMonth}`)) continue;
     const stationChange=percentChange(current.station_value,previous.station_value);
     const benchmarkChange=percentChange(current.benchmark_value,previous.benchmark_value);
     if(stationChange===null || benchmarkChange===null) continue;
@@ -394,7 +409,6 @@ function benchmarkTrendCandidates(metric, rows) {
     const material=Math.abs(gap)>=10 && (opposite || Math.max(Math.abs(stationChange),Math.abs(benchmarkChange))>=7);
     if(!material) continue;
 
-    const currentMonth=String(current.period_start).slice(0,7);
     const priorYearKey=`${Number(currentMonth.slice(0,4))-1}-${currentMonth.slice(5,7)}`;
     const priorYear=paired.find((row)=>String(row.period_start).slice(0,7)===priorYearKey);
     let yearOverYear="";
@@ -415,7 +429,7 @@ function benchmarkTrendCandidates(metric, rows) {
       importance:80+Math.min(18,score/4),
       actionability:84,
       title:benchmarkTrendTitle(metric,current.period_start,stationChange,benchmarkChange,label),
-      summary:`Compared with ${priorMonthLabel(current.period_start)}, WNMU-FM changed ${formatPercent(stationChange)} while NPR ${label} changed ${formatPercent(benchmarkChange)}, a ${Math.abs(gap).toFixed(1)}-point divergence.${yearOverYear}`,
+      summary:`Compared with ${priorMonthLabel(current.period_start)}, WNMU-FM changed ${formatPercent(stationChange)} while NPR ${label} changed ${formatPercent(benchmarkChange)}, a ${Math.abs(gap).toFixed(1)}-point divergence.${yearOverYear} This compares movement, not raw audience size.`,
       evidence:[
         { label:"WNMU-FM monthly change", value:formatPercent(stationChange) },
         { label:`NPR ${label} monthly change`, value:formatPercent(benchmarkChange) },
@@ -573,6 +587,7 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={}, benchma
   const findings=[];
   const weekpartSignals=[];
   const reviewedKeys=reviewedOutlierKeys(reviewedAnomalies);
+  const excludedMonths=excludedMonthKeys(reviewedAnomalies);
 
   TAKEAWAY_METRICS.forEach((metric)=>{
     const daily=numericRows(dailyByMetric[metric.key] || []);
@@ -597,7 +612,7 @@ export function analyzeTakeaways({ dailyByMetric={}, monthlyByMetric={}, benchma
 
   TAKEAWAY_BENCHMARK_METRICS.forEach((metric)=>{
     const rows=benchmarkByMetric[metric.key] || monthlyByMetric[metric.key] || [];
-    findings.push(...benchmarkTrendCandidates(metric,rows));
+    findings.push(...benchmarkTrendCandidates(metric,rows,excludedMonths));
   });
 
   const crossSource=crossSourceWeekendFinding(weekpartSignals);
