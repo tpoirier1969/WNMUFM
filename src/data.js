@@ -3,6 +3,7 @@ import { periodIsComplete } from "./analysis.js";
 
 const DEFAULT_FILTER_SIGNATURE = "{}";
 let contextPromise = null;
+let importsPromise = null;
 
 function applyDateRange(params, range = {}) {
   if (range?.startDate) params.set("period_start", `gte.${range.startDate}`);
@@ -12,15 +13,21 @@ function applyDateRange(params, range = {}) {
 
 export function invalidateDataCache() {
   contextPromise = null;
+  importsPromise = null;
 }
 
 export async function loadImports() {
+  if(importsPromise) return importsPromise;
   const query = new URLSearchParams({
     select: "id,source_filename,report_type,grain,report_start,report_end,report_run_date,selected_program,status,row_count,parser_version,imported_by_email,imported_at,notes,filter_context",
     order: "imported_at.desc",
     limit: "500"
   }).toString();
-  return selectRows("wnmufm_analytics_imports", query);
+  importsPromise=selectRows("wnmufm_analytics_imports", query).catch((error)=>{
+    importsPromise=null;
+    throw error;
+  });
+  return importsPromise;
 }
 
 export function selectAvailableObservationRange(rows) {
