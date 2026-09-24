@@ -63,3 +63,7 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 45. Dated page-path and landing-page GA4 exports may be very large. Preserve the complete original CSV losslessly, normalize only the highest-activity 100 page/landing values across the source period for interactive detail, and create sitewide daily totals only from additive measures such as Views or Sessions. Never manufacture daily active-user totals, engagement averages, or other non-additive metrics by summing dimension rows.
 
 46. Trend Explorer must distinguish the global imported Analysis Range from the actual source coverage of the selected metric and grain. Show the usable source span for each selected metric/grain independently of the current Analysis Range, and do not imply that Day, Week, and Month observations share the same historical coverage.
+
+47. Takeaways are deterministic, evidence-backed observations derived from source-valid normalized facts, not free-form conclusions. Every finding must expose the actual source span and evidence count used, preserve the source metric/grain semantics, and avoid causal claims that the imported data cannot establish. Weak or unsupported patterns should remain unstated.
+48. Takeaways and Explore filters may only slice dimensions such as day of week, weekend, or date range when the underlying source is dated at sufficient grain. Whole-period source snapshots must retain their own source period and must not masquerade as though they cover the current global Analysis Range.
+
