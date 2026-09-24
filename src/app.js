@@ -674,12 +674,22 @@ async function renderTakeaways({ force=false }={}) {
     if(scheduleRange.start && scheduleRange.end) {
       const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
       if(schedule.complete && schedule.entries.length) {
-        const scheduleAnalysis=analyzeScheduleTakeaways({entries:schedule.entries,dailyByMetric});
+        const scheduleAnalysis=analyzeScheduleTakeaways({
+          entries:schedule.entries,
+          dailyByMetric,
+          supportsSpecials:schedule.supportsSpecials
+        });
         takeawayFindings=addScheduleContextToTrendFindings(takeawayFindings,scheduleAnalysis.profile);
         takeawayFindings=sortTakeaways([...takeawayFindings,...scheduleAnalysis.findings]);
-        takeawayScheduleNotice=scheduleRange.capped
-          ? `Scheduling findings use the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}) so historical Composer lookups stay bounded.`
-          : `Scheduling findings use exact dated Composer schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`;
+        if(schedule.sourceType==="episodes") {
+          takeawayScheduleNotice=scheduleRange.capped
+            ? `Scheduling findings use exact dated Composer schedules within the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}).`
+            : `Scheduling findings use exact dated Composer schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`;
+        } else {
+          const coverageStart=schedule.coverageStart || scheduleRange.start;
+          const coverageEnd=schedule.coverageEnd || scheduleRange.end;
+          takeawayScheduleNotice=`Scheduling findings use WNMU-FM's archived recurring schedule snapshots for ${shortCoverageDate(coverageStart)} – ${shortCoverageDate(coverageEnd)}. These snapshots support recurring-series change analysis but not one-day special-programming detection.`;
+        }
       } else {
         takeawayScheduleNotice=`Scheduling findings are unavailable for this range because Composer did not provide a complete exact dated schedule: ${schedule.reason || "historical schedule unavailable"}`;
       }
