@@ -427,7 +427,7 @@ function persistentScheduleEffectFinding(group,dailyByMetric) {
     category:"scheduling",
     actionability:98,
     importance:Math.max(...effects.map((effect)=>effect.importance+Math.min(20,Math.abs(effect.delta)/2))),
-    title:`After ${scheduleTitle}, ${pluralDay} ${primary.label} ${direction} ${Math.abs(primary.delta).toFixed(1)}%`,
+    title:`After ${scheduleTitle}, ${dayName} ${primary.label} ${direction} ${Math.abs(primary.delta).toFixed(1)}%`,
     summary:`Comparing the ${primary.beforeCount} ${pluralDay} before ${formatDate(group.effectiveDate)} with the ${primary.afterCount} after, ${effectParts.join(" and ")}.${benchmarkContext} Recurring schedule change: ${scheduleDetails}. This is an association in daily totals, not proof that the changed program caused the audience movement.`,
     evidence:effects.flatMap((effect)=>[
       {label:`${effect.label} before/after`,value:`${formatPercent(effect.delta)}`},
@@ -528,7 +528,7 @@ function specialProgrammingFinding(change,dailyByMetric,profile) {
     scheduleDetail += `; the largest changed block ran ${clockLabel(largestWindow.start)}–${clockLabel(largestWindow.end)}`;
     if(actual || expected) scheduleDetail += ` with ${actual || "different programming"}${expected ? ` instead of ${expected}` : ""}`;
   }
-  const metricParts=effects.map((effect)=>`${effect.label} ${effect.delta<0 ? "were" : "were"} ${Math.abs(effect.delta).toFixed(1)}% ${effect.delta<0 ? "below" : "above"} nearby normal ${dayName}s`);
+  const metricParts=effects.map((effect)=>`${effect.label} were ${Math.abs(effect.delta).toFixed(1)}% ${effect.delta<0 ? "below" : "above"} nearby normal ${dayName}s`);
   let benchmarkContext="";
   if(primary.benchmarkDelta!==null && primary.benchmarkLabel) {
     benchmarkContext=` NPR ${primary.benchmarkLabel} was ${formatPercent(primary.benchmarkDelta)} versus its nearby ${dayName} baseline, leaving a ${Math.abs(primary.relativeGap).toFixed(1)}-point WNMU-FM divergence.`;
