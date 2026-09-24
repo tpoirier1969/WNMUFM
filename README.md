@@ -2,7 +2,7 @@
 
 Proof-of-concept analytics application for WNMU-FM.
 
-The application imports NPR Analytics ZIP exports and Google Analytics 4 CSV exports, preserves original source evidence, normalizes useful metrics into FM-specific Supabase tables, and presents station-focused trends, deterministic evidence-backed takeaways including actionability ordering, period-specific NPR benchmark trend comparisons, reviewed-anomaly context, and dated schedule-change context, including persistent recurring FM schedule changes and one-day special-programming effects inferred from daily same-weekday comparisons, content/acquisition breakdowns, compact source coverage guidance, and anomaly warnings.
+The application imports NPR Analytics ZIP exports and Google Analytics 4 CSV exports, preserves original source evidence, normalizes useful metrics into FM-specific Supabase tables, and presents station-focused trends, deterministic evidence-backed takeaways including actionability ordering, period-specific NPR benchmark trend comparisons, reviewed-anomaly context, and dated schedule-change context, including persistent recurring FM schedule changes and one-day special-programming effects inferred from daily same-weekday comparisons. When Composer historical episodes are unavailable, the app now preserves the recurring catalog in a daily WNMU-FM archive so recurring schedule history accumulates locally over time, content/acquisition breakdowns, compact source coverage guidance, and anomaly warnings.
 
 ## Project governance
 

@@ -14,7 +14,15 @@ function normalizePayload(body, startDate, endDate) {
   const entries = sourceType === "recurrences"
     ? normalizeComposerPrograms(payload, startDate, endDate)
     : normalizeComposerEpisodes(payload);
-  return { entries, sourceType };
+  return {
+    entries,
+    sourceType,
+    note:body?.note || "",
+    archiveStart:body?.archive_start || "",
+    archiveEnd:body?.archive_end || "",
+    archiveMissingDates:Number(body?.archive_missing_dates || 0),
+    archiveStaleDates:Number(body?.archive_stale_dates || 0)
+  };
 }
 
 async function fetchComposerViaWnmuProxy(startDate, endDate) {
@@ -85,7 +93,7 @@ export async function fetchComposerSchedule(startDate, endDate) {
 }
 
 
-export async function fetchExactComposerScheduleRange(startDate,endDate,{chunkDays=45,maxDays=400}={}) {
+export async function fetchExactComposerScheduleRange(startDate,endDate,{maxDays=400}={}) {
   const totalDays=rangeDays(startDate,endDate);
   if(!totalDays) {
     return { entries:[], sourceType:"none", complete:false, reason:"Invalid schedule-analysis date range." };
@@ -94,49 +102,46 @@ export async function fetchExactComposerScheduleRange(startDate,endDate,{chunkDa
     return { entries:[], sourceType:"none", complete:false, reason:`Schedule analysis is limited to ${maxDays} days at a time.` };
   }
 
-  const entries=[];
-  let chunkStart=startDate;
-  while(chunkStart<=endDate) {
-    const proposedEnd=addDays(chunkStart,Math.max(1,chunkDays)-1);
-    const chunkEnd=proposedEnd && proposedEnd<endDate ? proposedEnd : endDate;
-    try {
-      const result=await fetchComposerSchedule(chunkStart,chunkEnd);
-      if(result.sourceType!=="episodes") {
-        return {
-          entries:[],
-          sourceType:result.sourceType,
-          complete:false,
-          reason:"Composer did not return an exact dated episode schedule for the full analysis window. The recurring catalog is not used as historical fact."
-        };
-      }
-      entries.push(...result.entries);
-    } catch(error) {
+  try {
+    const result=await fetchComposerViaWnmuProxy(startDate,endDate);
+    if(result.sourceType==="episodes") {
       return {
-        entries:[],
-        sourceType:"error",
-        complete:false,
-        reason:error instanceof Error ? error.message : String(error)
+        ...result,
+        complete:Boolean(result.entries.length),
+        supportsSpecials:true,
+        coverageStart:startDate,
+        coverageEnd:endDate,
+        reason:result.entries.length ? "" : "Composer returned no usable exact dated schedule entries for this window."
       };
     }
-    chunkStart=addDays(chunkEnd,1);
-    if(!chunkStart) break;
+    if(["archive_recurrences","archive_recurrences_partial"].includes(result.sourceType)) {
+      return {
+        ...result,
+        complete:Boolean(result.entries.length),
+        supportsSpecials:false,
+        coverageStart:result.archiveStart || startDate,
+        coverageEnd:result.archiveEnd || endDate,
+        reason:result.entries.length ? "" : "The WNMU-FM schedule archive has no usable entries for this window."
+      };
+    }
+    return {
+      entries:[],
+      sourceType:result.sourceType,
+      complete:false,
+      supportsSpecials:false,
+      coverageStart:"",
+      coverageEnd:"",
+      reason:"Composer did not return exact dated episodes and the WNMU-FM archive does not yet cover this historical range."
+    };
+  } catch(error) {
+    return {
+      entries:[],
+      sourceType:"error",
+      complete:false,
+      supportsSpecials:false,
+      coverageStart:"",
+      coverageEnd:"",
+      reason:error instanceof Error ? error.message : String(error)
+    };
   }
-
-  const deduped=[];
-  const seen=new Set();
-  entries
-    .sort((a,b)=>String(a.date).localeCompare(String(b.date)) || String(a.start).localeCompare(String(b.start)) || String(a.program).localeCompare(String(b.program)))
-    .forEach((entry)=>{
-      const key=`${entry.date}|${entry.start}|${entry.end}|${entry.program}`;
-      if(seen.has(key)) return;
-      seen.add(key);
-      deduped.push(entry);
-    });
-
-  return {
-    entries:deduped,
-    sourceType:"episodes",
-    complete:Boolean(deduped.length),
-    reason:deduped.length ? "" : "Composer returned no usable exact dated schedule entries for this window."
-  };
 }
