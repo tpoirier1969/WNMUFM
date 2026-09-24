@@ -113,7 +113,7 @@ test("the app exposes GA4 CSV imports and GA4 Explore views", async () => {
     fs.readFile(new URL("../index.html",import.meta.url),"utf8")
   ]);
   assert.match(html,/accept="\.zip,\.csv,application\/zip,text\/csv"/);
-  assert.match(html,/NPR Analytics ZIPs and GA4 CSV exports are supported/);
+  assert.match(html,/NPR Analytics ZIPs and Google Analytics 4 CSV exports are supported/);
   assert.match(app,/["']ga4-pages["']/);
   assert.match(app,/["']ga4-landing["']/);
   assert.match(app,/["']ga4-traffic["']/);
@@ -189,6 +189,6 @@ test("dated GA4 controls are exposed without replacing NPR website metrics", asy
   const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
   assert.match(app,/ga4\.site_page_views/);
   assert.match(app,/ga4\.site_sessions/);
-  assert.match(app,/GA4 pages that day/);
+  assert.match(app,/Google Analytics 4 pages that day/);
   assert.match(app,/Date \+ Event name/);
 });
