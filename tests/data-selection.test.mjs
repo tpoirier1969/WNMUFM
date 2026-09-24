@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {}
 };
 
-const { selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
+const { buildObservationExclusionContext, selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
 
 test("range profiles prefer the longest available source period", () => {
   const rows = [
@@ -42,4 +42,22 @@ test("Trend Explorer distinguishes global Analysis Range from metric/grain sourc
   assert.match(app,/Source coverage for/);
   assert.match(app,/Source coverage at/);
   assert.match(app,/No imported source coverage is available/);
+});
+
+
+test("excluded anomaly dates follow the logical source across overlapping imports", () => {
+  const context=buildObservationExclusionContext([
+    {id:13,report_type:"station_website",selected_program:null,report_run_date:"2026-09-20"},
+    {id:18,report_type:"station_website",selected_program:null,report_run_date:"2026-09-20"},
+    {id:57,report_type:"audio_program_drilldown",selected_program:"Classiclectic",report_run_date:"2026-01-01"},
+    {id:66,report_type:"audio_program_drilldown",selected_program:"STATION STORIES",report_run_date:"2026-01-01"}
+  ],[
+    {import_id:13,evidence:{date:"2026-08-26"}},
+    {import_id:57,evidence:{date:"2025-11-17"}}
+  ]);
+
+  assert.ok(context.excludedDatesBySource.get("station_website").has("2026-08-26"));
+  assert.equal(context.sourceKeyByImport.get(18),"station_website");
+  assert.ok(context.excludedDatesBySource.get("audio_program_drilldown|Classiclectic").has("2025-11-17"));
+  assert.equal(context.excludedDatesBySource.has("audio_program_drilldown|STATION STORIES"),false);
 });

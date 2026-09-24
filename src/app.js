@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadReviewedAnomalies, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -10,7 +10,7 @@ import { fetchComposerSchedule, fetchExactComposerScheduleRange } from "./schedu
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets, defaultRecentRange } from "./range-presets.js";
-import { analyzeTakeaways, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
+import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
 import { analyzeScheduleTakeaways } from "./schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 
@@ -610,7 +610,7 @@ function renderTakeawayCards() {
   const rangeText=state.startDate && state.endDate ? `${formatDayDate(state.startDate)} – ${formatDayDate(state.endDate)}` : "the available imported range";
   const scheduleSuffix=takeawayScheduleNotice ? ` ${takeawayScheduleNotice}` : "";
   els.takeawaySummary.textContent = filtered.length
-    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Each card shows the actual source span used, which may be shorter than the Analysis Range.${scheduleSuffix}`
+    ? `${filtered.length} evidence-backed ${filtered.length===1 ? "finding" : "findings"} for ${rangeText}. Findings are sorted with the most actionable items first and use source-valid coverage even when it is shorter than the Analysis Range.${scheduleSuffix}`
     : `No findings in ${takeawayCategoryLabel(state.takeawayCategory)} meet the current evidence thresholds for ${rangeText}.${scheduleSuffix}`;
   if(!filtered.length) {
     els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Nothing strong enough to call out here yet. The app leaves weak or unsupported patterns unstated.</p>';
@@ -630,22 +630,20 @@ function renderTakeawayCards() {
         : finding.kind==="schedule-correlation"
           ? `${Number(finding.sampleSize || 0).toLocaleString()} matched schedule-change dates`
           : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
-    const evidence=(finding.evidence || []).map((item)=>`<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("");
+    const evidenceMeta=`${grainLabel} evidence · ${source} · ${sampleLabel}`;
     const evidenceMetricKeys=Array.isArray(finding.metricKeys) && finding.metricKeys.length
       ? finding.metricKeys
       : (finding.metricKey ? [finding.metricKey] : []);
     const action=evidenceMetricKeys.length
-      ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metrics="${escapeHtml(evidenceMetricKeys.join(","))}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">Open evidence in Trend Explorer</button></div>`
+      ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metrics="${escapeHtml(evidenceMetricKeys.join(","))}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">View in Trend Explorer</button></div>`
       : "";
-    const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : "";
-    return `<article class="takeaway-card${cardClass}">
+    const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : finding.category==="npr-comparison" ? " npr-comparison" : "";
+    return `<article class="takeaway-card${cardClass}" title="${escapeHtml(evidenceMeta)}" data-evidence-meta="${escapeHtml(evidenceMeta)}">`
       <div class="takeaway-card-head">
         <h3>${escapeHtml(finding.title)}</h3>
         <span class="takeaway-category">${escapeHtml(category)}</span>
       </div>
       <p>${escapeHtml(finding.summary)}</p>
-      <div class="takeaway-evidence">${evidence}</div>
-      <p class="takeaway-meta">${escapeHtml(grainLabel)} evidence · ${escapeHtml(source)} · ${escapeHtml(sampleLabel)}</p>
       ${action}
     </article>`;
   }).join("");
@@ -659,21 +657,25 @@ async function renderTakeaways({ force=false }={}) {
     els.takeawayList.innerHTML='<p class="empty-state takeaway-empty">Looking for repeatable patterns, comparisons, and data-quality signals.</p>';
     const dailyKeys=TAKEAWAY_METRICS.map((metric)=>metric.key);
     const monthlyKeys=TAKEAWAY_METRICS.filter((metric)=>metric.monthly).map((metric)=>metric.key);
-    const [dailySets,monthlySets]=await Promise.all([
-      Promise.all(dailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
-      Promise.all(monthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange())))
+    const benchmarkKeys=[...new Set(TAKEAWAY_BENCHMARK_METRICS.map((metric)=>metric.key))];
+    const allDailyKeys=[...new Set([...dailyKeys,...benchmarkKeys])];
+    const [allDailySets,monthlySets,reviewedAnomalies]=await Promise.all([
+      Promise.all(allDailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
+      Promise.all(monthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange()))),
+      loadReviewedAnomalies()
     ]);
-    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
+    const allDailyByMetric=Object.fromEntries(allDailyKeys.map((metricKey,index)=>[metricKey,allDailySets[index]]));
+    const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
     const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey,index)=>[metricKey,monthlySets[index]]));
-    takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric});
+    const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey)=>[metricKey,allDailyByMetric[metricKey] || []]));
+    takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric,benchmarkByMetric,reviewedAnomalies});
     takeawayScheduleNotice="";
     const scheduleRange=takeawayScheduleRange();
     if(scheduleRange.start && scheduleRange.end) {
       const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
       if(schedule.complete && schedule.entries.length) {
         const scheduleAnalysis=analyzeScheduleTakeaways({entries:schedule.entries,dailyByMetric});
-        takeawayFindings=[...takeawayFindings,...scheduleAnalysis.findings]
-          .sort((a,b)=>Number(b.importance||0)-Number(a.importance||0) || String(a.title).localeCompare(String(b.title)));
+        takeawayFindings=sortTakeaways([...takeawayFindings,...scheduleAnalysis.findings]);
         takeawayScheduleNotice=scheduleRange.capped
           ? `Scheduling findings use the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}) so historical Composer lookups stay bounded.`
           : `Scheduling findings use exact dated Composer schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`;
@@ -1990,7 +1992,8 @@ function bindEvents() {
         reviewed_at: new Date().toISOString()
       });
       invalidateDataCache();
-      await Promise.all([renderAnomalies(), renderSummary(), renderTrend()]);
+      takeawayRangeKey="";
+      await Promise.all([renderAnomalies(), refreshAnalysisViews()]);
     } catch (error) {
       console.error(error);
       actionButton.disabled = false;
