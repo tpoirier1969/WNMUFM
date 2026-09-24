@@ -54,6 +54,16 @@ export async function loadOpenAnomalies() {
   return selectRows("wnmufm_analytics_anomalies", query);
 }
 
+export async function loadReviewedAnomalies() {
+  const query = new URLSearchParams({
+    select: "id,import_id,anomaly_key,status,evidence,reviewed_at",
+    status: "in.(expected,resolved)",
+    order: "reviewed_at.desc",
+    limit: "500"
+  }).toString();
+  return selectRows("wnmufm_analytics_anomalies", query);
+}
+
 async function loadAnalysisContext() {
   if (contextPromise) return contextPromise;
   contextPromise = Promise.all([
