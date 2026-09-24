@@ -117,6 +117,26 @@ export async function loadAvailableDataRange() {
   return selectAvailableObservationRange(usable);
 }
 
+export async function loadTimeSeriesRange(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE) {
+  const context = await loadAnalysisContext();
+  const query = (order) => new URLSearchParams({
+    select: "period_start,period_end,station_value,source_import_id",
+    metric_key: `eq.${metricKey}`,
+    grain: `eq.${grain}`,
+    dimension_type: "eq.",
+    filter_signature: `eq.${filterSignature}`,
+    order,
+    limit: "500"
+  }).toString();
+
+  const [earlyRows, lateRows] = await Promise.all([
+    selectRows("wnmufm_analytics_observations", query("period_start.asc")),
+    selectRows("wnmufm_analytics_observations", query("period_end.desc"))
+  ]);
+  const usable = [...earlyRows,...lateRows].filter((row) => rowIsUsable(row, context));
+  return selectAvailableObservationRange(usable);
+}
+
 export async function loadTimeSeries(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
   const params = applyDateRange(new URLSearchParams({
     select: "period_start,period_end,station_value,benchmark_value,benchmark_label,unit,quality_flags,source_import_id",
