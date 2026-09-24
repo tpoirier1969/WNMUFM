@@ -638,7 +638,7 @@ function renderTakeawayCards() {
       ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metrics="${escapeHtml(evidenceMetricKeys.join(","))}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">View in Trend Explorer</button></div>`
       : "";
     const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : finding.category==="npr-comparison" ? " npr-comparison" : "";
-    return `<article class="takeaway-card${cardClass}" title="${escapeHtml(evidenceMeta)}" data-evidence-meta="${escapeHtml(evidenceMeta)}">`
+    return `<article class="takeaway-card${cardClass}" title="${escapeHtml(evidenceMeta)}" data-evidence-meta="${escapeHtml(evidenceMeta)}">
       <div class="takeaway-card-head">
         <h3>${escapeHtml(finding.title)}</h3>
         <span class="takeaway-category">${escapeHtml(category)}</span>
