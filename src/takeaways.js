@@ -487,12 +487,12 @@ function groupBenchmarkTrendComparisons(findings) {
       other.push(items[0]);
       return;
     }
-    const labels=items.map((item)=>item.metricLabel);
+    const labels=items.map((item)=>BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel);
     const month=formatMonth(items[0].periodStart);
     const benchmark=items[0].benchmarkLabel || "NPR benchmark";
     const stronger=items[0].trendDirection==="stronger";
     const details=items.map((item)=>
-      `${item.metricLabel}: WNMU-FM ${formatPercent(item.stationChangePct)} vs NPR ${formatPercent(item.benchmarkChangePct)}`
+      `${BENCHMARK_TREND_LABELS[item.metricKey] || item.metricLabel}: WNMU-FM ${formatPercent(item.stationChangePct)} vs NPR ${formatPercent(item.benchmarkChangePct)}`
     );
     other.push({
       id:`benchmark-trend-group:${items[0].sourceFamily}:${String(items[0].periodStart).slice(0,7)}:${items[0].trendDirection}`,
