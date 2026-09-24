@@ -642,8 +642,8 @@ export function addScheduleContextToTrendFindings(findings=[],profile={changes:[
   });
 }
 
-export function analyzeScheduleTakeaways({entries=[],dailyByMetric={}}={}) {
-  const oneOffProfile=detectMajorScheduleChanges(entries);
+export function analyzeScheduleTakeaways({entries=[],dailyByMetric={},supportsSpecials=true}={}) {
+  const oneOffProfile=supportsSpecials ? detectMajorScheduleChanges(entries) : {changes:[],coverage:detectPersistentScheduleChanges(entries).coverage};
   const persistentProfile=detectPersistentScheduleChanges(entries);
   const profile={
     ...oneOffProfile,
