@@ -619,6 +619,18 @@ function renderTakeawayCards() {
 
   els.takeawayList.innerHTML=filtered.map((finding)=>{
     const category=takeawayCategoryLabel(finding.category);
+    const grainLabel=finding.grain==="month" ? "Monthly" : finding.grain==="week" ? "Weekly" : "Daily";
+    const source=finding.sourceStart && finding.sourceEnd
+      ? `${formatDayDate(finding.sourceStart)} – ${formatDayDate(finding.sourceEnd)}`
+      : "Source span unavailable";
+    const sampleLabel=finding.kind==="cross-source-weekpart" || finding.kind==="outlier-group"
+      ? `${Number(finding.sampleSize || 0).toLocaleString()} metric-observations`
+      : finding.kind==="schedule-change-days"
+        ? `${Number(finding.sampleSize || 0).toLocaleString()} dated schedule days`
+        : finding.kind==="schedule-correlation"
+          ? `${Number(finding.sampleSize || 0).toLocaleString()} matched schedule-change dates`
+          : `${Number(finding.sampleSize || 0).toLocaleString()} source observations`;
+    const evidenceMeta=`${grainLabel} evidence · ${source} · ${sampleLabel}`;
     const evidenceMetricKeys=Array.isArray(finding.metricKeys) && finding.metricKeys.length
       ? finding.metricKeys
       : (finding.metricKey ? [finding.metricKey] : []);
@@ -626,7 +638,7 @@ function renderTakeawayCards() {
       ? `<div class="takeaway-actions"><button type="button" class="small-button" data-takeaway-evidence data-metrics="${escapeHtml(evidenceMetricKeys.join(","))}" data-grain="${escapeHtml(finding.grain || "day")}" data-start="${escapeHtml(finding.sourceStart || "")}" data-end="${escapeHtml(finding.sourceEnd || "")}">View in Trend Explorer</button></div>`
       : "";
     const cardClass=finding.category==="cross-source" ? " cross-source" : finding.category==="data-quality" ? " data-quality" : finding.category==="scheduling" ? " scheduling" : finding.category==="npr-comparison" ? " npr-comparison" : "";
-    return `<article class="takeaway-card${cardClass}">
+    return `<article class="takeaway-card${cardClass}" title="${escapeHtml(evidenceMeta)}" data-evidence-meta="${escapeHtml(evidenceMeta)}">`
       <div class="takeaway-card-head">
         <h3>${escapeHtml(finding.title)}</h3>
         <span class="takeaway-category">${escapeHtml(category)}</span>
