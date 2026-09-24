@@ -6,17 +6,19 @@ import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMet
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
 import { buildHourSchedule, buildTypicalHourContext, entryHourDayOffset, hourLabel } from "./schedule.js";
-import { fetchComposerSchedule } from "./schedule-client.js";
+import { fetchComposerSchedule, fetchExactComposerScheduleRange } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
-import { buildRangePresets } from "./range-presets.js";
+import { buildRangePresets, defaultRecentRange } from "./range-presets.js";
 import { analyzeTakeaways, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
+import { analyzeScheduleTakeaways } from "./schedule-analysis.js";
+import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -31,7 +33,7 @@ const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
 const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
 const initialTrendZoomStart = validDateKey(sharedOrRestored("trendZoomStart",""));
 const initialTrendZoomEnd = validDateKey(sharedOrRestored("trendZoomEnd",""));
-const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","custom"], (initialStartDate || initialEndDate) ? "custom" : "all");
+const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","custom","recent13"], (initialStartDate || initialEndDate) ? "custom" : "recent13");
 const initialMetrics = Array.isArray(sharedView.trendMetrics) && sharedView.trendMetrics.length
   ? sharedView.trendMetrics
   : (Array.isArray(restoredUi.trendMetrics) && restoredUi.trendMetrics.length ? restoredUi.trendMetrics : ["streaming.listeners"]);
@@ -64,6 +66,7 @@ let listeningHourContext = null;
 let listeningHourNoticeKey = "";
 let takeawayFindings = [];
 let takeawayRangeKey = "";
+let takeawayScheduleNotice = "";
 let rangeEditPending = false;
 let rangeBlurCommitTimer = null;
 
