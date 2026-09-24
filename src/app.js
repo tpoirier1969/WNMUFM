@@ -695,7 +695,13 @@ async function syncAvailableDataRange() {
   state.availableRange={ ...next };
 
   let selectionChanged=false;
-  if(state.rangeMode === "all" || (!state.startDate && !state.endDate)) {
+  if(state.rangeMode === "recent13" || (!state.startDate && !state.endDate && state.rangeMode !== "all")) {
+    const recent=defaultRecentRange(next,13);
+    if(state.startDate !== recent.startDate || state.endDate !== recent.endDate) selectionChanged=true;
+    state.startDate=recent.startDate;
+    state.endDate=recent.endDate;
+    state.rangeMode="recent13";
+  } else if(state.rangeMode === "all" || (!state.startDate && !state.endDate)) {
     if(state.startDate !== next.startDate || state.endDate !== next.endDate) selectionChanged=true;
     state.startDate=next.startDate;
     state.endDate=next.endDate;
@@ -1748,7 +1754,7 @@ function bindEvents() {
     rangeEditPending=false;
     state.startDate=button.dataset.start || state.availableRange.startDate;
     state.endDate=button.dataset.end || state.availableRange.endDate;
-    state.rangeMode=button.dataset.rangePreset === "full" ? "all" : "custom";
+    state.rangeMode=button.dataset.rangePreset === "full" ? "all" : button.dataset.rangePreset === "last-13m" ? "recent13" : "custom";
     clearTrendZoom();
     applyRangeControls();
     persistUiState();
