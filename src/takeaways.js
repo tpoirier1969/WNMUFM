@@ -3,6 +3,7 @@ const DAY_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 export const TAKEAWAY_CATEGORIES = Object.freeze([
   ["all","All findings"],
   ["cross-source","Cross-source"],
+  ["scheduling","Scheduling"],
   ["audience","Audience"],
   ["website","Website"],
   ["on-demand","On-demand"],
