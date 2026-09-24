@@ -1,15 +1,10 @@
 const SLOT_MINUTES=30;
 const SLOTS_PER_DAY=24*60/SLOT_MINUTES;
+const DAY_NAMES=Object.freeze(["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]);
 
-const SCHEDULE_CORRELATION_METRICS=Object.freeze([
-  { key:"streaming.listeners", label:"Live-stream listeners", importance:96 },
-  { key:"streaming.listener_hours", label:"Live-stream listener hours", importance:92 },
-  { key:"website.active_users", label:"NPR website active users", importance:76 },
-  { key:"website.pageviews", label:"NPR website pageviews", importance:74 },
-  { key:"audio.downloads", label:"On-demand audio downloads", importance:78 },
-  { key:"npr_one.localized_listeners", label:"NPR One localized listeners", importance:82 },
-  { key:"ga4.site_sessions", label:"GA4 sessions", importance:68 },
-  { key:"ga4.site_page_views", label:"GA4 page views", importance:66 }
+const SCHEDULE_EFFECT_METRICS=Object.freeze([
+  { key:"streaming.listeners", label:"live-stream listeners", importance:104 },
+  { key:"streaming.listener_hours", label:"live-stream listener hours", importance:100 }
 ]);
 
 function parseTime(value) {
@@ -139,6 +134,117 @@ function compressMismatchWindows(mismatches,actual,expected) {
       expected:expectedPrograms
     };
   });
+}
+
+function slotTimeLabel(slot) {
+  const totalMinutes=((slot*SLOT_MINUTES)%(24*60)+(24*60))%(24*60);
+  const hour24=Math.floor(totalMinutes/60);
+  const minute=totalMinutes%60;
+  const hour12=hour24%12 || 12;
+  const suffix=hour24<12 ? "AM" : "PM";
+  return `${hour12}:${String(minute).padStart(2,"0")} ${suffix}`;
+}
+
+function sameWeekdayDates(dates,targetWeekday) {
+  return dates.filter((date)=>weekday(date)===targetWeekday).sort();
+}
+
+function dominantProgramForDates(slotMap,dates,slot,{minimum=4,dominance=.67}={}) {
+  return mode(dates.map((date)=>slotMap.get(date)?.[slot] || ""),{minimum,dominance});
+}
+
+function compressPersistentSlotChanges(slotChanges,{minimumHours=1}={}) {
+  const sorted=[...slotChanges].sort((a,b)=>
+    a.weekday-b.weekday ||
+    a.effectiveDate.localeCompare(b.effectiveDate) ||
+    a.fromProgram.localeCompare(b.fromProgram) ||
+    a.toProgram.localeCompare(b.toProgram) ||
+    a.slot-b.slot
+  );
+  const groups=[];
+  sorted.forEach((change)=>{
+    const previous=groups.at(-1);
+    if(previous &&
+      previous.weekday===change.weekday &&
+      previous.effectiveDate===change.effectiveDate &&
+      previous.fromProgram===change.fromProgram &&
+      previous.toProgram===change.toProgram &&
+      previous.endSlot+1===change.slot) {
+      previous.endSlot=change.slot;
+      return;
+    }
+    groups.push({
+      weekday:change.weekday,
+      effectiveDate:change.effectiveDate,
+      fromProgram:change.fromProgram,
+      toProgram:change.toProgram,
+      startSlot:change.slot,
+      endSlot:change.slot
+    });
+  });
+
+  return groups
+    .map((group)=>({
+      ...group,
+      changedHours:(group.endSlot-group.startSlot+1)*SLOT_MINUTES/60,
+      startTime:slotTimeLabel(group.startSlot),
+      endTime:slotTimeLabel(group.endSlot+1)
+    }))
+    .filter((group)=>group.changedHours>=minimumHours);
+}
+
+export function detectPersistentScheduleChanges(entries=[],{
+  windowOccurrences=6,
+  minimumOccurrences=4,
+  dominance=.67,
+  minimumHours=1
+}={}) {
+  const slotMap=scheduleSlots(entries);
+  const dates=[...slotMap.keys()].sort();
+  const slotChanges=[];
+
+  for(let targetWeekday=0;targetWeekday<7;targetWeekday+=1) {
+    const weekdayDates=sameWeekdayDates(dates,targetWeekday);
+    if(weekdayDates.length<minimumOccurrences*2) continue;
+    for(let slot=0;slot<SLOTS_PER_DAY;slot+=1) {
+      for(let index=minimumOccurrences;index<=weekdayDates.length-minimumOccurrences;index+=1) {
+        const effectiveDate=weekdayDates[index];
+        const previousDate=weekdayDates[index-1];
+        const beforeDates=weekdayDates.slice(Math.max(0,index-windowOccurrences),index);
+        const afterDates=weekdayDates.slice(index,Math.min(weekdayDates.length,index+windowOccurrences));
+        if(beforeDates.length<minimumOccurrences || afterDates.length<minimumOccurrences) continue;
+        const fromProgram=dominantProgramForDates(slotMap,beforeDates,slot,{minimum:minimumOccurrences,dominance});
+        const toProgram=dominantProgramForDates(slotMap,afterDates,slot,{minimum:minimumOccurrences,dominance});
+        if(!fromProgram || !toProgram || fromProgram===toProgram) continue;
+        if((slotMap.get(previousDate)?.[slot] || "")!==fromProgram) continue;
+        if((slotMap.get(effectiveDate)?.[slot] || "")!==toProgram) continue;
+        slotChanges.push({weekday:targetWeekday,effectiveDate,fromProgram,toProgram,slot});
+      }
+    }
+  }
+
+  const changes=compressPersistentSlotChanges(slotChanges,{minimumHours});
+  return {
+    changes,
+    coverage:dates.length ? {startDate:dates[0],endDate:dates.at(-1),dates:dates.length} : {startDate:"",endDate:"",dates:0}
+  };
+}
+
+function groupPersistentChangesByDate(changes=[]) {
+  const groups=new Map();
+  changes.forEach((change)=>{
+    const key=`${change.weekday}|${change.effectiveDate}`;
+    if(!groups.has(key)) groups.set(key,{
+      weekday:change.weekday,
+      effectiveDate:change.effectiveDate,
+      changes:[],
+      changedHours:0
+    });
+    const group=groups.get(key);
+    group.changes.push(change);
+    group.changedHours+=change.changedHours;
+  });
+  return [...groups.values()].sort((a,b)=>a.effectiveDate.localeCompare(b.effectiveDate) || a.weekday-b.weekday);
 }
 
 export function detectMajorScheduleChanges(entries=[],{
