@@ -64,6 +64,36 @@ export async function loadReviewedAnomalies() {
   return selectRows("wnmufm_analytics_anomalies", query);
 }
 
+function importSourceKey(item) {
+  const reportType=String(item?.report_type || "");
+  if(!reportType) return "";
+  if(reportType==="audio_program_drilldown") {
+    return `${reportType}|${String(item?.selected_program || "").trim()}`;
+  }
+  return reportType;
+}
+
+export function buildObservationExclusionContext(imports = [], excluded = []) {
+  const runDateByImport = new Map();
+  const sourceKeyByImport = new Map();
+  imports.forEach((item) => {
+    const id=Number(item.id);
+    runDateByImport.set(id, item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
+    sourceKeyByImport.set(id,importSourceKey(item));
+  });
+
+  const excludedDatesBySource = new Map();
+  excluded.forEach((item) => {
+    const date=String(item?.evidence?.date || "");
+    const sourceKey=sourceKeyByImport.get(Number(item.import_id)) || "";
+    if(!date || !sourceKey) return;
+    if(!excludedDatesBySource.has(sourceKey)) excludedDatesBySource.set(sourceKey,new Set());
+    excludedDatesBySource.get(sourceKey).add(date);
+  });
+
+  return { imports, runDateByImport, sourceKeyByImport, excludedDatesBySource };
+}
+
 async function loadAnalysisContext() {
   if (contextPromise) return contextPromise;
   contextPromise = Promise.all([
@@ -73,21 +103,7 @@ async function loadAnalysisContext() {
       status: "eq.excluded",
       limit: "500"
     }).toString())
-  ]).then(([imports, excluded]) => {
-    const runDateByImport = new Map();
-    imports.forEach((item) => {
-      runDateByImport.set(Number(item.id), item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
-    });
-    const excludedDatesByImport = new Map();
-    excluded.forEach((item) => {
-      const date = item?.evidence?.date;
-      if (!date) return;
-      const id = Number(item.import_id);
-      if (!excludedDatesByImport.has(id)) excludedDatesByImport.set(id, new Set());
-      excludedDatesByImport.get(id).add(date);
-    });
-    return { imports, runDateByImport, excludedDatesByImport };
-  });
+  ]).then(([imports, excluded]) => buildObservationExclusionContext(imports,excluded));
   return contextPromise;
 }
 
@@ -95,7 +111,8 @@ function rowIsUsable(row, context) {
   const importId = Number(row.source_import_id);
   const runDate = context.runDateByImport.get(importId);
   if (!periodIsComplete(row.period_end, runDate)) return false;
-  const excludedDates = context.excludedDatesByImport.get(importId);
+  const sourceKey=context.sourceKeyByImport.get(importId);
+  const excludedDates=sourceKey ? context.excludedDatesBySource.get(sourceKey) : null;
   if (excludedDates?.has(row.period_start)) return false;
   return true;
 }
