@@ -13,25 +13,25 @@ export const TAKEAWAY_CATEGORIES = Object.freeze([
 ]);
 
 export const TAKEAWAY_METRICS = Object.freeze([
-  { key:"streaming.listeners", label:"Live-stream listeners", category:"audience", sourceFamily:"streaming", monthly:true, benchmarkThreshold:25 },
+  { key:"streaming.listeners", label:"Live-stream listeners", category:"audience", sourceFamily:"streaming", monthly:true, benchmarkTrend:true },
   { key:"streaming.listener_hours", label:"Live-stream listener hours", category:"audience", sourceFamily:"streaming", monthly:true },
-  { key:"website.active_users", label:"NPR website active users", category:"website", sourceFamily:"website", monthly:true, benchmarkThreshold:25 },
-  { key:"website.pageviews", label:"NPR website pageviews", category:"website", sourceFamily:"website", monthly:true, benchmarkThreshold:25 },
+  { key:"website.active_users", label:"NPR website active users", category:"website", sourceFamily:"website", monthly:true, benchmarkTrend:true },
+  { key:"website.pageviews", label:"NPR website pageviews", category:"website", sourceFamily:"website", monthly:true, benchmarkTrend:true },
   { key:"ga4.site_page_views", label:"Google Analytics 4 page views", category:"website", sourceFamily:"ga4", monthly:false },
   { key:"ga4.site_sessions", label:"Google Analytics 4 sessions", category:"website", sourceFamily:"ga4", monthly:false },
-  { key:"audio.downloads", label:"On-demand audio downloads", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkThreshold:25 },
-  { key:"audio.users", label:"On-demand audio users", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkThreshold:25 },
+  { key:"audio.downloads", label:"On-demand audio downloads", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkTrend:true },
+  { key:"audio.users", label:"On-demand audio users", category:"on-demand", sourceFamily:"audio", monthly:true, benchmarkTrend:true },
   { key:"npr_one.localized_listeners", label:"NPR One localized listeners", category:"npr-one", sourceFamily:"npr-one", monthly:true },
-  { key:"npr_one.average_minutes", label:"NPR One average listening minutes", category:"npr-one", sourceFamily:"npr-one", monthly:true, benchmarkThreshold:15 }
+  { key:"npr_one.average_minutes", label:"NPR One average listening minutes", category:"npr-one", sourceFamily:"npr-one", monthly:true, benchmarkTrend:true }
 ]);
 
 export const TAKEAWAY_BENCHMARK_METRICS = Object.freeze([
-  ...TAKEAWAY_METRICS.filter((metric)=>Number.isFinite(metric.benchmarkThreshold)),
-  { key:"streaming.minutes_per_session", label:"Live-stream minutes per session", category:"audience", sourceFamily:"streaming", benchmarkThreshold:15 },
-  { key:"streaming.sessions_per_listener", label:"Live-stream sessions per listener", category:"audience", sourceFamily:"streaming", benchmarkThreshold:15 },
-  { key:"website.engaged_seconds_per_user", label:"NPR website engaged seconds per user", category:"website", sourceFamily:"website", benchmarkThreshold:15 },
-  { key:"website.views_per_user", label:"NPR website views per user", category:"website", sourceFamily:"website", benchmarkThreshold:15 },
-  { key:"audio.downloads_per_user", label:"On-demand downloads per user", category:"on-demand", sourceFamily:"audio", benchmarkThreshold:15 }
+  ...TAKEAWAY_METRICS.filter((metric)=>metric.benchmarkTrend),
+  { key:"streaming.minutes_per_session", label:"Live-stream minutes per session", category:"audience", sourceFamily:"streaming", benchmarkTrend:true },
+  { key:"streaming.sessions_per_listener", label:"Live-stream sessions per listener", category:"audience", sourceFamily:"streaming", benchmarkTrend:true },
+  { key:"website.engaged_seconds_per_user", label:"NPR website engaged seconds per user", category:"website", sourceFamily:"website", benchmarkTrend:true },
+  { key:"website.views_per_user", label:"NPR website views per user", category:"website", sourceFamily:"website", benchmarkTrend:true },
+  { key:"audio.downloads_per_user", label:"On-demand downloads per user", category:"on-demand", sourceFamily:"audio", benchmarkTrend:true }
 ]);
 
 function toDate(value) {
