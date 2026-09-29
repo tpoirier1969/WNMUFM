@@ -79,25 +79,48 @@ export async function loadNewsletterScheduleEvidence(range = {}) {
   if(startMonth) params.set("issue_month",`gte.${startMonth}`);
   if(endMonth) params.append("issue_month",`lte.${endMonth}`);
 
-  const sources=await selectRows("wnmufm_schedule_newsletter_sources",params.toString());
-  if(!sources.length) return {sources:[],entries:[]};
+  const datedParams=new URLSearchParams({
+    select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
+    entry_type:"eq.dated_override",
+    order:"specific_date.asc,start_time.asc",
+    limit:"1000"
+  });
+  if(range?.startDate) datedParams.set("specific_date",`gte.${range.startDate}`);
+  if(range?.endDate) datedParams.append("specific_date",`lte.${range.endDate}`);
 
-  const batches=await Promise.all(sources.map((source)=>{
+  const [monthSources,datedEntries]=await Promise.all([
+    selectRows("wnmufm_schedule_newsletter_sources",params.toString()),
+    selectRows("wnmufm_schedule_newsletter_entries",datedParams.toString())
+  ]);
+
+  const knownSourceIds=new Set(monthSources.map((source)=>Number(source.id)));
+  const missingSourceIds=[...new Set(datedEntries.map((row)=>Number(row.source_id)).filter((id)=>Number.isFinite(id) && !knownSourceIds.has(id)))];
+  let extraSources=[];
+  if(missingSourceIds.length) {
+    const extraParams=new URLSearchParams({
+      select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",
+      id:`in.(${missingSourceIds.join(",")})`,
+      order:"issue_month.asc",
+      limit:String(missingSourceIds.length)
+    }).toString();
+    extraSources=await selectRows("wnmufm_schedule_newsletter_sources",extraParams);
+  }
+
+  const monthlyBatches=await Promise.all(monthSources.map((source)=>{
     const query=new URLSearchParams({
       select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
       source_id:`eq.${source.id}`,
-      order:"weekday.asc,start_time.asc,entry_type.asc",
+      entry_type:"eq.monthly_grid",
+      order:"weekday.asc,start_time.asc",
       limit:"1000"
     }).toString();
     return selectRows("wnmufm_schedule_newsletter_entries",query);
   }));
-  const entries=batches.flat().filter((row)=>{
-    if(row.entry_type!=="dated_override" || !row.specific_date) return true;
-    if(range?.startDate && row.specific_date<range.startDate) return false;
-    if(range?.endDate && row.specific_date>range.endDate) return false;
-    return true;
-  });
-  return {sources,entries};
+
+  const sources=[...monthSources,...extraSources]
+    .filter((source,index,list)=>list.findIndex((candidate)=>Number(candidate.id)===Number(source.id))===index)
+    .sort((a,b)=>String(a.issue_month).localeCompare(String(b.issue_month)));
+  return {sources,entries:[...monthlyBatches.flat(),...datedEntries]};
 }
 
 function importSourceKey(item) {
