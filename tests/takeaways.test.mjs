@@ -227,7 +227,10 @@ test("Takeaways can add exact dated FM schedule-change findings without claiming
   assert.match(takeaways,/\["scheduling","Scheduling"\]/);
   assert.match(app,/fetchExactComposerScheduleRange/);
   assert.match(app,/analyzeScheduleTakeaways/);
-  assert.match(app,/Scheduling findings use exact dated Composer schedules/);
+  assert.match(app,/Composer scheduling analysis uses exact dated schedules/);
   assert.match(app,/archived Composer recurrence definitions/);
   assert.match(app,/supportsSpecials:schedule\.supportsSpecials/);
+  assert.match(app,/loadNewsletterScheduleEvidence\(selectedRange\(\)\)/);
+  assert.match(app,/analyzeNewsletterScheduleTakeaways/);
+  assert.match(app,/Monthly grids are treated only as evidence for their named month/);
 });
