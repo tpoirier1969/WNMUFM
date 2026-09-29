@@ -688,11 +688,23 @@ async function renderTakeaways({ force=false }={}) {
     if(scheduleRange.start && scheduleRange.end) {
       const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
       if(schedule.complete && schedule.entries.length) {
-        const scheduleAnalysis=analyzeScheduleTakeaways({
+        let scheduleAnalysis=analyzeScheduleTakeaways({
           entries:schedule.entries,
           dailyByMetric,
           supportsSpecials:schedule.supportsSpecials
         });
+        if(schedule.sourceType!=="episodes" && newsletterSchedule.sources.length) {
+          const newsletterMonths=new Set(newsletterSchedule.sources.map((source)=>String(source.issue_month || "").slice(0,7)));
+          const outsideNewsletterMonths=(date)=>!date || !newsletterMonths.has(String(date).slice(0,7));
+          scheduleAnalysis={
+            ...scheduleAnalysis,
+            findings:scheduleAnalysis.findings.filter((finding)=>outsideNewsletterMonths(finding.scheduleChange?.effectiveDate || finding.scheduleChange?.date)),
+            profile:{
+              ...scheduleAnalysis.profile,
+              regimeChanges:(scheduleAnalysis.profile.regimeChanges || []).filter((change)=>outsideNewsletterMonths(change.effectiveDate))
+            }
+          };
+        }
         takeawayFindings=addScheduleContextToTrendFindings(takeawayFindings,scheduleAnalysis.profile);
         takeawayFindings=sortTakeaways([...takeawayFindings,...scheduleAnalysis.findings]);
         if(schedule.sourceType==="episodes") {
