@@ -674,7 +674,8 @@ async function renderTakeaways({ force=false }={}) {
     const newsletterFindings=analyzeNewsletterScheduleTakeaways({
       sources:newsletterSchedule.sources,
       entries:newsletterSchedule.entries,
-      monthlyByMetric
+      monthlyByMetric,
+      dailyByMetric
     });
     takeawayFindings=sortTakeaways([...takeawayFindings,...newsletterFindings]);
     const scheduleNotices=[];
