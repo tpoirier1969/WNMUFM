@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadOpenAnomalies, loadReviewedAnomalies, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -12,6 +12,7 @@ import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets, defaultRecentRange } from "./range-presets.js";
 import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
+import { analyzeNewsletterScheduleTakeaways } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 
 const els = Object.fromEntries([
@@ -659,41 +660,67 @@ async function renderTakeaways({ force=false }={}) {
     const monthlyKeys=TAKEAWAY_METRICS.filter((metric)=>metric.monthly).map((metric)=>metric.key);
     const benchmarkKeys=[...new Set(TAKEAWAY_BENCHMARK_METRICS.map((metric)=>metric.key))];
     const allMonthlyKeys=[...new Set([...monthlyKeys,...benchmarkKeys])];
-    const [dailySets,allMonthlySets,reviewedAnomalies]=await Promise.all([
+    const [dailySets,allMonthlySets,reviewedAnomalies,newsletterSchedule]=await Promise.all([
       Promise.all(dailyKeys.map((metricKey)=>loadTimeSeries(metricKey,"day","{}",selectedRange()))),
       Promise.all(allMonthlyKeys.map((metricKey)=>loadTimeSeries(metricKey,"month","{}",selectedRange()))),
-      loadReviewedAnomalies()
+      loadReviewedAnomalies(),
+      loadNewsletterScheduleEvidence(selectedRange())
     ]);
     const dailyByMetric=Object.fromEntries(dailyKeys.map((metricKey,index)=>[metricKey,dailySets[index]]));
     const allMonthlyByMetric=Object.fromEntries(allMonthlyKeys.map((metricKey,index)=>[metricKey,allMonthlySets[index]]));
     const monthlyByMetric=Object.fromEntries(monthlyKeys.map((metricKey)=>[metricKey,allMonthlyByMetric[metricKey] || []]));
     const benchmarkByMetric=Object.fromEntries(benchmarkKeys.map((metricKey)=>[metricKey,allMonthlyByMetric[metricKey] || []]));
     takeawayFindings=analyzeTakeaways({dailyByMetric,monthlyByMetric,benchmarkByMetric,reviewedAnomalies});
-    takeawayScheduleNotice="";
+    const newsletterFindings=analyzeNewsletterScheduleTakeaways({
+      sources:newsletterSchedule.sources,
+      entries:newsletterSchedule.entries,
+      monthlyByMetric,
+      dailyByMetric
+    });
+    takeawayFindings=sortTakeaways([...takeawayFindings,...newsletterFindings]);
+    const scheduleNotices=[];
+    if(newsletterSchedule.sources.length) {
+      const firstNewsletter=newsletterSchedule.sources[0];
+      const lastNewsletter=newsletterSchedule.sources.at(-1);
+      scheduleNotices.push(`WNMU-FM Preview schedule evidence loaded for ${shortCoverageDate(firstNewsletter.issue_month)} – ${shortCoverageDate(lastNewsletter.issue_month)} (${newsletterSchedule.sources.length} ${newsletterSchedule.sources.length===1 ? "issue" : "issues"}). Monthly grids are treated only as evidence for their named month; explicitly dated listings remain date-specific.`);
+    }
     const scheduleRange=takeawayScheduleRange();
     if(scheduleRange.start && scheduleRange.end) {
       const schedule=await fetchExactComposerScheduleRange(scheduleRange.start,scheduleRange.end);
       if(schedule.complete && schedule.entries.length) {
-        const scheduleAnalysis=analyzeScheduleTakeaways({
+        let scheduleAnalysis=analyzeScheduleTakeaways({
           entries:schedule.entries,
           dailyByMetric,
           supportsSpecials:schedule.supportsSpecials
         });
+        if(schedule.sourceType!=="episodes" && newsletterSchedule.sources.length) {
+          const newsletterMonths=new Set(newsletterSchedule.sources.map((source)=>String(source.issue_month || "").slice(0,7)));
+          const outsideNewsletterMonths=(date)=>!date || !newsletterMonths.has(String(date).slice(0,7));
+          scheduleAnalysis={
+            ...scheduleAnalysis,
+            findings:scheduleAnalysis.findings.filter((finding)=>outsideNewsletterMonths(finding.scheduleChange?.effectiveDate || finding.scheduleChange?.date)),
+            profile:{
+              ...scheduleAnalysis.profile,
+              regimeChanges:(scheduleAnalysis.profile.regimeChanges || []).filter((change)=>outsideNewsletterMonths(change.effectiveDate))
+            }
+          };
+        }
         takeawayFindings=addScheduleContextToTrendFindings(takeawayFindings,scheduleAnalysis.profile);
         takeawayFindings=sortTakeaways([...takeawayFindings,...scheduleAnalysis.findings]);
         if(schedule.sourceType==="episodes") {
-          takeawayScheduleNotice=scheduleRange.capped
-            ? `Scheduling findings use exact dated Composer schedules within the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}).`
-            : `Scheduling findings use exact dated Composer schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`;
+          scheduleNotices.push(scheduleRange.capped
+            ? `Composer scheduling analysis uses exact dated schedules within the latest 400 days (${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}).`
+            : `Composer scheduling analysis uses exact dated schedules for ${shortCoverageDate(scheduleRange.start)} – ${shortCoverageDate(scheduleRange.end)}.`);
         } else {
           const coverageStart=schedule.coverageStart || scheduleRange.start;
           const coverageEnd=schedule.coverageEnd || scheduleRange.end;
-          takeawayScheduleNotice=`Scheduling findings use WNMU-FM's archived Composer recurrence definitions to reconstruct the recurring schedule for ${shortCoverageDate(coverageStart)} – ${shortCoverageDate(coverageEnd)}. This supports recurring-series change analysis but not one-day special-programming detection.`;
+          scheduleNotices.push(`Composer scheduling analysis uses WNMU-FM's archived recurrence definitions for ${shortCoverageDate(coverageStart)} – ${shortCoverageDate(coverageEnd)}; these support recurring-series changes but not one-day specials.`);
         }
       } else {
-        takeawayScheduleNotice=`Scheduling findings are unavailable for this range because Composer did not provide a complete exact dated schedule: ${schedule.reason || "historical schedule unavailable"}`;
+        scheduleNotices.push(`Composer-based scheduling analysis is unavailable for its lookup window: ${schedule.reason || "historical schedule unavailable"}`);
       }
     }
+    takeawayScheduleNotice=scheduleNotices.join(" ");
     takeawayRangeKey=key;
   }
   renderTakeawayCards();

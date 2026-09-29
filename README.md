@@ -64,3 +64,6 @@ Overlapping imports update canonical normalized observations while retaining eac
 GitHub Pages remains the verified owner-test deployment path and continues to publish from canonical `main` through the repository Pages build/deployment workflow.
 
 Cloudflare Pages is live at `https://wnmufm.pages.dev/` without replacing GitHub Pages. Cloudflare builds with `npm run build:cloudflare` and publishes the `dist` directory. See `docs/CLOUDFLARE_PAGES.md` for deployment and Supabase redirect details.
+
+
+Preview newsletter schedule evidence now feeds Scheduling Takeaways directly. Consecutive known monthly grids surface program/slot changes with monthly streaming movement as context, while explicitly dated newsletter listings can use daily same-weekday streaming context when that grain exists. The integration queries WNMU-FM schedule tables dynamically, so additional newsletter months participate without code changes.
