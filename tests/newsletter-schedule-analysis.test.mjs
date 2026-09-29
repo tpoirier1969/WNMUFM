@@ -71,6 +71,39 @@ test("monthly streaming movement is attached as context rather than program attr
   assert.deepEqual(finding.metricKeys,["streaming.listeners","streaming.listener_hours"]);
 });
 
+test("dated listings automatically use daily streaming context when that grain is available", () => {
+  const sources=[source(2,"2026-02-01",9)];
+  const date="2026-02-10";
+  const entries=[{
+    source_id:2,
+    entry_key:"preview-2026-02:override:2026-02-10:20:00:special",
+    issue_month:"2026-02-01",
+    entry_type:"dated_override",
+    specific_date:date,
+    weekday:2,
+    source_weekday:2,
+    start_time:"20:00:00",
+    end_time:"22:00:00",
+    program_title:"Special Concert",
+    replaces_program_title:"Regular Concert",
+    source_page:10,
+    date_scope:"specific_date",
+    evidence_basis:"explicit_dated_listing"
+  }];
+  const peerDates=["2026-01-13","2026-01-20","2026-01-27","2026-02-03","2026-02-17","2026-02-24"];
+  const dailyByMetric={
+    "streaming.listeners":[
+      ...peerDates.map((period_start)=>({period_start,station_value:100,benchmark_value:1000,benchmark_label:"Typical Station"})),
+      {period_start:date,station_value:140,benchmark_value:1020,benchmark_label:"Typical Station"}
+    ]
+  };
+  const [finding]=analyzeNewsletterScheduleTakeaways({sources,entries,dailyByMetric});
+  assert.match(finding.summary,/live-stream listeners were 40\.0% above the median of nearby Tuesdays/i);
+  assert.match(finding.summary,/NPR Typical Station was 2\.0% above its nearby Tuesday baseline/i);
+  assert.deepEqual(finding.metricKeys,["streaming.listeners"]);
+  assert.equal(finding.actionability,90);
+});
+
 test("explicit dated newsletter listings stay date-specific", () => {
   const sources=[source(2,"2023-10-01",9)];
   const entries=[{
