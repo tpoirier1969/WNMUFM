@@ -33,6 +33,14 @@ function monthKey(value) {
   return /^\d{4}-\d{2}/.test(String(value || "")) ? String(value).slice(0,7) : "";
 }
 
+function monthEnd(value) {
+  const date=dateFromIso(`${monthKey(value)}-01`);
+  if(!date) return String(value || "");
+  date.setUTCMonth(date.getUTCMonth()+1);
+  date.setUTCDate(0);
+  return date.toISOString().slice(0,10);
+}
+
 function consecutiveMonths(a,b) {
   const first=dateFromIso(`${monthKey(a)}-01`);
   const second=dateFromIso(`${monthKey(b)}-01`);
@@ -159,7 +167,7 @@ function monthlyGridFindings(sources,entries,monthlyByMetric) {
         summary,
         grain:"month",
         sourceStart:previousSource.issue_month,
-        sourceEnd:currentSource.issue_month,
+        sourceEnd:monthEnd(currentSource.issue_month),
         sampleSize:2,
         metricKeys:effects.map((effect)=>effect.metricKey),
         newsletterEvidence:{
@@ -176,7 +184,65 @@ function monthlyGridFindings(sources,entries,monthlyByMetric) {
   return findings;
 }
 
-function datedOverrideFindings(sources,entries) {
+function weekday(value) {
+  const date=dateFromIso(value);
+  return date ? date.getUTCDay() : null;
+}
+
+function median(values) {
+  const clean=values.map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+  if(!clean.length) return null;
+  const middle=Math.floor(clean.length/2);
+  return clean.length%2 ? clean[middle] : (clean[middle-1]+clean[middle])/2;
+}
+
+function datedAudienceContext(dailyByMetric,date) {
+  const effects=[];
+  MONTHLY_STREAMING_METRICS.forEach((metric)=>{
+    const rows=(dailyByMetric?.[metric.key] || []).filter((row)=>row?.period_start && Number.isFinite(Number(row.station_value)));
+    const target=rows.find((row)=>row.period_start===date);
+    if(!target) return;
+    const targetWeekday=weekday(date);
+    const peers=rows
+      .filter((row)=>row.period_start!==date && weekday(row.period_start)===targetWeekday)
+      .map((row)=>({
+        ...row,
+        distance:Math.abs(Number(dateFromIso(row.period_start))-Number(dateFromIso(date)))/86400000
+      }))
+      .filter((row)=>row.distance<=70)
+      .sort((a,b)=>a.distance-b.distance)
+      .slice(0,8);
+    if(peers.length<4) return;
+    const baseline=median(peers.map((row)=>row.station_value));
+    const delta=percentChange(target.station_value,baseline);
+    if(delta===null) return;
+    const effect={metricKey:metric.key,label:metric.label,delta,peerCount:peers.length};
+    if(metric.key==="streaming.listeners") {
+      const targetBenchmark=Number(target.benchmark_value);
+      const peerBenchmark=median(peers.map((row)=>row.benchmark_value));
+      const benchmarkDelta=percentChange(targetBenchmark,peerBenchmark);
+      if(benchmarkDelta!==null) {
+        effect.benchmarkDelta=benchmarkDelta;
+        effect.benchmarkLabel=target.benchmark_label || peers.find((row)=>row.benchmark_label)?.benchmark_label || "NPR benchmark";
+      }
+    }
+    effects.push(effect);
+  });
+  return effects;
+}
+
+function datedAudienceSentence(effects,date) {
+  if(!effects.length) return "No source-valid daily streaming comparison is available for this dated listing.";
+  const day=DAY_NAMES[weekday(date)] || "same-weekday";
+  const parts=effects.map((effect)=>`${effect.label} were ${Math.abs(effect.delta).toFixed(1)}% ${effect.delta<0 ? "below" : "above"} the median of nearby ${day}s`);
+  const listener=effects.find((effect)=>effect.metricKey==="streaming.listeners" && Number.isFinite(effect.benchmarkDelta));
+  const benchmark=listener
+    ? ` NPR ${listener.benchmarkLabel} was ${Math.abs(listener.benchmarkDelta).toFixed(1)}% ${listener.benchmarkDelta<0 ? "below" : "above"} its nearby ${day} baseline.`
+    : "";
+  return `On that date, ${parts.join(" and ")}.${benchmark}`;
+}
+
+function datedOverrideFindings(sources,entries,dailyByMetric) {
   const sourceById=new Map(sources.map((source)=>[Number(source.id),source]));
   return entries
     .filter((row)=>row.entry_type==="dated_override" && row.specific_date)
@@ -186,19 +252,20 @@ function datedOverrideFindings(sources,entries) {
       const replacement=row.replaces_program_title
         ? `${row.program_title} replaced ${row.replaces_program_title}`
         : `${row.program_title} is explicitly listed`;
+      const effects=datedAudienceContext(dailyByMetric,row.specific_date);
       return {
         id:`newsletter-dated:${row.entry_key}`,
         kind:"newsletter-dated-override",
         category:"scheduling",
-        actionability:80,
-        importance:80,
+        actionability:effects.length ? 90 : 80,
+        importance:effects.length ? 88 : 80,
         title:`${formatDate(row.specific_date)}: ${replacement}, ${day} ${formatClock(row.start_time)}`,
-        summary:`This is an explicitly dated WNMU-FM Preview listing, not an inferred recurring change.${source ? ` Source: ${source.title}, page ${row.source_page}.` : ""} Audience attribution is left unstated unless source-valid analytics at an appropriate date/time grain are available.`,
+        summary:`This is an explicitly dated WNMU-FM Preview listing, not an inferred recurring change.${source ? ` Source: ${source.title}, page ${row.source_page}.` : ""} ${datedAudienceSentence(effects,row.specific_date)} Any audience difference is full-day context unless a finer-grain source is available.`,
         grain:"day",
         sourceStart:row.specific_date,
         sourceEnd:row.specific_date,
-        sampleSize:1,
-        metricKeys:[],
+        sampleSize:effects.length ? Math.max(...effects.map((effect)=>effect.peerCount))+1 : 1,
+        metricKeys:effects.map((effect)=>effect.metricKey),
         newsletterEvidence:{
           sourceKey:source?.source_key || "",
           page:row.source_page,
@@ -209,11 +276,11 @@ function datedOverrideFindings(sources,entries) {
     });
 }
 
-export function analyzeNewsletterScheduleTakeaways({sources=[],entries=[],monthlyByMetric={}}={}) {
+export function analyzeNewsletterScheduleTakeaways({sources=[],entries=[],monthlyByMetric={},dailyByMetric={}}={}) {
   if(!sources.length || !entries.length) return [];
   return [
     ...monthlyGridFindings(sources,entries,monthlyByMetric),
-    ...datedOverrideFindings(sources,entries)
+    ...datedOverrideFindings(sources,entries,dailyByMetric)
   ].sort((a,b)=>
     Number(b.actionability||0)-Number(a.actionability||0) ||
     String(a.sourceStart || "").localeCompare(String(b.sourceStart || "")) ||
