@@ -228,7 +228,7 @@ test("Takeaways can add exact dated FM schedule-change findings without claiming
   assert.match(app,/fetchExactComposerScheduleRange/);
   assert.match(app,/analyzeScheduleTakeaways/);
   assert.match(app,/Composer scheduling analysis uses exact dated schedules/);
-  assert.match(app,/archived Composer recurrence definitions/);
+  assert.match(app,/archived recurrence definitions/);
   assert.match(app,/supportsSpecials:schedule\.supportsSpecials/);
   assert.match(app,/loadNewsletterScheduleEvidence\(selectedRange\(\)\)/);
   assert.match(app,/analyzeNewsletterScheduleTakeaways/);
