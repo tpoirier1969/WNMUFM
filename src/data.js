@@ -91,7 +91,13 @@ export async function loadNewsletterScheduleEvidence(range = {}) {
     }).toString();
     return selectRows("wnmufm_schedule_newsletter_entries",query);
   }));
-  return {sources,entries:batches.flat()};
+  const entries=batches.flat().filter((row)=>{
+    if(row.entry_type!=="dated_override" || !row.specific_date) return true;
+    if(range?.startDate && row.specific_date<range.startDate) return false;
+    if(range?.endDate && row.specific_date>range.endDate) return false;
+    return true;
+  });
+  return {sources,entries};
 }
 
 function importSourceKey(item) {
