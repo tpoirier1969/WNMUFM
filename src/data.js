@@ -64,6 +64,36 @@ export async function loadReviewedAnomalies() {
   return selectRows("wnmufm_analytics_anomalies", query);
 }
 
+function monthStart(value) {
+  return /^\d{4}-\d{2}/.test(String(value || "")) ? `${String(value).slice(0,7)}-01` : "";
+}
+
+export async function loadNewsletterScheduleEvidence(range = {}) {
+  const params=new URLSearchParams({
+    select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",
+    order:"issue_month.asc",
+    limit:"120"
+  });
+  const startMonth=monthStart(range?.startDate);
+  const endMonth=monthStart(range?.endDate);
+  if(startMonth) params.set("issue_month",`gte.${startMonth}`);
+  if(endMonth) params.append("issue_month",`lte.${endMonth}`);
+
+  const sources=await selectRows("wnmufm_schedule_newsletter_sources",params.toString());
+  if(!sources.length) return {sources:[],entries:[]};
+
+  const batches=await Promise.all(sources.map((source)=>{
+    const query=new URLSearchParams({
+      select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
+      source_id:`eq.${source.id}`,
+      order:"weekday.asc,start_time.asc,entry_type.asc",
+      limit:"1000"
+    }).toString();
+    return selectRows("wnmufm_schedule_newsletter_entries",query);
+  }));
+  return {sources,entries:batches.flat()};
+}
+
 function importSourceKey(item) {
   const reportType=String(item?.report_type || "");
   if(!reportType) return "";
