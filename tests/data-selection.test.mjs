@@ -61,3 +61,14 @@ test("excluded anomaly dates follow the logical source across overlapping import
   assert.ok(context.excludedDatesBySource.get("audio_program_drilldown|Classiclectic").has("2025-11-17"));
   assert.equal(context.excludedDatesBySource.has("audio_program_drilldown|STATION STORIES"),false);
 });
+
+
+test("newsletter dated overrides are selected by their actual date, not only the newsletter issue month", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  assert.match(data,/entry_type:"eq\.dated_override"/);
+  assert.match(data,/specific_date",`gte\.\$\{range\.startDate\}`/);
+  assert.match(data,/specific_date",`lte\.\$\{range\.endDate\}`/);
+  assert.match(data,/missingSourceIds/);
+  assert.match(data,/entries:\[\.\.\.monthlyBatches\.flat\(\),\.\.\.datedEntries\]/);
+});
