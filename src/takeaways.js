@@ -137,6 +137,19 @@ function anomalyGrain(anomaly) {
   return String(anomaly?.grain || anomaly?.evidence?.grain || "day");
 }
 
+const DEFAULT_REVIEW_SCOPE_BY_FAMILY=Object.freeze({
+  website:"station_website|{}",
+  audio:"audio_downloads|{}",
+  streaming:"station_streaming|{}",
+  "npr-one":"npr_one|{}"
+});
+
+function anomalyMatchesDefaultScope(anomaly,family) {
+  const scope=String(anomaly?.evidence?.review_scope || "");
+  if(!scope) return true;
+  return scope===DEFAULT_REVIEW_SCOPE_BY_FAMILY[family];
+}
+
 function reviewedOutlierKeys(anomalies=[]) {
   const keys=new Set();
   anomalies.forEach((anomaly)=>{
@@ -145,7 +158,7 @@ function reviewedOutlierKeys(anomalies=[]) {
     if(anomaly?.evidence?.selected_program) return;
     const family=anomalySourceFamily(anomaly);
     const date=String(anomaly?.evidence?.date || "");
-    if(family && date) keys.add(`${family}|${date}`);
+    if(family && date && anomalyMatchesDefaultScope(anomaly,family)) keys.add(`${family}|${date}`);
   });
   return keys;
 }
@@ -158,7 +171,7 @@ function excludedMonthKeys(anomalies=[]) {
     if(anomaly?.evidence?.selected_program) return;
     const family=anomalySourceFamily(anomaly);
     const date=String(anomaly?.evidence?.date || "");
-    if(family && /^\d{4}-\d{2}-\d{2}$/.test(date)) keys.add(`${family}|${date.slice(0,7)}`);
+    if(family && anomalyMatchesDefaultScope(anomaly,family) && /^\d{4}-\d{2}-\d{2}$/.test(date)) keys.add(`${family}|${date.slice(0,7)}`);
   });
   return keys;
 }
