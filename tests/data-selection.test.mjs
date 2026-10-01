@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {}
 };
 
-const { buildObservationExclusionContext, selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
+const { buildObservationExclusionContext, collapseOpenAnomalies, selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
 
 test("range profiles prefer the longest available source period", () => {
   const rows = [
@@ -71,4 +71,49 @@ test("newsletter dated overrides are selected by their actual date, not only the
   assert.match(data,/specific_date",`lte\.\$\{range\.endDate\}`/);
   assert.match(data,/missingSourceIds/);
   assert.match(data,/entries:\[\.\.\.monthlyBatches\.flat\(\),\.\.\.datedEntries\]/);
+});
+
+
+test("open anomaly rows from overlapping imports collapse to one logical review event", () => {
+  const collapsed=collapseOpenAnomalies([
+    {
+      id:10,
+      import_id:1,
+      anomaly_key:"website_spike_2026-08-23",
+      severity:"warning",
+      detected_at:"2026-09-21T10:00:00Z",
+      title:"Earlier flag"
+    },
+    {
+      id:20,
+      import_id:2,
+      anomaly_key:"website_spike_2026-08-23",
+      severity:"high",
+      detected_at:"2026-09-24T10:00:00Z",
+      title:"Later flag"
+    },
+    {
+      id:30,
+      import_id:3,
+      anomaly_key:"bulk_audio_2026-09-14_overview",
+      severity:"high",
+      detected_at:"2026-09-22T10:00:00Z",
+      title:"Other event"
+    }
+  ]);
+
+  assert.equal(collapsed.length,2);
+  const website=collapsed.find((item)=>item.anomaly_key==="website_spike_2026-08-23");
+  assert.ok(website);
+  assert.equal(website.occurrenceCount,2);
+  assert.equal(website.severity,"high");
+  assert.equal(website.id,20);
+});
+
+test("anomaly review updates every open row for the logical anomaly key", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/data-anomaly-key=/);
+  assert.match(app,/anomaly_key:\`eq\.\$\{anomalyKey\}\`/);
+  assert.match(app,/status:"eq\.open"/);
 });

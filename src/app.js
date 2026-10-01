@@ -1463,15 +1463,20 @@ async function renderAnomalies() {
     els.anomalyList.innerHTML = '<p class="empty-state">No open anomaly flags.</p>';
     return;
   }
-  els.anomalyList.innerHTML = anomalies.map((item) => `<div class="anomaly-item" data-anomaly-id="${item.id}">
-    <div class="anomaly-head"><span class="anomaly-title">${escapeHtml(item.title)}</span><span class="severity ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></div>
-    <p class="anomaly-detail">${escapeHtml(item.detail || "")}</p>
-    <div class="anomaly-actions">
-      <button class="small-button" type="button" data-anomaly-action="expected">Expected</button>
-      <button class="small-button" type="button" data-anomaly-action="excluded">Exclude</button>
-      <button class="small-button" type="button" data-anomaly-action="resolved">Resolve</button>
-    </div>
-  </div>`).join("");
+  els.anomalyList.innerHTML = anomalies.map((item) => {
+    const overlap=Number(item.occurrenceCount || 1)>1
+      ? ` <span class="anomaly-overlap">Seen in ${Number(item.occurrenceCount).toLocaleString()} overlapping imports.</span>`
+      : "";
+    return `<div class="anomaly-item" data-anomaly-id="${item.id}" data-anomaly-key="${escapeHtml(encodeURIComponent(item.anomaly_key || ""))}">
+      <div class="anomaly-head"><span class="anomaly-title">${escapeHtml(item.title)}</span><span class="severity ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></div>
+      <p class="anomaly-detail">${escapeHtml(item.detail || "")}${overlap}</p>
+      <div class="anomaly-actions">
+        <button class="small-button" type="button" data-anomaly-action="expected">Expected</button>
+        <button class="small-button" type="button" data-anomaly-action="excluded">Exclude</button>
+        <button class="small-button" type="button" data-anomaly-action="resolved">Resolve</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 async function renderCoverage() {
@@ -1526,13 +1531,19 @@ function collectionCell(span, targetStart = "2025-09-22") {
   return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start))} – ${escapeHtml(formatDayDate(span.end))}</span>`;
 }
 
+function coreHistoryNextTarget(imports,type,whenComplete) {
+  const missing=["day","week","month"].filter((grain)=>!collectionSpan(imports,type,grain));
+  if(missing.length) return `Collect source-valid ${missing.join(", ")} history.`;
+  return whenComplete;
+}
+
 async function renderCollectionChecklist() {
   const imports = await loadImports();
   const rows = [
-    { type:"station_streaming", label:"Live streaming", next:"Full-year Day is loaded. Next get full-year Week and Month exports; hourly/daypart data remains the key program-analysis gap." },
-    { type:"station_website", label:"NPR Website", next:"Daily year is loaded. Next get full-year Week and Month exports so unique-user comparisons are source-valid." },
-    { type:"audio_downloads", label:"On-demand audio", next:"Daily year is loaded. Next get full-year Week and Month exports, then longer drilldowns for every available program." },
-    { type:"npr_one", label:"NPR One", next:"Daily year is loaded. Next get full-year Week and Month exports." }
+    { type:"station_streaming", label:"Live streaming", next:coreHistoryNextTarget(imports,"station_streaming","Core Day/Week/Month history is loaded. Next priority: hour, half-hour or daypart data so live listening can be compared honestly with scheduled programs.") },
+    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","Core Day/Week/Month history is loaded. Continue periodic refreshes; dated content analysis now belongs primarily in Google Analytics 4.") },
+    { type:"audio_downloads", label:"On-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","Core Day/Week/Month history is loaded. Next expand program drilldowns beyond the currently represented local programs.") },
+    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","Core Day/Week/Month history is loaded. Continue periodic refreshes as completed reporting periods become available.") }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
@@ -1568,7 +1579,7 @@ async function renderCollectionChecklist() {
         <li><strong>Dated Google Analytics 4 content:</strong> ${ga4Daily ? "Date + Page Path / Landing Page daily detail is now supported. Next collect Date + Event name so station-relevant actions can be trended by day." : "Date + Page Path is the most valuable next website export because it allows content to enter Trend Explorer and daily drilldowns."}</li>
         <li><strong>Google Analytics 4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
         <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
-        <li><strong>Historical schedule:</strong> the recurring Composer schedule is usable for the normal lineup; exact dated schedule snapshots are still needed for preemptions, substitutions and long-term program attribution.</li>
+        <li><strong>Historical schedule:</strong> Preview newsletter grids are loaded for Sep–Dec 2023 and the Composer recurrence archive accumulates from Sep 24, 2026 forward. Additional historical Preview issues or exact dated logs remain valuable, especially for preemptions and substitutions.</li>
       </ul>
     </div>`;
 }
@@ -2023,7 +2034,11 @@ function bindEvents() {
     if (!actionButton || !wrapper) return;
     actionButton.disabled = true;
     try {
-      await updateRows("wnmufm_analytics_anomalies", `id=eq.${wrapper.dataset.anomalyId}`, {
+      const anomalyKey=decodeURIComponent(wrapper.dataset.anomalyKey || "");
+      const anomalyQuery=anomalyKey
+        ? new URLSearchParams({anomaly_key:`eq.${anomalyKey}`,status:"eq.open"}).toString()
+        : `id=eq.${wrapper.dataset.anomalyId}`;
+      await updateRows("wnmufm_analytics_anomalies", anomalyQuery, {
         status: actionButton.dataset.anomalyAction,
         reviewed_by_email: currentUser()?.email || null,
         reviewed_at: new Date().toISOString()
