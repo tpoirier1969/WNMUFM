@@ -1,5 +1,6 @@
 import { selectRows } from "./api.js";
 import { periodIsComplete } from "./analysis.js";
+import { filterSignature } from "./reports.js";
 
 const DEFAULT_FILTER_SIGNATURE = "{}";
 let contextPromise = null;
@@ -176,20 +177,26 @@ function importSourceKey(item) {
   return reportType;
 }
 
+function importReviewScope(item) {
+  const reportType=String(item?.report_type || "");
+  if(!reportType) return "";
+  return `${reportType}|${filterSignature(item?.filter_context || {},item?.selected_program || null)}`;
+}
+
 function importSourceGrainKey(item) {
-  const sourceKey=importSourceKey(item);
+  const reviewScope=importReviewScope(item);
   const grain=String(item?.grain || "unknown");
-  return sourceKey ? `${sourceKey}|grain:${grain}` : "";
+  return reviewScope ? `${reviewScope}|grain:${grain}` : "";
 }
 
 export function buildObservationExclusionContext(imports = [], excluded = []) {
   const runDateByImport = new Map();
-  const sourceKeyByImport = new Map();
+  const reviewScopeByImport = new Map();
   const sourceGrainKeyByImport = new Map();
   imports.forEach((item) => {
     const id=Number(item.id);
     runDateByImport.set(id, item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
-    sourceKeyByImport.set(id,importSourceKey(item));
+    reviewScopeByImport.set(id,importReviewScope(item));
     sourceGrainKeyByImport.set(id,importSourceGrainKey(item));
   });
 
@@ -197,15 +204,15 @@ export function buildObservationExclusionContext(imports = [], excluded = []) {
   excluded.forEach((item) => {
     const date=String(item?.evidence?.date || "");
     const importId=Number(item.import_id);
-    const sourceKey=sourceKeyByImport.get(importId) || "";
+    const reviewScope=String(item?.evidence?.review_scope || reviewScopeByImport.get(importId) || "");
     const grain=String(item?.grain || item?.evidence?.grain || "").trim();
-    const sourceGrainKey=sourceKey && grain ? `${sourceKey}|grain:${grain}` : sourceGrainKeyByImport.get(importId) || "";
+    const sourceGrainKey=reviewScope && grain ? `${reviewScope}|grain:${grain}` : sourceGrainKeyByImport.get(importId) || "";
     if(!date || !sourceGrainKey) return;
     if(!excludedDatesBySource.has(sourceGrainKey)) excludedDatesBySource.set(sourceGrainKey,new Set());
     excludedDatesBySource.get(sourceGrainKey).add(date);
   });
 
-  return { imports, runDateByImport, sourceKeyByImport, sourceGrainKeyByImport, excludedDatesBySource };
+  return { imports, runDateByImport, reviewScopeByImport, sourceGrainKeyByImport, excludedDatesBySource };
 }
 
 async function loadAnalysisContext() {
