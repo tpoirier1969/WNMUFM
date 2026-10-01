@@ -143,7 +143,7 @@ export async function loadNewsletterScheduleEvidence(range = {}) {
     const query=new URLSearchParams({
       select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
       source_id:`eq.${source.id}`,
-      entry_type:"eq.monthly_grid",
+      entry_type:"in.(monthly_grid,monthly_partial)",
       order:"weekday.asc,start_time.asc",
       limit:"1000"
     }).toString();
