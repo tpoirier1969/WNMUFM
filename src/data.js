@@ -44,14 +44,45 @@ export function selectAvailableObservationRange(rows) {
   };
 }
 
+const ANOMALY_SEVERITY_RANK=Object.freeze({high:3,warning:2,info:1});
+
+function anomalySeverityRank(value) {
+  return ANOMALY_SEVERITY_RANK[String(value || "").toLowerCase()] || 0;
+}
+
+export function collapseOpenAnomalies(rows = []) {
+  const grouped=new Map();
+  (rows || []).forEach((row)=>{
+    const key=String(row?.anomaly_key || `id:${row?.id ?? ""}`);
+    const existing=grouped.get(key);
+    if(!existing) {
+      grouped.set(key,{...row,occurrenceCount:1});
+      return;
+    }
+    const rowRank=anomalySeverityRank(row?.severity);
+    const existingRank=anomalySeverityRank(existing?.severity);
+    const preferRow=rowRank>existingRank ||
+      (rowRank===existingRank && String(row?.detected_at || "")>String(existing?.detected_at || ""));
+    grouped.set(key,{
+      ...(preferRow ? row : existing),
+      occurrenceCount:Number(existing.occurrenceCount || 1)+1
+    });
+  });
+  return [...grouped.values()].sort((a,b)=>
+    anomalySeverityRank(b?.severity)-anomalySeverityRank(a?.severity) ||
+    String(b?.detected_at || "").localeCompare(String(a?.detected_at || "")) ||
+    String(a?.anomaly_key || "").localeCompare(String(b?.anomaly_key || ""))
+  );
+}
+
 export async function loadOpenAnomalies() {
   const query = new URLSearchParams({
     select: "id,import_id,anomaly_key,severity,status,title,detail,evidence,detected_at,reviewed_by_email,reviewed_at",
     status: "eq.open",
     order: "detected_at.desc",
-    limit: "100"
+    limit: "1000"
   }).toString();
-  return selectRows("wnmufm_analytics_anomalies", query);
+  return collapseOpenAnomalies(await selectRows("wnmufm_analytics_anomalies", query));
 }
 
 export async function loadReviewedAnomalies() {
