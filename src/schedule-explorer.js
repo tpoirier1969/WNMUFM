@@ -1,5 +1,3 @@
-const DAY_MS=86400000;
-const DAY_NAMES=Object.freeze(["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]);
 const SHORT_DAY_NAMES=Object.freeze(["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]);
 
 function dateValue(value) {
