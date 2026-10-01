@@ -53,7 +53,9 @@ function anomalySeverityRank(value) {
 export function collapseOpenAnomalies(rows = []) {
   const grouped=new Map();
   (rows || []).forEach((row)=>{
-    const key=String(row?.anomaly_key || `id:${row?.id ?? ""}`);
+    const anomalyKey=String(row?.anomaly_key || `id:${row?.id ?? ""}`);
+    const grain=String(row?.grain || row?.evidence?.grain || "unknown");
+    const key=`${anomalyKey}|grain:${grain}`;
     const existing=grouped.get(key);
     if(!existing) {
       grouped.set(key,{...row,occurrenceCount:1});
@@ -77,7 +79,7 @@ export function collapseOpenAnomalies(rows = []) {
 
 export async function loadOpenAnomalies() {
   const query = new URLSearchParams({
-    select: "id,import_id,anomaly_key,severity,status,title,detail,evidence,detected_at,reviewed_by_email,reviewed_at",
+    select: "id,import_id,anomaly_key,grain,severity,status,title,detail,evidence,detected_at,reviewed_by_email,reviewed_at",
     status: "eq.open",
     order: "detected_at.desc",
     limit: "1000"
@@ -87,7 +89,7 @@ export async function loadOpenAnomalies() {
 
 export async function loadReviewedAnomalies() {
   const query = new URLSearchParams({
-    select: "id,import_id,anomaly_key,status,evidence,reviewed_at",
+    select: "id,import_id,anomaly_key,grain,status,evidence,reviewed_at",
     status: "in.(expected,resolved,excluded)",
     order: "reviewed_at.desc",
     limit: "500"
@@ -163,25 +165,36 @@ function importSourceKey(item) {
   return reportType;
 }
 
+function importSourceGrainKey(item) {
+  const sourceKey=importSourceKey(item);
+  const grain=String(item?.grain || "unknown");
+  return sourceKey ? `${sourceKey}|grain:${grain}` : "";
+}
+
 export function buildObservationExclusionContext(imports = [], excluded = []) {
   const runDateByImport = new Map();
   const sourceKeyByImport = new Map();
+  const sourceGrainKeyByImport = new Map();
   imports.forEach((item) => {
     const id=Number(item.id);
     runDateByImport.set(id, item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
     sourceKeyByImport.set(id,importSourceKey(item));
+    sourceGrainKeyByImport.set(id,importSourceGrainKey(item));
   });
 
   const excludedDatesBySource = new Map();
   excluded.forEach((item) => {
     const date=String(item?.evidence?.date || "");
-    const sourceKey=sourceKeyByImport.get(Number(item.import_id)) || "";
-    if(!date || !sourceKey) return;
-    if(!excludedDatesBySource.has(sourceKey)) excludedDatesBySource.set(sourceKey,new Set());
-    excludedDatesBySource.get(sourceKey).add(date);
+    const importId=Number(item.import_id);
+    const sourceKey=sourceKeyByImport.get(importId) || "";
+    const grain=String(item?.grain || item?.evidence?.grain || "").trim();
+    const sourceGrainKey=sourceKey && grain ? `${sourceKey}|grain:${grain}` : sourceGrainKeyByImport.get(importId) || "";
+    if(!date || !sourceGrainKey) return;
+    if(!excludedDatesBySource.has(sourceGrainKey)) excludedDatesBySource.set(sourceGrainKey,new Set());
+    excludedDatesBySource.get(sourceGrainKey).add(date);
   });
 
-  return { imports, runDateByImport, sourceKeyByImport, excludedDatesBySource };
+  return { imports, runDateByImport, sourceKeyByImport, sourceGrainKeyByImport, excludedDatesBySource };
 }
 
 async function loadAnalysisContext() {
@@ -189,7 +202,7 @@ async function loadAnalysisContext() {
   contextPromise = Promise.all([
     loadImports(),
     selectRows("wnmufm_analytics_anomalies", new URLSearchParams({
-      select: "id,import_id,status,evidence",
+      select: "id,import_id,grain,status,evidence",
       status: "eq.excluded",
       limit: "500"
     }).toString())
@@ -201,8 +214,8 @@ function rowIsUsable(row, context) {
   const importId = Number(row.source_import_id);
   const runDate = context.runDateByImport.get(importId);
   if (!periodIsComplete(row.period_end, runDate)) return false;
-  const sourceKey=context.sourceKeyByImport.get(importId);
-  const excludedDates=sourceKey ? context.excludedDatesBySource.get(sourceKey) : null;
+  const sourceGrainKey=context.sourceGrainKeyByImport.get(importId);
+  const excludedDates=sourceGrainKey ? context.excludedDatesBySource.get(sourceGrainKey) : null;
   if (excludedDates?.has(row.period_start)) return false;
   return true;
 }

@@ -1567,8 +1567,10 @@ async function renderAnomalies() {
     const overlap=Number(item.occurrenceCount || 1)>1
       ? ` <span class="anomaly-overlap">Seen in ${Number(item.occurrenceCount).toLocaleString()} overlapping imports.</span>`
       : "";
-    return `<div class="anomaly-item" data-anomaly-id="${item.id}" data-anomaly-key="${escapeHtml(encodeURIComponent(item.anomaly_key || ""))}">
-      <div class="anomaly-head"><span class="anomaly-title">${escapeHtml(item.title)}</span><span class="severity ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></div>
+    const grain=String(item.grain || item.evidence?.grain || "unknown");
+    const grainLabel=grain==="day" ? "Day" : grain==="week" ? "Week" : grain==="month" ? "Month" : "Unknown grain";
+    return `<div class="anomaly-item" data-anomaly-id="${item.id}" data-anomaly-key="${escapeHtml(encodeURIComponent(item.anomaly_key || ""))}" data-anomaly-grain="${escapeHtml(grain)}">
+      <div class="anomaly-head"><span class="anomaly-title">${escapeHtml(item.title)}</span><span class="anomaly-badges"><span class="anomaly-grain">${escapeHtml(grainLabel)}</span><span class="severity ${escapeHtml(item.severity)}">${escapeHtml(item.severity)}</span></span></div>
       <p class="anomaly-detail">${escapeHtml(item.detail || "")}${overlap}</p>
       <div class="anomaly-actions">
         <button class="small-button" type="button" data-anomaly-action="expected">Expected</button>
@@ -2194,8 +2196,9 @@ function bindEvents() {
     actionButton.disabled = true;
     try {
       const anomalyKey=decodeURIComponent(wrapper.dataset.anomalyKey || "");
-      const anomalyQuery=anomalyKey
-        ? new URLSearchParams({anomaly_key:`eq.${anomalyKey}`,status:"eq.open"}).toString()
+      const anomalyGrain=String(wrapper.dataset.anomalyGrain || "");
+      const anomalyQuery=anomalyKey && anomalyGrain
+        ? new URLSearchParams({anomaly_key:`eq.${anomalyKey}`,grain:`eq.${anomalyGrain}`,status:"eq.open"}).toString()
         : `id=eq.${wrapper.dataset.anomalyId}`;
       await updateRows("wnmufm_analytics_anomalies", anomalyQuery, {
         status: actionButton.dataset.anomalyAction,
