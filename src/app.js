@@ -14,12 +14,13 @@ import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_C
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
+import { buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -29,6 +30,7 @@ const restoredUi = (() => {
 const sharedView = parseViewState(window.location.search);
 const validDateKey = validIsoDate;
 const validChoice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
+const validScheduleTime = (value, fallback="12:00") => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || "")) ? String(value) : fallback;
 const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
 const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
 const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
@@ -55,14 +57,19 @@ const state = {
   endDate:initialEndDate,
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
-  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","imports"], "overview"),
+  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","schedule","imports"], "overview"),
   exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs"),
-  takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all")
+  takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all"),
+  scheduleView:validChoice(sharedOrRestored("scheduleView","month"), ["month","week","day"], "month"),
+  scheduleDate:validDateKey(sharedOrRestored("scheduleDate","")),
+  scheduleTime:validScheduleTime(sharedOrRestored("scheduleTime","12:00")),
+  scheduleWindowStart:validChoice(sharedOrRestored("scheduleWindowStart","6"), ["0","6","12","18"], "6")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
 let exploreRequestId = 0;
 let breakdownRequestId = 0;
+let scheduleRequestId = 0;
 let listeningHourContext = null;
 let listeningHourNoticeKey = "";
 let takeawayFindings = [];
@@ -85,7 +92,11 @@ function viewStateSnapshot() {
     trendProgram:state.trendProgram,
     trendZoomStart:state.trendZoomStart,
     trendZoomEnd:state.trendZoomEnd,
-    takeawayCategory:state.takeawayCategory
+    takeawayCategory:state.takeawayCategory,
+    scheduleView:state.scheduleView,
+    scheduleDate:state.scheduleDate,
+    scheduleTime:state.scheduleTime,
+    scheduleWindowStart:state.scheduleWindowStart
   };
 }
 
@@ -732,12 +743,13 @@ function setHidden(element, hidden) {
 }
 
 function activateTab(tab, persist = true) {
-  const target = ["overview","takeaways","explore","imports"].includes(tab) ? tab : "overview";
+  const target = ["overview","takeaways","explore","schedule","imports"].includes(tab) ? tab : "overview";
   state.activeTab = target;
   document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
   document.querySelectorAll(".tab-panel").forEach((panel) => setHidden(panel, panel.dataset.panel !== target));
   if (persist) persistUiState();
   if(target==="takeaways" && state.role) void withBusy(()=>renderTakeaways());
+  if(target==="schedule" && state.role) void withBusy(()=>renderScheduleExplorer());
 }
 
 function formattedRange(range) {
@@ -1684,7 +1696,8 @@ async function refreshDashboard() {
       renderCollectionChecklist(),
       renderExplore(),
       renderDataAvailability(),
-      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
+      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve(),
+      state.activeTab==="schedule" ? renderScheduleExplorer() : Promise.resolve()
     ]);
   } catch (error) {
     console.error(error);
@@ -2071,6 +2084,8 @@ async function boot() {
     renderTrendControlButtons();
     renderExploreControlButtons();
     renderTakeawayControlButtons();
+    renderScheduleViewButtons();
+    applyScheduleControls();
     els.trendGrain.value = state.trendGrain;
     applyRangeControls();
     activateTab(state.activeTab,false);
