@@ -4,6 +4,9 @@ import {
   buildScheduleDay,
   entriesAtTime,
   newsletterScheduleForDate,
+  renderScheduleDay,
+  renderScheduleMonth,
+  renderScheduleWeek,
   scheduleViewRange,
   shiftScheduleDate
 } from "../src/schedule-explorer.js";
@@ -138,4 +141,40 @@ test("schedule navigation moves by the active view without inventing dates", () 
   assert.equal(shiftScheduleDate("2026-10-01","day",-1),"2026-09-30");
   assert.equal(shiftScheduleDate("2026-10-01","week",1),"2026-10-08");
   assert.equal(shiftScheduleDate("2026-01-31","month",1),"2026-02-28");
+});
+
+
+test("Schedule Explorer renderers keep visible years and evidence labels", () => {
+  const days=[{
+    date:"2026-10-01",
+    sourceKind:"composer-exact",
+    sourceLabel:"Exact Composer episodes",
+    entries:[{
+      date:"2026-10-01",
+      start:"12:00",
+      end:"13:00",
+      program:"Midday Program",
+      evidenceKind:"composer-exact",
+      sourceLabel:"Exact Composer episodes",
+      exact:true
+    }]
+  }];
+  assert.match(renderScheduleDay(days[0]),/Oct 1, 2026/);
+  assert.match(renderScheduleDay(days[0]),/Exact/);
+  assert.match(renderScheduleWeek(days,{windowStart:12}),/Oct 1, 2026/);
+  assert.match(renderScheduleMonth(days,{anchorDate:"2026-10-01",time:"12:00"}),/Oct 1, 2026/);
+});
+
+test("app exposes Schedule as a top-level module with independent controls", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,html]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../index.html",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/data-tab="schedule"/);
+  assert.match(html,/data-panel="schedule"/);
+  assert.match(html,/id="scheduleAnchorDate"/);
+  assert.match(app,/renderScheduleExplorer/);
+  assert.match(app,/loadNewsletterScheduleEvidence\(range\)/);
+  assert.match(app,/fetchExactComposerScheduleRange\(range\.startDate,range\.endDate/);
 });
