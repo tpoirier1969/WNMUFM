@@ -12,7 +12,7 @@ import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
 import { buildRangePresets, defaultRecentRange } from "./range-presets.js";
 import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_CATEGORIES, TAKEAWAY_METRICS } from "./takeaways.js";
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
-import { analyzeNewsletterScheduleTakeaways } from "./newsletter-schedule-analysis.js";
+import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 
 const els = Object.fromEntries([
@@ -693,15 +693,14 @@ async function renderTakeaways({ force=false }={}) {
           dailyByMetric,
           supportsSpecials:schedule.supportsSpecials
         });
-        if(schedule.sourceType!=="episodes" && newsletterSchedule.sources.length) {
-          const newsletterMonths=new Set(newsletterSchedule.sources.map((source)=>String(source.issue_month || "").slice(0,7)));
-          const outsideNewsletterMonths=(date)=>!date || !newsletterMonths.has(String(date).slice(0,7));
+        if(schedule.sourceType!=="episodes" && newsletterFindings.length) {
+          const isNewsletterDuplicate=(change)=>newsletterDuplicatesScheduleChange(newsletterFindings,change);
           scheduleAnalysis={
             ...scheduleAnalysis,
-            findings:scheduleAnalysis.findings.filter((finding)=>outsideNewsletterMonths(finding.scheduleChange?.effectiveDate || finding.scheduleChange?.date)),
+            findings:scheduleAnalysis.findings.filter((finding)=>!isNewsletterDuplicate(finding.scheduleChange)),
             profile:{
               ...scheduleAnalysis.profile,
-              regimeChanges:(scheduleAnalysis.profile.regimeChanges || []).filter((change)=>outsideNewsletterMonths(change.effectiveDate))
+              regimeChanges:(scheduleAnalysis.profile.regimeChanges || []).filter((change)=>!isNewsletterDuplicate(change))
             }
           };
         }
