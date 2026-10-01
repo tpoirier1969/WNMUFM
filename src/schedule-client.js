@@ -63,7 +63,7 @@ function rangeDays(startDate,endDate) {
   return Math.floor((end-start)/86400000)+1;
 }
 
-function exactEpisodeCoverage(entries,startDate,endDate) {
+export function exactEpisodeCoverage(entries,startDate,endDate) {
   const requestedDays=rangeDays(startDate,endDate) || 0;
   const dates=new Set((entries || []).map((entry)=>String(entry?.date || "")).filter(Boolean));
   const missingDates=[];
