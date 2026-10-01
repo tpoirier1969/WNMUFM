@@ -14,7 +14,7 @@ import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_C
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
-import { buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
+import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
@@ -640,18 +640,22 @@ async function renderScheduleExplorer() {
   els.scheduleExplorerBody.innerHTML='<p class="empty-state">Loading schedule…</p>';
 
   try {
+    const carryInDate=addScheduleDays(range.startDate,-1);
+    const fetchRange={startDate:carryInDate,endDate:range.endDate};
     const [newsletter,composer]=await Promise.all([
-      loadNewsletterScheduleEvidence(range),
-      fetchExactComposerScheduleRange(range.startDate,range.endDate,{maxDays:50})
+      loadNewsletterScheduleEvidence(fetchRange),
+      fetchExactComposerScheduleRange(fetchRange.startDate,fetchRange.endDate,{maxDays:50})
     ]);
     if(requestId!==scheduleRequestId) return;
 
-    const days=buildScheduleDays({
-      startDate:range.startDate,
-      endDate:range.endDate,
+    const fetchedDays=buildScheduleDays({
+      startDate:fetchRange.startDate,
+      endDate:fetchRange.endDate,
       newsletter,
       composer
     });
+    const carryInDay=fetchedDays[0] || null;
+    const days=fetchedDays.slice(1);
     const knownDays=days.filter((day)=>day.entries.length).length;
     const sourceSummary=scheduleSourceSummary(days);
     const unavailable=knownDays===0 && composer?.reason ? ` ${composer.reason}` : "";
@@ -662,11 +666,12 @@ async function renderScheduleExplorer() {
       const day=days.find((item)=>item.date===state.scheduleDate) || days[0] || null;
       els.scheduleExplorerBody.innerHTML=renderScheduleDay(day);
     } else if(state.scheduleView==="week") {
-      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{windowStart:Number(state.scheduleWindowStart)});
+      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{windowStart:Number(state.scheduleWindowStart),carryInDay});
     } else {
       els.scheduleExplorerBody.innerHTML=renderScheduleMonth(days,{
         anchorDate:state.scheduleDate,
-        time:state.scheduleTime
+        time:state.scheduleTime,
+        carryInDay
       });
     }
   } catch(error) {
