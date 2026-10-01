@@ -238,10 +238,10 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00"}={}) {
         const programs=entriesAtTime(day.entries,time);
         const inMonth=monthKey(day.date)===month;
         const source=programs[0] || day;
-        return `<article class="schedule-month-day${inMonth ? "" : " outside-month"}" role="gridcell" data-schedule-date="${escapeHtml(day.date)}">
+        return `<button type="button" class="schedule-month-day${inMonth ? "" : " outside-month"}" role="gridcell" data-schedule-date="${escapeHtml(day.date)}" aria-label="Open ${escapeHtml(formatDate(day.date))} day schedule">
           <div class="schedule-month-date"><strong>${escapeHtml(formatDate(day.date))}</strong>${sourceBadge(source)}</div>
           <div class="schedule-month-program">${programs.length ? programs.map((item)=>`<span>${escapeHtml(item.program)}</span>`).join("") : '<span class="schedule-empty">No known program at this time</span>'}</div>
-        </article>`;
+        </button>`;
       }).join("")}
     </div>`;
 }
