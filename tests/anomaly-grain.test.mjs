@@ -109,3 +109,20 @@ test("forward anomaly-grain migration removes the live default and supports obse
   assert.match(sql,/observation_id is not null/i);
   assert.match(sql,/before insert or update of import_id, observation_id, grain/i);
 });
+
+
+test("reviewed and excluded anomaly reads are paginated instead of capped at 500 rows", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  assert.match(data,/async function selectPagedRows/);
+  assert.match(data,/loadReviewedAnomalies[\s\S]*selectPagedRows/);
+  assert.match(data,/status: "eq\.excluded"[\s\S]*selectPagedRows|selectPagedRows[\s\S]*status: "eq\.excluded"/);
+});
+
+test("collection checklist requires historical coverage rather than mere grain existence", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/span\.start>targetStart/);
+  assert.match(app,/missing issues preserved as gaps/i);
+  assert.doesNotMatch(app,/Preview newsletter grids are loaded for Sep–Dec 2023/);
+});
