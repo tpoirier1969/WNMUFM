@@ -509,6 +509,7 @@ export function normalizeReport({ reportType, files, stationKey, filterContext =
 
 export function detectAnomalies(observations, reportType, selectedProgram = null) {
   const anomalies = [];
+  const grain=String((observations || []).find((item)=>item?.grain)?.grain || "unknown");
   if (reportType === REPORT_TYPES.AUDIO || reportType === REPORT_TYPES.AUDIO_DRILLDOWN) {
     const byDate = new Map();
     observations.filter((item) => item.dimension_type === "" && ["audio.downloads", "audio.users", "audio.downloads_per_user"].includes(item.metric_key)).forEach((item) => {
@@ -523,10 +524,11 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
       if ((ratio !== null && ratio >= 10) || (downloads >= 100 && users !== null && users <= 10)) {
         anomalies.push({
           anomaly_key: `bulk_audio_${date}_${selectedProgram || "overview"}`,
+          grain,
           severity: ratio >= 25 ? "high" : "warning",
           title: "Possible bulk audio retrieval",
           detail: `${date}: ${downloads ?? "?"} downloads from ${users ?? "?"} users${ratio !== null ? ` (${ratio.toFixed(1)} downloads per user)` : ""}.`,
-          evidence: { date, downloads, users, downloads_per_user: ratio, selected_program: selectedProgram }
+          evidence: { date, grain, downloads, users, downloads_per_user: ratio, selected_program: selectedProgram }
         });
       }
     });
@@ -542,10 +544,11 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
         if (item.station_value >= typical * 5 && engaged !== undefined && engaged < 10) {
           anomalies.push({
             anomaly_key: `website_spike_${item.period_start}`,
+            grain,
             severity: item.station_value >= typical * 20 ? "high" : "warning",
             title: "Website traffic spike with very low engagement",
             detail: `${item.period_start}: ${Math.round(item.station_value).toLocaleString()} active users with ${Number(engaged).toFixed(1)} engaged seconds per user.`,
-            evidence: { date: item.period_start, active_users: item.station_value, engaged_seconds_per_user: engaged, median_active_users: typical }
+            evidence: { date: item.period_start, grain, active_users: item.station_value, engaged_seconds_per_user: engaged, median_active_users: typical }
           });
         }
       });
