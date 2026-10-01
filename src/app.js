@@ -2099,6 +2099,17 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>renderScheduleExplorer());
   });
+  els.scheduleExplorerBody.addEventListener("click",(event)=>{
+    const dayButton=event.target.closest("[data-schedule-date]");
+    if(!dayButton) return;
+    const date=validDateKey(dayButton.dataset.scheduleDate);
+    if(!date) return;
+    state.scheduleDate=date;
+    state.scheduleView="day";
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
   els.takeawayList.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-takeaway-evidence]");
     if(!button) return;
