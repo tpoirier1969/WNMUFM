@@ -45,23 +45,25 @@ test("Trend Explorer distinguishes global Analysis Range from metric/grain sourc
 });
 
 
-test("excluded anomaly dates follow the logical source across overlapping imports", () => {
+test("excluded anomaly periods follow logical source and grain across overlapping imports", () => {
   const context=buildObservationExclusionContext([
-    {id:13,report_type:"station_website",selected_program:null,report_run_date:"2026-09-20"},
-    {id:18,report_type:"station_website",selected_program:null,report_run_date:"2026-09-20"},
-    {id:57,report_type:"audio_program_drilldown",selected_program:"Classiclectic",report_run_date:"2026-01-01"},
-    {id:66,report_type:"audio_program_drilldown",selected_program:"STATION STORIES",report_run_date:"2026-01-01"}
+    {id:13,report_type:"station_website",grain:"day",selected_program:null,report_run_date:"2026-09-20"},
+    {id:18,report_type:"station_website",grain:"day",selected_program:null,report_run_date:"2026-09-20"},
+    {id:37,report_type:"station_website",grain:"week",selected_program:null,report_run_date:"2026-09-24"},
+    {id:57,report_type:"audio_program_drilldown",grain:"day",selected_program:"Classiclectic",report_run_date:"2026-01-01"},
+    {id:66,report_type:"audio_program_drilldown",grain:"day",selected_program:"STATION STORIES",report_run_date:"2026-01-01"}
   ],[
-    {import_id:13,evidence:{date:"2026-08-26"}},
-    {import_id:57,evidence:{date:"2025-11-17"}}
+    {import_id:13,grain:"day",evidence:{date:"2026-08-26"}},
+    {import_id:57,grain:"day",evidence:{date:"2025-11-17"}}
   ]);
 
-  assert.ok(context.excludedDatesBySource.get("station_website").has("2026-08-26"));
+  assert.ok(context.excludedDatesBySource.get("station_website|grain:day").has("2026-08-26"));
   assert.equal(context.sourceKeyByImport.get(18),"station_website");
-  assert.ok(context.excludedDatesBySource.get("audio_program_drilldown|Classiclectic").has("2025-11-17"));
-  assert.equal(context.excludedDatesBySource.has("audio_program_drilldown|STATION STORIES"),false);
+  assert.equal(context.sourceGrainKeyByImport.get(18),"station_website|grain:day");
+  assert.equal(context.excludedDatesBySource.has("station_website|grain:week"),false);
+  assert.ok(context.excludedDatesBySource.get("audio_program_drilldown|Classiclectic|grain:day").has("2025-11-17"));
+  assert.equal(context.excludedDatesBySource.has("audio_program_drilldown|STATION STORIES|grain:day"),false);
 });
-
 
 test("newsletter dated overrides are selected by their actual date, not only the newsletter issue month", async () => {
   const fs=await import("node:fs/promises");
@@ -74,46 +76,64 @@ test("newsletter dated overrides are selected by their actual date, not only the
 });
 
 
-test("open anomaly rows from overlapping imports collapse to one logical review event", () => {
+test("open anomaly rows collapse only when logical key and grain both match", () => {
   const collapsed=collapseOpenAnomalies([
     {
       id:10,
       import_id:1,
       anomaly_key:"website_spike_2026-08-23",
+      grain:"day",
       severity:"warning",
       detected_at:"2026-09-21T10:00:00Z",
-      title:"Earlier flag"
+      title:"Earlier daily flag"
     },
     {
       id:20,
       import_id:2,
       anomaly_key:"website_spike_2026-08-23",
+      grain:"day",
       severity:"high",
       detected_at:"2026-09-24T10:00:00Z",
-      title:"Later flag"
+      title:"Later daily flag"
+    },
+    {
+      id:21,
+      import_id:37,
+      anomaly_key:"website_spike_2026-08-23",
+      grain:"week",
+      severity:"high",
+      detected_at:"2026-09-24T11:00:00Z",
+      title:"Weekly flag"
     },
     {
       id:30,
       import_id:3,
       anomaly_key:"bulk_audio_2026-09-14_overview",
+      grain:"day",
       severity:"high",
       detected_at:"2026-09-22T10:00:00Z",
       title:"Other event"
     }
   ]);
 
-  assert.equal(collapsed.length,2);
-  const website=collapsed.find((item)=>item.anomaly_key==="website_spike_2026-08-23");
-  assert.ok(website);
-  assert.equal(website.occurrenceCount,2);
-  assert.equal(website.severity,"high");
-  assert.equal(website.id,20);
+  assert.equal(collapsed.length,3);
+  const dailyWebsite=collapsed.find((item)=>item.anomaly_key==="website_spike_2026-08-23" && item.grain==="day");
+  const weeklyWebsite=collapsed.find((item)=>item.anomaly_key==="website_spike_2026-08-23" && item.grain==="week");
+  assert.ok(dailyWebsite);
+  assert.ok(weeklyWebsite);
+  assert.equal(dailyWebsite.occurrenceCount,2);
+  assert.equal(dailyWebsite.severity,"high");
+  assert.equal(dailyWebsite.id,20);
+  assert.equal(weeklyWebsite.occurrenceCount,1);
+  assert.equal(weeklyWebsite.id,21);
 });
 
-test("anomaly review updates every open row for the logical anomaly key", async () => {
+test("anomaly review updates every open row for the logical key and grain only", async () => {
   const fs=await import("node:fs/promises");
   const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
   assert.match(app,/data-anomaly-key=/);
+  assert.match(app,/data-anomaly-grain=/);
   assert.match(app,/anomaly_key:\`eq\.\$\{anomalyKey\}\`/);
+  assert.match(app,/grain:\`eq\.\$\{anomalyGrain\}\`/);
   assert.match(app,/status:"eq\.open"/);
 });
