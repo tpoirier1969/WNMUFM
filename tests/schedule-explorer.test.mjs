@@ -227,3 +227,23 @@ test("partial exact Composer results can fall back to archived recurrence eviden
   assert.equal(day.sourceKind,"composer-archive");
   assert.deepEqual(day.entries.map((item)=>item.program),["Archive Day"]);
 });
+
+
+test("the first visible Week or Month day can use overnight carry-in from the fetched prior day", () => {
+  const carryInDay={
+    date:"2026-09-26",
+    entries:[{date:"2026-09-26",start:"23:30",end:"01:30",program:"Saturday Overnight",evidenceKind:"composer-exact",sourceLabel:"Exact Composer episodes",exact:true}]
+  };
+  const visible=[{
+    date:"2026-09-27",
+    sourceKind:"composer-exact",
+    sourceLabel:"Exact Composer episodes",
+    entries:[]
+  }];
+  assert.deepEqual(
+    entriesAtTimeForDay(visible,0,"00:30",carryInDay.entries).map((item)=>item.program),
+    ["Saturday Overnight"]
+  );
+  assert.match(renderScheduleWeek(visible,{windowStart:0,carryInDay}),/Saturday Overnight/);
+  assert.match(renderScheduleMonth(visible,{anchorDate:"2026-09-27",time:"00:30",carryInDay}),/Saturday Overnight/);
+});
