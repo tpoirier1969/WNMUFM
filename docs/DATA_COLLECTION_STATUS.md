@@ -14,12 +14,14 @@ This is the working inventory for the WNMU-FM audience analytics project. It rec
 | Station Streaming Overview | **Year loaded:** 2025-09-12 through 2026-09-11 | **Historical series loaded:** 2023-09-04 through 2026-09-06 | **Historical series loaded:** 2023-09-01 through 2026-07-31 | listeners, sessions, listener-hours, session duration, device/format |
 | Audio Program Drilldowns | Three programs have extended Day/Week/Month history | Classiclectic and Station Stories reach 2024-12-29; Northern Arts & Culture reaches 2025-01-30 | All three reach 2025-01 through 2026-09 | Classiclectic, Northern Arts & Culture, Station Stories |
 | Google Analytics 4 dated exports | **Loaded:** 2026-07-23 through 2026-09-22 | Not currently supplied as a separate dated week source | Not currently supplied as a separate dated month source | dated site page views/sessions plus dated page, landing-page and event detail |
-| Preview newsletter schedules | Explicit schedule evidence exists for Sep-Dec 2023 | n/a | **Four monthly grids loaded:** Sep-Dec 2023 | 500 recurring grid blocks plus two explicitly dated overrides |
+| Preview newsletter schedules | **75 explicitly dated listings loaded** | n/a | **31 issue months have recurring-grid evidence** | 35 source issues span Sep 2023-Oct 2026; 3,908 recurring grid rows; July-Oct 2026 are preserved as source-only/dated evidence because the newer partial “Schedule at a Glance” layout is not treated as a complete grid |
 | Composer recurring archive | Daily captures begin 2026-09-24 and continue forward | n/a | n/a | recurring-catalog snapshots for future schedule-change reconstruction; not exact episode logs |
 
 All imports remain in FM-owned `wnmufm_analytics_*` tables. Original source ZIPs and raw CSV rows are retained as provenance, while overlapping normalized observations can refresh the canonical chart facts.
 
 Historical schedule evidence is deliberately source-bounded. A Preview monthly grid describes only its named month. Composer recurrence snapshots describe the recurring catalog captured on or after the archive date. Neither source is silently extended into periods it does not document.
+
+Current Preview archive gaps are **November 2025, December 2025, and January 2026**. July-October 2026 use a newer partial “Schedule at a Glance” format. Those PDFs are preserved as source records and their explicitly dated broadcasts are normalized, but omitted hours are not converted into empty schedule blocks or assumed cancellations.
 
 ## Google Analytics 4 (GA4) source-period exports
 
@@ -32,7 +34,7 @@ Very large GA4 dimensions are normalized only to the highest-activity rows neede
 ## Highest-priority downloads
 
 1. **Live-stream hour, half-hour, or daypart history** from NPR or the stream provider. This remains the most important missing bridge between audience movement and individual broadcast time blocks.
-2. **Additional historical WNMU-FM Preview schedule issues or other dated schedule sources.** The Sep-Dec 2023 issues are already normalized and automatically feed Scheduling Takeaways; additional months can use the same model without inventing continuity between missing months.
+2. **The three missing WNMU-FM Preview issues: November 2025, December 2025, and January 2026**, plus any stronger dated schedule source for those months. The archive now otherwise contains Preview source issues from Sep 2023 through Oct 2026. Do not interpolate across the three-month gap.
 3. **Audio Program Drilldown for additional discrete local programs**, using the longest available Day range and Week/Month where available. The three currently loaded programs already have substantially longer coverage than the original September audit.
 4. **Additional dated Google Analytics 4 content history** when useful, especially Date + Page Path / Landing Page / event detail beyond the currently loaded 2026-07-23 through 2026-09-22 window.
 5. **Exact historical episode schedules or station logs** if they become available. Exact dated episode evidence remains stronger than recurring newsletter grids or Composer recurrence snapshots for preemptions and one-day specials.
