@@ -77,24 +77,35 @@ export function collapseOpenAnomalies(rows = []) {
   );
 }
 
+async function selectPagedRows(table, params, { pageSize=500, maxRows=10000 }={}) {
+  const rows=[];
+  for(let offset=0;offset<maxRows;offset+=pageSize) {
+    const pageParams=new URLSearchParams(params);
+    pageParams.set("limit",String(pageSize));
+    pageParams.set("offset",String(offset));
+    const page=await selectRows(table,pageParams.toString());
+    rows.push(...page);
+    if(page.length<pageSize) break;
+  }
+  return rows;
+}
+
 export async function loadOpenAnomalies() {
-  const query = new URLSearchParams({
+  const params = new URLSearchParams({
     select: "id,import_id,anomaly_key,grain,severity,status,title,detail,evidence,detected_at,reviewed_by_email,reviewed_at",
     status: "eq.open",
-    order: "detected_at.desc",
-    limit: "1000"
-  }).toString();
-  return collapseOpenAnomalies(await selectRows("wnmufm_analytics_anomalies", query));
+    order: "detected_at.desc"
+  });
+  return collapseOpenAnomalies(await selectPagedRows("wnmufm_analytics_anomalies", params));
 }
 
 export async function loadReviewedAnomalies() {
-  const query = new URLSearchParams({
+  const params = new URLSearchParams({
     select: "id,import_id,anomaly_key,grain,status,evidence,reviewed_at",
     status: "in.(expected,resolved,excluded)",
-    order: "reviewed_at.desc",
-    limit: "500"
-  }).toString();
-  return selectRows("wnmufm_analytics_anomalies", query);
+    order: "reviewed_at.desc"
+  });
+  return selectPagedRows("wnmufm_analytics_anomalies", params);
 }
 
 function monthStart(value) {
@@ -201,11 +212,11 @@ async function loadAnalysisContext() {
   if (contextPromise) return contextPromise;
   contextPromise = Promise.all([
     loadImports(),
-    selectRows("wnmufm_analytics_anomalies", new URLSearchParams({
+    selectPagedRows("wnmufm_analytics_anomalies", new URLSearchParams({
       select: "id,import_id,grain,status,evidence",
       status: "eq.excluded",
-      limit: "500"
-    }).toString())
+      order: "reviewed_at.desc"
+    }))
   ]).then(([imports, excluded]) => buildObservationExclusionContext(imports,excluded));
   return contextPromise;
 }
