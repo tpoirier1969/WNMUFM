@@ -376,6 +376,7 @@ Deno.serve(async (req: Request) => {
 
   const programs = `${COMPOSER_BASE}/ucs/${WNMU_UCS}/programs`;
   const archiveOnly=["1","true","yes"].includes(String(url.searchParams.get("archive") || "").toLowerCase());
+  const archiveRangeOnly=["1","true","yes"].includes(String(url.searchParams.get("archive_range") || "").toLowerCase());
   if(archiveOnly) {
     try {
       const result=await composerJson(programs);
@@ -387,6 +388,32 @@ Deno.serve(async (req: Request) => {
     } catch(error) {
       return json({ error:error instanceof Error ? error.message : String(error) },502);
     }
+  }
+
+  if(archiveRangeOnly) {
+    const archived=await loadArchiveRange(start!,end!);
+    if(!archived?.entries.length) {
+      return json({
+        source:"WNMU-FM archived Composer recurring schedule",
+        source_type:"archive_recurrences_partial",
+        archive_start:"",
+        archive_end:"",
+        archive_missing_dates:requestedDays,
+        archive_stale_dates:0,
+        payload:[]
+      });
+    }
+    return json({
+      source:"WNMU-FM archived Composer recurring schedule",
+      source_type:archived.complete ? "archive_recurrences" : "archive_recurrences_partial",
+      note:"Recurring schedule reconstructed only from WNMU-FM's archived Composer definitions.",
+      archive_start:archived.coverageStart,
+      archive_end:archived.coverageEnd,
+      archive_missing_dates:archived.missingDates.length,
+      archive_stale_dates:archived.staleDates.length,
+      archive_pre_capture_dates:archived.preCaptureDates.length,
+      payload:archived.entries
+    });
   }
 
   const historical = `${COMPOSER_BASE}/ucs/${WNMU_UCS}/${start},${end}/episodes`;
