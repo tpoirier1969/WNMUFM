@@ -26,6 +26,7 @@ test("excluded anomaly dates stay inside the matching report filter scope", () =
   const baseKey=context.sourceGrainKeyByImport.get(3);
   assert.notEqual(mobileKey,desktopKey);
   assert.notEqual(mobileKey,baseKey);
+  assert.equal(context.reviewScopeByImport.get(3),"station_website|{}");
   assert.equal(context.excludedDatesBySource.get(mobileKey)?.has("2026-08-23"),true);
   assert.equal(context.excludedDatesBySource.get(desktopKey)?.has("2026-08-23") || false,false);
   assert.equal(context.excludedDatesBySource.get(baseKey)?.has("2026-08-23") || false,false);
