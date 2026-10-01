@@ -19,7 +19,11 @@ const PARAMS = Object.freeze({
   trendZoomStart:"zoomStart",
   trendZoomEnd:"zoomEnd",
   exploreView:"explore",
-  takeawayCategory:"takeaways"
+  takeawayCategory:"takeaways",
+  scheduleView:"scheduleView",
+  scheduleDate:"scheduleDate",
+  scheduleTime:"scheduleTime",
+  scheduleWindowStart:"scheduleWindow"
 });
 
 export function parseViewState(search = "") {
@@ -31,7 +35,7 @@ export function parseViewState(search = "") {
     return params.has(param) ? params.get(param) ?? "" : undefined;
   };
 
-  for (const key of ["activeTab","startDate","endDate","rangeMode","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory"]) {
+  for (const key of ["activeTab","startDate","endDate","rangeMode","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory","scheduleView","scheduleDate","scheduleTime","scheduleWindowStart"]) {
     const value = read(key);
     if (value !== undefined) view[key] = value;
   }
@@ -67,6 +71,10 @@ export function buildViewSearch(view = {}) {
   set("trendZoomEnd", view.trendZoomEnd, { allowEmpty:true });
   set("exploreView", view.exploreView);
   set("takeawayCategory", view.takeawayCategory);
+  set("scheduleView", view.scheduleView);
+  set("scheduleDate", view.scheduleDate);
+  set("scheduleTime", view.scheduleTime);
+  set("scheduleWindowStart", view.scheduleWindowStart);
 
   const text = params.toString();
   return text ? `?${text}` : "";
