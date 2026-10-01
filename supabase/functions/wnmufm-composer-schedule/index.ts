@@ -368,6 +368,26 @@ Deno.serve(async (req: Request) => {
   const start = url.searchParams.get("start");
   const end = url.searchParams.get("end");
   if (!validDate(start) || !validDate(end)) return json({ error: "start and end must be YYYY-MM-DD" }, 400);
+  const startDate=dateValue(start!);
+  const endDate=dateValue(end!);
+  const requestedDays=startDate && endDate ? Math.floor((Number(endDate)-Number(startDate))/86400000)+1 : 0;
+  if(!startDate || !endDate || requestedDays<1) return json({ error:"end must be on or after start" },400);
+  if(requestedDays>400) return json({ error:"schedule requests are limited to 400 days" },400);
+
+  const programs = `${COMPOSER_BASE}/ucs/${WNMU_UCS}/programs`;
+  const archiveOnly=["1","true","yes"].includes(String(url.searchParams.get("archive") || "").toLowerCase());
+  if(archiveOnly) {
+    try {
+      const result=await composerJson(programs);
+      if(!result.ok) return json({ error:`Composer program schedule returned HTTP ${result.status}.` },result.status);
+      const archiveWrite=await archiveCatalog(result.payload,programs);
+      return archiveWrite.archived
+        ? json({ source:programs, source_type:"archive_capture", archive_write:true, capture_date:archiveWrite.captureDate })
+        : json({ error:archiveWrite.error || "Schedule archive write failed." },502);
+    } catch(error) {
+      return json({ error:error instanceof Error ? error.message : String(error) },502);
+    }
+  }
 
   const historical = `${COMPOSER_BASE}/ucs/${WNMU_UCS}/${start},${end}/episodes`;
   try {
@@ -377,7 +397,6 @@ Deno.serve(async (req: Request) => {
     // Fall through to the recurring catalog and our own archive.
   }
 
-  const programs = `${COMPOSER_BASE}/ucs/${WNMU_UCS}/programs`;
   try {
     const result = await composerJson(programs);
     if (!result.ok) return json({ error:`Composer program schedule returned HTTP ${result.status}.` }, result.status);

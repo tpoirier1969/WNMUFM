@@ -30,7 +30,7 @@ test("historical schedule client accepts archived recurrence coverage but marks 
   assert.match(source,/archive_recurrences/);
   assert.match(source,/archive_recurrences_partial/);
   assert.match(source,/supportsSpecials:false/);
-  assert.match(source,/coverageStart:result\.archiveStart/);
+  assert.match(source,/coverageStart:proxyResult\.archiveStart/);
   assert.match(source,/archive does not yet cover this historical range/i);
 });
 
@@ -38,4 +38,21 @@ test("schedule Takeaways disable one-day special inference for archived recurrin
   const source=await readFile(new URL("../src/schedule-analysis.js",import.meta.url),"utf8");
   assert.match(source,/supportsSpecials=true/);
   assert.match(source,/supportsSpecials\s*\?\s*detectMajorScheduleChanges/);
+});
+
+
+test("daily archive cron uses explicit archive mode independent of episode availability", async () => {
+  const fs=await import("node:fs/promises");
+  const migration=await fs.readFile(new URL("../supabase/migrations/20261001_make_wnmufm_schedule_archive_deterministic.sql",import.meta.url),"utf8");
+  const fn=await fs.readFile(new URL("../supabase/functions/wnmufm-composer-schedule/index.ts",import.meta.url),"utf8");
+  assert.match(migration,/&archive=1/);
+  assert.match(fn,/archiveOnly/);
+  assert.match(fn,/source_type:"archive_capture"/);
+});
+
+test("schedule proxy rejects invalid or excessive date ranges before archive reconstruction", async () => {
+  const fs=await import("node:fs/promises");
+  const fn=await fs.readFile(new URL("../supabase/functions/wnmufm-composer-schedule/index.ts",import.meta.url),"utf8");
+  assert.match(fn,/requestedDays<1/);
+  assert.match(fn,/requestedDays>400/);
 });
