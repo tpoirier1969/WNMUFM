@@ -1633,9 +1633,12 @@ function collectionCell(span, targetStart = "2025-09-22") {
   return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start))} – ${escapeHtml(formatDayDate(span.end))}</span>`;
 }
 
-function coreHistoryNextTarget(imports,type,whenComplete) {
-  const missing=["day","week","month"].filter((grain)=>!collectionSpan(imports,type,grain));
-  if(missing.length) return `Collect source-valid ${missing.join(", ")} history.`;
+function coreHistoryNextTarget(imports,type,whenComplete,targetStart="2025-09-22") {
+  const missing=["day","week","month"].filter((grain)=>{
+    const span=collectionSpan(imports,type,grain);
+    return !span || span.start>targetStart;
+  });
+  if(missing.length) return `Extend source-valid ${missing.join(", ")} history back through ${formatDayDate(targetStart)}.`;
   return whenComplete;
 }
 
@@ -1681,7 +1684,7 @@ async function renderCollectionChecklist() {
         <li><strong>Dated Google Analytics 4 content:</strong> ${ga4Daily ? "Date + Page Path / Landing Page daily detail is now supported. Next collect Date + Event name so station-relevant actions can be trended by day." : "Date + Page Path is the most valuable next website export because it allows content to enter Trend Explorer and daily drilldowns."}</li>
         <li><strong>Google Analytics 4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
         <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
-        <li><strong>Historical schedule:</strong> Preview newsletter grids are loaded for Sep–Dec 2023 and the Composer recurrence archive accumulates from Sep 24, 2026 forward. Additional historical Preview issues or exact dated logs remain valuable, especially for preemptions and substitutions.</li>
+        <li><strong>Historical schedule:</strong> Preview newsletter evidence is loaded only for issue months we actually possess, with missing issues preserved as gaps. Composer recurrence history accumulates from actual archive captures. Exact dated logs remain especially valuable for preemptions and substitutions.</li>
       </ul>
     </div>`;
 }
