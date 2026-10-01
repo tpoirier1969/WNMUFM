@@ -191,11 +191,13 @@ function importSourceGrainKey(item) {
 
 export function buildObservationExclusionContext(imports = [], excluded = []) {
   const runDateByImport = new Map();
+  const sourceKeyByImport = new Map();
   const reviewScopeByImport = new Map();
   const sourceGrainKeyByImport = new Map();
   imports.forEach((item) => {
     const id=Number(item.id);
     runDateByImport.set(id, item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
+    sourceKeyByImport.set(id,importSourceKey(item));
     reviewScopeByImport.set(id,importReviewScope(item));
     sourceGrainKeyByImport.set(id,importSourceGrainKey(item));
   });
@@ -212,7 +214,7 @@ export function buildObservationExclusionContext(imports = [], excluded = []) {
     excludedDatesBySource.get(sourceGrainKey).add(date);
   });
 
-  return { imports, runDateByImport, reviewScopeByImport, sourceGrainKeyByImport, excludedDatesBySource };
+  return { imports, runDateByImport, sourceKeyByImport, reviewScopeByImport, sourceGrainKeyByImport, excludedDatesBySource };
 }
 
 async function loadAnalysisContext() {
