@@ -189,7 +189,8 @@ td.numeric { text-align: right; font-variant-numeric: tabular-nums; }
 
 .schedule-month-grid { display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); min-width: 910px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .schedule-month-weekday { padding: 7px 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface-alt); color: var(--muted); font-size: .74rem; font-weight: 850; text-align: center; text-transform: uppercase; letter-spacing: .04em; }
-.schedule-month-day { min-height: 112px; padding: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.schedule-month-day { min-height: 112px; padding: 8px; border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.schedule-month-day:hover, .schedule-month-day:focus-visible { background: var(--surface-alt); outline: 2px solid var(--brand); outline-offset: -2px; }
 .schedule-month-day.outside-month { opacity: .56; background: var(--surface-alt); }
 .schedule-month-date { display: flex; justify-content: space-between; gap: 7px; align-items: flex-start; margin-bottom: 9px; }
 .schedule-month-date strong { font-size: .72rem; line-height: 1.25; }
