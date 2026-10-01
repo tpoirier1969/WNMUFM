@@ -614,8 +614,8 @@ function renderScheduleViewButtons() {
 }
 
 function applyScheduleControls() {
-  if(!state.scheduleDate) state.scheduleDate=detroitTodayIso();
-  if(els.scheduleAnchorDate) els.scheduleAnchorDate.value=state.scheduleDate;
+  const displayDate=state.scheduleDate || detroitTodayIso();
+  if(els.scheduleAnchorDate) els.scheduleAnchorDate.value=displayDate;
   if(els.scheduleTime) els.scheduleTime.value=state.scheduleTime;
   if(els.scheduleWindowStart) els.scheduleWindowStart.value=state.scheduleWindowStart;
   setHidden(els.scheduleTimeControl,state.scheduleView!=="month");
