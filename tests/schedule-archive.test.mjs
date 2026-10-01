@@ -30,7 +30,7 @@ test("historical schedule client accepts archived recurrence coverage but marks 
   assert.match(source,/archive_recurrences/);
   assert.match(source,/archive_recurrences_partial/);
   assert.match(source,/supportsSpecials:false/);
-  assert.match(source,/coverageStart:proxyResult\\.archiveStart/);
+  assert.match(source,/coverageStart:proxyResult\.archiveStart/);
   assert.match(source,/archive does not yet cover this historical range/i);
 });
 
