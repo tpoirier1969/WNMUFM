@@ -14,12 +14,13 @@ import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_C
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
+import { buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendMetricButtons","trendQuickRangeButtons","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
-  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
+  "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
 const UI_STATE_KEY = "wnmufm.analytics.ui";
@@ -29,6 +30,7 @@ const restoredUi = (() => {
 const sharedView = parseViewState(window.location.search);
 const validDateKey = validIsoDate;
 const validChoice = (value, choices, fallback) => choices.includes(value) ? value : fallback;
+const validScheduleTime = (value, fallback="12:00") => /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value || "")) ? String(value) : fallback;
 const sharedOrRestored = (key, fallback = "") => sharedView[key] !== undefined ? sharedView[key] : (restoredUi[key] ?? fallback);
 const initialStartDate = validDateKey(sharedOrRestored("startDate",""));
 const initialEndDate = validDateKey(sharedOrRestored("endDate",""));
@@ -55,14 +57,19 @@ const state = {
   endDate:initialEndDate,
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
-  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","imports"], "overview"),
+  activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","schedule","imports"], "overview"),
   exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs"),
-  takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all")
+  takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all"),
+  scheduleView:validChoice(sharedOrRestored("scheduleView","month"), ["month","week","day"], "month"),
+  scheduleDate:validDateKey(sharedOrRestored("scheduleDate","")),
+  scheduleTime:validScheduleTime(sharedOrRestored("scheduleTime","12:00")),
+  scheduleWindowStart:validChoice(sharedOrRestored("scheduleWindowStart","6"), ["0","6","12","18"], "6")
 };
 let busyDepth = 0;
 let trendRequestId = 0;
 let exploreRequestId = 0;
 let breakdownRequestId = 0;
+let scheduleRequestId = 0;
 let listeningHourContext = null;
 let listeningHourNoticeKey = "";
 let takeawayFindings = [];
@@ -85,7 +92,11 @@ function viewStateSnapshot() {
     trendProgram:state.trendProgram,
     trendZoomStart:state.trendZoomStart,
     trendZoomEnd:state.trendZoomEnd,
-    takeawayCategory:state.takeawayCategory
+    takeawayCategory:state.takeawayCategory,
+    scheduleView:state.scheduleView,
+    scheduleDate:state.scheduleDate,
+    scheduleTime:state.scheduleTime,
+    scheduleWindowStart:state.scheduleWindowStart
   };
 }
 
@@ -578,6 +589,94 @@ function renderTakeawayControlButtons() {
   ).join("");
 }
 
+const SCHEDULE_VIEWS=Object.freeze([
+  ["month","Month"],
+  ["week","Week"],
+  ["day","Day"]
+]);
+
+function detroitTodayIso() {
+  const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:"America/Detroit",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map((part)=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function renderScheduleViewButtons() {
+  if(!els.scheduleViewButtons) return;
+  els.scheduleViewButtons.innerHTML=SCHEDULE_VIEWS.map(([key,label])=>
+    `<button type="button" class="filter-button" data-schedule-view="${escapeHtml(key)}" aria-pressed="${String(key===state.scheduleView)}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
+function applyScheduleControls() {
+  const displayDate=state.scheduleDate || detroitTodayIso();
+  if(els.scheduleAnchorDate) els.scheduleAnchorDate.value=displayDate;
+  if(els.scheduleTime) els.scheduleTime.value=state.scheduleTime;
+  if(els.scheduleWindowStart) els.scheduleWindowStart.value=state.scheduleWindowStart;
+  setHidden(els.scheduleTimeControl,state.scheduleView!=="month");
+  setHidden(els.scheduleWindowControl,state.scheduleView!=="week");
+  renderScheduleViewButtons();
+}
+
+async function renderScheduleExplorer() {
+  if(!els.scheduleExplorerBody || !els.scheduleSourceNote) return;
+  if(!state.scheduleDate) state.scheduleDate=detroitTodayIso();
+  applyScheduleControls();
+
+  const range=scheduleViewRange(state.scheduleView,state.scheduleDate);
+  if(!range.startDate || !range.endDate) {
+    els.scheduleSourceNote.textContent="Choose a valid schedule date.";
+    els.scheduleExplorerBody.innerHTML='<p class="empty-state">No schedule date selected.</p>';
+    return;
+  }
+
+  const requestId=++scheduleRequestId;
+  els.scheduleSourceNote.textContent="Checking WNMU-FM schedule evidence…";
+  els.scheduleExplorerBody.innerHTML='<p class="empty-state">Loading schedule…</p>';
+
+  try {
+    const [newsletter,composer]=await Promise.all([
+      loadNewsletterScheduleEvidence(range),
+      fetchExactComposerScheduleRange(range.startDate,range.endDate,{maxDays:50})
+    ]);
+    if(requestId!==scheduleRequestId) return;
+
+    const days=buildScheduleDays({
+      startDate:range.startDate,
+      endDate:range.endDate,
+      newsletter,
+      composer
+    });
+    const knownDays=days.filter((day)=>day.entries.length).length;
+    const sourceSummary=scheduleSourceSummary(days);
+    const unavailable=knownDays===0 && composer?.reason ? ` ${composer.reason}` : "";
+    els.scheduleSourceNote.textContent=
+      `Best source is chosen independently for each date: exact Composer episodes, then WNMU-FM Preview evidence for its named month/date, then archived Composer recurrence. ${sourceSummary || "No schedule evidence is available for this view."}${unavailable}`;
+
+    if(state.scheduleView==="day") {
+      const day=days.find((item)=>item.date===state.scheduleDate) || days[0] || null;
+      els.scheduleExplorerBody.innerHTML=renderScheduleDay(day);
+    } else if(state.scheduleView==="week") {
+      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{windowStart:Number(state.scheduleWindowStart)});
+    } else {
+      els.scheduleExplorerBody.innerHTML=renderScheduleMonth(days,{
+        anchorDate:state.scheduleDate,
+        time:state.scheduleTime
+      });
+    }
+  } catch(error) {
+    if(requestId!==scheduleRequestId) return;
+    console.error(error);
+    els.scheduleSourceNote.textContent="Schedule evidence could not be loaded.";
+    els.scheduleExplorerBody.innerHTML=`<p class="empty-state">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`;
+  }
+}
+
 function takeawayCategoryLabel(key) {
   return TAKEAWAY_CATEGORIES.find(([value])=>value===key)?.[1] || key;
 }
@@ -732,12 +831,13 @@ function setHidden(element, hidden) {
 }
 
 function activateTab(tab, persist = true) {
-  const target = ["overview","takeaways","explore","imports"].includes(tab) ? tab : "overview";
+  const target = ["overview","takeaways","explore","schedule","imports"].includes(tab) ? tab : "overview";
   state.activeTab = target;
   document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
   document.querySelectorAll(".tab-panel").forEach((panel) => setHidden(panel, panel.dataset.panel !== target));
   if (persist) persistUiState();
   if(target==="takeaways" && state.role) void withBusy(()=>renderTakeaways());
+  if(target==="schedule" && state.role) void withBusy(()=>renderScheduleExplorer());
 }
 
 function formattedRange(range) {
@@ -1684,7 +1784,8 @@ async function refreshDashboard() {
       renderCollectionChecklist(),
       renderExplore(),
       renderDataAvailability(),
-      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
+      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve(),
+      state.activeTab==="schedule" ? renderScheduleExplorer() : Promise.resolve()
     ]);
   } catch (error) {
     console.error(error);
@@ -1951,6 +2052,64 @@ function bindEvents() {
     persistUiState();
     renderTakeawayCards();
   });
+  els.scheduleViewButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-schedule-view]");
+    if(!button) return;
+    state.scheduleView=validChoice(button.dataset.scheduleView,["month","week","day"],"month");
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleAnchorDate.addEventListener("change",()=>{
+    const date=validDateKey(els.scheduleAnchorDate.value);
+    if(!date) {
+      els.scheduleAnchorDate.value=state.scheduleDate || detroitTodayIso();
+      return;
+    }
+    state.scheduleDate=date;
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleTime.addEventListener("change",()=>{
+    state.scheduleTime=validScheduleTime(els.scheduleTime.value,state.scheduleTime || "12:00");
+    applyScheduleControls();
+    persistUiState();
+    if(state.scheduleView==="month") void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleWindowStart.addEventListener("change",()=>{
+    state.scheduleWindowStart=validChoice(els.scheduleWindowStart.value,["0","6","12","18"],"6");
+    persistUiState();
+    if(state.scheduleView==="week") void withBusy(()=>renderScheduleExplorer());
+  });
+  els.schedulePrevButton.addEventListener("click",()=>{
+    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,-1);
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleTodayButton.addEventListener("click",()=>{
+    state.scheduleDate=detroitTodayIso();
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleNextButton.addEventListener("click",()=>{
+    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,1);
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleExplorerBody.addEventListener("click",(event)=>{
+    const dayButton=event.target.closest("[data-schedule-date]");
+    if(!dayButton) return;
+    const date=validDateKey(dayButton.dataset.scheduleDate);
+    if(!date) return;
+    state.scheduleDate=date;
+    state.scheduleView="day";
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
   els.takeawayList.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-takeaway-evidence]");
     if(!button) return;
@@ -2071,6 +2230,8 @@ async function boot() {
     renderTrendControlButtons();
     renderExploreControlButtons();
     renderTakeawayControlButtons();
+    renderScheduleViewButtons();
+    applyScheduleControls();
     els.trendGrain.value = state.trendGrain;
     applyRangeControls();
     activateTab(state.activeTab,false);
