@@ -176,8 +176,8 @@ test("app exposes Schedule as a top-level module with independent controls", asy
   assert.match(html,/data-panel="schedule"/);
   assert.match(html,/id="scheduleAnchorDate"/);
   assert.match(app,/renderScheduleExplorer/);
-  assert.match(app,/loadNewsletterScheduleEvidence\(range\)/);
-  assert.match(app,/fetchExactComposerScheduleRange\(range\.startDate,range\.endDate/);
+  assert.match(app,/loadNewsletterScheduleEvidence\(fetchRange\)/);
+  assert.match(app,/fetchExactComposerScheduleRange\(fetchRange\.startDate,fetchRange\.endDate/);
 });
 
 
