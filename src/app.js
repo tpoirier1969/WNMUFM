@@ -589,6 +589,94 @@ function renderTakeawayControlButtons() {
   ).join("");
 }
 
+const SCHEDULE_VIEWS=Object.freeze([
+  ["month","Month"],
+  ["week","Week"],
+  ["day","Day"]
+]);
+
+function detroitTodayIso() {
+  const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:"America/Detroit",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).formatToParts(new Date());
+  const values=Object.fromEntries(parts.map((part)=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function renderScheduleViewButtons() {
+  if(!els.scheduleViewButtons) return;
+  els.scheduleViewButtons.innerHTML=SCHEDULE_VIEWS.map(([key,label])=>
+    `<button type="button" class="filter-button" data-schedule-view="${escapeHtml(key)}" aria-pressed="${String(key===state.scheduleView)}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
+function applyScheduleControls() {
+  if(!state.scheduleDate) state.scheduleDate=detroitTodayIso();
+  if(els.scheduleAnchorDate) els.scheduleAnchorDate.value=state.scheduleDate;
+  if(els.scheduleTime) els.scheduleTime.value=state.scheduleTime;
+  if(els.scheduleWindowStart) els.scheduleWindowStart.value=state.scheduleWindowStart;
+  setHidden(els.scheduleTimeControl,state.scheduleView!=="month");
+  setHidden(els.scheduleWindowControl,state.scheduleView!=="week");
+  renderScheduleViewButtons();
+}
+
+async function renderScheduleExplorer() {
+  if(!els.scheduleExplorerBody || !els.scheduleSourceNote) return;
+  if(!state.scheduleDate) state.scheduleDate=detroitTodayIso();
+  applyScheduleControls();
+
+  const range=scheduleViewRange(state.scheduleView,state.scheduleDate);
+  if(!range.startDate || !range.endDate) {
+    els.scheduleSourceNote.textContent="Choose a valid schedule date.";
+    els.scheduleExplorerBody.innerHTML='<p class="empty-state">No schedule date selected.</p>';
+    return;
+  }
+
+  const requestId=++scheduleRequestId;
+  els.scheduleSourceNote.textContent="Checking WNMU-FM schedule evidence…";
+  els.scheduleExplorerBody.innerHTML='<p class="empty-state">Loading schedule…</p>';
+
+  try {
+    const [newsletter,composer]=await Promise.all([
+      loadNewsletterScheduleEvidence(range),
+      fetchExactComposerScheduleRange(range.startDate,range.endDate,{maxDays:50})
+    ]);
+    if(requestId!==scheduleRequestId) return;
+
+    const days=buildScheduleDays({
+      startDate:range.startDate,
+      endDate:range.endDate,
+      newsletter,
+      composer
+    });
+    const knownDays=days.filter((day)=>day.entries.length).length;
+    const sourceSummary=scheduleSourceSummary(days);
+    const unavailable=knownDays===0 && composer?.reason ? ` ${composer.reason}` : "";
+    els.scheduleSourceNote.textContent=
+      `Best source is chosen independently for each date: exact Composer episodes, then WNMU-FM Preview evidence for its named month/date, then archived Composer recurrence. ${sourceSummary || "No schedule evidence is available for this view."}${unavailable}`;
+
+    if(state.scheduleView==="day") {
+      const day=days.find((item)=>item.date===state.scheduleDate) || days[0] || null;
+      els.scheduleExplorerBody.innerHTML=renderScheduleDay(day);
+    } else if(state.scheduleView==="week") {
+      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{windowStart:Number(state.scheduleWindowStart)});
+    } else {
+      els.scheduleExplorerBody.innerHTML=renderScheduleMonth(days,{
+        anchorDate:state.scheduleDate,
+        time:state.scheduleTime
+      });
+    }
+  } catch(error) {
+    if(requestId!==scheduleRequestId) return;
+    console.error(error);
+    els.scheduleSourceNote.textContent="Schedule evidence could not be loaded.";
+    els.scheduleExplorerBody.innerHTML=`<p class="empty-state">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`;
+  }
+}
+
 function takeawayCategoryLabel(key) {
   return TAKEAWAY_CATEGORIES.find(([value])=>value===key)?.[1] || key;
 }
