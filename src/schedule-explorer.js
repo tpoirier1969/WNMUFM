@@ -183,6 +183,30 @@ export function entriesAtTime(entries,time) {
   });
 }
 
+function spilloverEntriesAtTime(previousEntries,time) {
+  const minute=timeMinutes(time);
+  if(minute===null) return [];
+  const nextDayMinute=minute+1440;
+  return (previousEntries || []).filter((entry)=>{
+    const interval=entryInterval(entry);
+    return interval && interval.end>1440 && nextDayMinute>=interval.start && nextDayMinute<interval.end;
+  });
+}
+
+export function entriesAtTimeForDay(days,index,time) {
+  const day=days?.[index];
+  if(!day) return [];
+  const current=entriesAtTime(day.entries,time);
+  const previous=index>0 ? spilloverEntriesAtTime(days[index-1]?.entries,time) : [];
+  const seen=new Set();
+  return [...previous,...current].filter((entry)=>{
+    const key=[entry.date || "",entry.start || "",entry.end || "",entry.program || ""].join("|");
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g,(ch)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 }
@@ -235,8 +259,8 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00"}={}) {
     </div>
     <div class="schedule-month-grid" role="grid" aria-label="${escapeHtml(formatMonth(anchorDate))} schedule at ${escapeHtml(formatTime(time))}">
       ${SHORT_DAY_NAMES.map((name)=>`<div class="schedule-month-weekday" role="columnheader">${escapeHtml(name)}</div>`).join("")}
-      ${(days || []).map((day)=>{
-        const programs=entriesAtTime(day.entries,time);
+      ${(days || []).map((day,index)=>{
+        const programs=entriesAtTimeForDay(days,index,time);
         const inMonth=monthKey(day.date)===month;
         const source=programs[0] || day;
         return `<button type="button" class="schedule-month-day${inMonth ? "" : " outside-month"}" role="gridcell" data-schedule-date="${escapeHtml(day.date)}" aria-label="Open ${escapeHtml(formatDate(day.date))} day schedule">
@@ -262,8 +286,8 @@ export function renderScheduleWeek(days,{windowStart=6}={}) {
         <tbody>
           ${rows.map((minutes)=>{
             const clock=timeText(minutes);
-            return `<tr><th>${escapeHtml(formatTime(clock))}</th>${days.map((day)=>{
-              const programs=entriesAtTime(day.entries,clock);
+            return `<tr><th>${escapeHtml(formatTime(clock))}</th>${days.map((day,index)=>{
+              const programs=entriesAtTimeForDay(days,index,clock);
               return `<td>${programs.length ? programs.map((item)=>`<span class="schedule-week-program">${escapeHtml(item.program)}</span>`).join("") : '<span class="schedule-empty">—</span>'}</td>`;
             }).join("")}</tr>`;
           }).join("")}
