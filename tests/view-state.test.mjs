@@ -16,7 +16,11 @@ test("shareable view state round-trips through the query string", () => {
     trendZoomStart:"2026-01-01",
     trendZoomEnd:"2026-03-31",
     exploreView:"website-channels",
-    takeawayCategory:"website"
+    takeawayCategory:"website",
+    scheduleView:"week",
+    scheduleDate:"2023-10-03",
+    scheduleTime:"20:00",
+    scheduleWindowStart:"18"
   };
 
   const search = buildViewSearch(original);
@@ -126,4 +130,22 @@ test("new app sessions default to the latest 13 months while preserving explicit
   assert.match(app,/\? "custom" : "recent13"/);
   assert.match(app,/defaultRecentRange\(next,13\)/);
   assert.match(app,/data-range-preset.*last-13m|rangePreset === "last-13m"/s);
+});
+
+
+test("schedule view state can be shared independently from the audience Analysis Range", () => {
+  const search=buildViewSearch({
+    activeTab:"schedule",
+    startDate:"2025-09-12",
+    endDate:"2026-09-20",
+    scheduleView:"day",
+    scheduleDate:"2023-10-03",
+    scheduleTime:"20:00",
+    scheduleWindowStart:"18"
+  });
+  const parsed=parseViewState(search);
+  assert.equal(parsed.activeTab,"schedule");
+  assert.equal(parsed.scheduleDate,"2023-10-03");
+  assert.equal(parsed.startDate,"2025-09-12");
+  assert.equal(parsed.endDate,"2026-09-20");
 });
