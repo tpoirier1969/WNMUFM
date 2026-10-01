@@ -23,6 +23,15 @@ function median(values) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function scopeHash(value) {
+  let hash=2166136261;
+  for(const ch of String(value || "")) {
+    hash^=ch.charCodeAt(0);
+    hash=Math.imul(hash,16777619);
+  }
+  return (hash>>>0).toString(36);
+}
+
 function isoDate(value) {
   if (!value) return null;
   const text = String(value).trim();
@@ -507,9 +516,11 @@ export function normalizeReport({ reportType, files, stationKey, filterContext =
   return { range, observations, status: observations.length ? "imported" : "partial" };
 }
 
-export function detectAnomalies(observations, reportType, selectedProgram = null) {
+export function detectAnomalies(observations, reportType, selectedProgram = null, filterContext = {}) {
   const anomalies = [];
   const grain=String((observations || []).find((item)=>item?.grain)?.grain || "unknown");
+  const reviewScope=`${reportType}|${filterSignature(filterContext,selectedProgram)}`;
+  const reviewScopeHash=scopeHash(reviewScope);
   if (reportType === REPORT_TYPES.AUDIO || reportType === REPORT_TYPES.AUDIO_DRILLDOWN) {
     const byDate = new Map();
     observations.filter((item) => item.dimension_type === "" && ["audio.downloads", "audio.users", "audio.downloads_per_user"].includes(item.metric_key)).forEach((item) => {
@@ -523,12 +534,12 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
       const ratio = metrics["audio.downloads_per_user"] ?? (downloads && users ? downloads / users : null);
       if ((ratio !== null && ratio >= 10) || (downloads >= 100 && users !== null && users <= 10)) {
         anomalies.push({
-          anomaly_key: `bulk_audio_${date}_${selectedProgram || "overview"}`,
+          anomaly_key: `bulk_audio_${date}_${selectedProgram || "overview"}_${reviewScopeHash}`,
           grain,
           severity: ratio >= 25 ? "high" : "warning",
           title: "Possible bulk audio retrieval",
           detail: `${date}: ${downloads ?? "?"} downloads from ${users ?? "?"} users${ratio !== null ? ` (${ratio.toFixed(1)} downloads per user)` : ""}.`,
-          evidence: { date, grain, downloads, users, downloads_per_user: ratio, selected_program: selectedProgram }
+          evidence: { date, grain, downloads, users, downloads_per_user: ratio, selected_program: selectedProgram, review_scope:reviewScope }
         });
       }
     });
@@ -543,12 +554,12 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
         const engaged = engagement.get(item.period_start);
         if (item.station_value >= typical * 5 && engaged !== undefined && engaged < 10) {
           anomalies.push({
-            anomaly_key: `website_spike_${item.period_start}`,
+            anomaly_key: `website_spike_${item.period_start}_${reviewScopeHash}`,
             grain,
             severity: item.station_value >= typical * 20 ? "high" : "warning",
             title: "Website traffic spike with very low engagement",
             detail: `${item.period_start}: ${Math.round(item.station_value).toLocaleString()} active users with ${Number(engaged).toFixed(1)} engaged seconds per user.`,
-            evidence: { date: item.period_start, grain, active_users: item.station_value, engaged_seconds_per_user: engaged, median_active_users: typical }
+            evidence: { date: item.period_start, grain, active_users: item.station_value, engaged_seconds_per_user: engaged, median_active_users: typical, review_scope:reviewScope }
           });
         }
       });
