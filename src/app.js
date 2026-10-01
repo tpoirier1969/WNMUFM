@@ -1531,13 +1531,19 @@ function collectionCell(span, targetStart = "2025-09-22") {
   return `<span class="collection-status ${fullYear ? "good" : "partial"}">${fullYear ? "Year+" : "Short"} · ${escapeHtml(formatDayDate(span.start))} – ${escapeHtml(formatDayDate(span.end))}</span>`;
 }
 
+function coreHistoryNextTarget(imports,type,whenComplete) {
+  const missing=["day","week","month"].filter((grain)=>!collectionSpan(imports,type,grain));
+  if(missing.length) return `Collect source-valid ${missing.join(", ")} history.`;
+  return whenComplete;
+}
+
 async function renderCollectionChecklist() {
   const imports = await loadImports();
   const rows = [
-    { type:"station_streaming", label:"Live streaming", next:"Core Day/Week/Month history is loaded. Next priority: hour, half-hour or daypart data so live listening can be compared honestly with scheduled programs." },
-    { type:"station_website", label:"NPR Website", next:"Core Day/Week/Month history is loaded. Continue periodic refreshes; dated content analysis now belongs primarily in Google Analytics 4." },
-    { type:"audio_downloads", label:"On-demand audio", next:"Core Day/Week/Month history is loaded. Next expand program drilldowns beyond the currently represented local programs." },
-    { type:"npr_one", label:"NPR One", next:"Core Day/Week/Month history is loaded. Continue periodic refreshes as completed reporting periods become available." }
+    { type:"station_streaming", label:"Live streaming", next:coreHistoryNextTarget(imports,"station_streaming","Core Day/Week/Month history is loaded. Next priority: hour, half-hour or daypart data so live listening can be compared honestly with scheduled programs.") },
+    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","Core Day/Week/Month history is loaded. Continue periodic refreshes; dated content analysis now belongs primarily in Google Analytics 4.") },
+    { type:"audio_downloads", label:"On-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","Core Day/Week/Month history is loaded. Next expand program drilldowns beyond the currently represented local programs.") },
+    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","Core Day/Week/Month history is loaded. Continue periodic refreshes as completed reporting periods become available.") }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
