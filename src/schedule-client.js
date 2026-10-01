@@ -63,6 +63,48 @@ function rangeDays(startDate,endDate) {
   return Math.floor((end-start)/86400000)+1;
 }
 
+function exactEpisodeCoverage(entries,startDate,endDate) {
+  const requestedDays=rangeDays(startDate,endDate) || 0;
+  const dates=new Set((entries || []).map((entry)=>String(entry?.date || "")).filter(Boolean));
+  const missingDates=[];
+  for(let date=startDate;date && date<=endDate;date=addDays(date,1)) {
+    if(!dates.has(date)) missingDates.push(date);
+  }
+  const covered=[...dates].filter((date)=>date>=startDate && date<=endDate).sort();
+  return {
+    complete:requestedDays>0 && missingDates.length===0,
+    coverageStart:covered[0] || "",
+    coverageEnd:covered.at(-1) || "",
+    coveredDays:requestedDays-missingDates.length,
+    requestedDays,
+    missingDates
+  };
+}
+
+function exactEpisodeResult(result,startDate,endDate) {
+  const coverage=exactEpisodeCoverage(result.entries,startDate,endDate);
+  return {
+    ...result,
+    complete:coverage.complete,
+    supportsSpecials:coverage.complete,
+    coverageStart:coverage.coverageStart,
+    coverageEnd:coverage.coverageEnd,
+    reason:coverage.complete
+      ? ""
+      : coverage.coveredDays
+        ? `Composer returned exact dated schedule entries for ${coverage.coveredDays} of ${coverage.requestedDays} requested days; ${coverage.missingDates.length} days are missing, so the range is not treated as complete.`
+        : "Composer returned no usable exact dated schedule entries for this window."
+  };
+}
+
+async function fetchDirectComposerEpisodes(startDate,endDate) {
+  const url=new URL(`${CONFIG.composerApiBase}/ucs/${CONFIG.composerUcs}/${startDate},${endDate}/episodes`);
+  const payload=await fetchComposerJson(url);
+  const entries=normalizeComposerEpisodes(payload);
+  if(!entries.length) throw new Error("Composer returned no usable exact dated schedule entries for this window.");
+  return {entries,sourceType:"episodes",note:"Direct Composer episode fallback."};
+}
+
 export async function fetchComposerSchedule(startDate, endDate) {
   let proxyError = null;
   try {
@@ -102,46 +144,51 @@ export async function fetchExactComposerScheduleRange(startDate,endDate,{maxDays
     return { entries:[], sourceType:"none", complete:false, reason:`Schedule analysis is limited to ${maxDays} days at a time.` };
   }
 
+  let proxyResult=null;
+  let proxyError=null;
   try {
-    const result=await fetchComposerViaWnmuProxy(startDate,endDate);
-    if(result.sourceType==="episodes") {
-      return {
-        ...result,
-        complete:Boolean(result.entries.length),
-        supportsSpecials:true,
-        coverageStart:startDate,
-        coverageEnd:endDate,
-        reason:result.entries.length ? "" : "Composer returned no usable exact dated schedule entries for this window."
-      };
-    }
-    if(["archive_recurrences","archive_recurrences_partial"].includes(result.sourceType)) {
-      return {
-        ...result,
-        complete:Boolean(result.entries.length),
-        supportsSpecials:false,
-        coverageStart:result.archiveStart || startDate,
-        coverageEnd:result.archiveEnd || endDate,
-        reason:result.entries.length ? "" : "The WNMU-FM schedule archive has no usable entries for this window."
-      };
-    }
-    return {
-      entries:[],
-      sourceType:result.sourceType,
-      complete:false,
-      supportsSpecials:false,
-      coverageStart:"",
-      coverageEnd:"",
-      reason:"Composer did not return exact dated episodes and the WNMU-FM archive does not yet cover this historical range."
-    };
+    proxyResult=await fetchComposerViaWnmuProxy(startDate,endDate);
   } catch(error) {
+    proxyError=error;
+  }
+
+  if(proxyResult?.sourceType==="episodes") {
+    return exactEpisodeResult(proxyResult,startDate,endDate);
+  }
+
+  if(["archive_recurrences","archive_recurrences_partial"].includes(proxyResult?.sourceType)) {
+    const complete=proxyResult.sourceType==="archive_recurrences" &&
+      proxyResult.archiveMissingDates===0 &&
+      Boolean(proxyResult.entries.length);
+    return {
+      ...proxyResult,
+      complete,
+      supportsSpecials:false,
+      coverageStart:proxyResult.archiveStart || "",
+      coverageEnd:proxyResult.archiveEnd || "",
+      reason:complete
+        ? ""
+        : proxyResult.entries.length
+          ? "The WNMU-FM schedule archive covers only part of this requested window, so it is not treated as complete."
+          : "The WNMU-FM schedule archive has no usable entries for this window."
+    };
+  }
+
+  try {
+    const direct=await fetchDirectComposerEpisodes(startDate,endDate);
+    return exactEpisodeResult(direct,startDate,endDate);
+  } catch(directError) {
+    const reason=proxyResult
+      ? "Composer did not return exact dated episodes and the WNMU-FM archive does not yet cover this historical range."
+      : [proxyError,directError].filter(Boolean).map((error)=>error instanceof Error ? error.message : String(error)).join(" ");
     return {
       entries:[],
-      sourceType:"error",
+      sourceType:proxyResult?.sourceType || "error",
       complete:false,
       supportsSpecials:false,
       coverageStart:"",
       coverageEnd:"",
-      reason:error instanceof Error ? error.message : String(error)
+      reason
     };
   }
 }
