@@ -133,9 +133,14 @@ function anomalySourceFamily(anomaly) {
   return "";
 }
 
+function anomalyGrain(anomaly) {
+  return String(anomaly?.grain || anomaly?.evidence?.grain || "day");
+}
+
 function reviewedOutlierKeys(anomalies=[]) {
   const keys=new Set();
   anomalies.forEach((anomaly)=>{
+    if(anomalyGrain(anomaly)!=="day") return;
     if(!["expected","resolved"].includes(String(anomaly?.status || ""))) return;
     if(anomaly?.evidence?.selected_program) return;
     const family=anomalySourceFamily(anomaly);
@@ -148,6 +153,7 @@ function reviewedOutlierKeys(anomalies=[]) {
 function excludedMonthKeys(anomalies=[]) {
   const keys=new Set();
   anomalies.forEach((anomaly)=>{
+    if(anomalyGrain(anomaly)!=="day") return;
     if(String(anomaly?.status || "")!=="excluded") return;
     if(anomaly?.evidence?.selected_program) return;
     const family=anomalySourceFamily(anomaly);
