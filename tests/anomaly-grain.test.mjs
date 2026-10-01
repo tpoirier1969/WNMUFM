@@ -33,7 +33,8 @@ test("detected anomalies preserve the source grain", () => {
   assert.equal(anomalies.length,1);
   assert.equal(anomalies[0].grain,"week");
   assert.equal(anomalies[0].evidence.grain,"week");
-  assert.equal(anomalies[0].anomaly_key,"website_spike_2026-08-23");
+  assert.match(anomalies[0].anomaly_key,/^website_spike_2026-08-23_[a-z0-9]+$/);
+  assert.match(anomalies[0].evidence.review_scope,/^station_website\|/);
 });
 
 test("weekly review decisions do not suppress a daily Takeaway on the same calendar date", () => {
@@ -80,6 +81,31 @@ test("anomaly-grain migration backfills from imports and protects stale clients"
   assert.match(sql,/add column if not exists grain text/i);
   assert.match(sql,/set grain = i\.grain/i);
   assert.match(sql,/wnmufm_fill_anomaly_grain/i);
-  assert.match(sql,/before insert or update of import_id, grain/i);
+  assert.match(sql,/set grain = o\.grain/i);
+  assert.match(sql,/before insert or update of import_id, observation_id, grain/i);
+  assert.match(sql,/alter column grain drop default/i);
   assert.match(sql,/check \(grain in \('day','week','month','unknown'\)\)/i);
+});
+
+
+test("anomaly keys differ across report filter scopes but remain stable within one scope", () => {
+  const observations=Array.from({length:7},(_,index)=>[
+    {grain:"day",period_start:`2026-08-${String(20+index).padStart(2,"0")}`,metric_key:"website.active_users",dimension_type:"",station_value:index===3 ? 10000 : 100},
+    {grain:"day",period_start:`2026-08-${String(20+index).padStart(2,"0")}`,metric_key:"website.engaged_seconds_per_user",dimension_type:"",station_value:index===3 ? 1 : 45}
+  ]).flat();
+  const first=detectAnomalies(observations,REPORT_TYPES.WEBSITE,null,{device:"mobile"})[0];
+  const repeat=detectAnomalies(observations,REPORT_TYPES.WEBSITE,null,{device:"mobile"})[0];
+  const other=detectAnomalies(observations,REPORT_TYPES.WEBSITE,null,{device:"desktop"})[0];
+  assert.equal(first.anomaly_key,repeat.anomaly_key);
+  assert.notEqual(first.anomaly_key,other.anomaly_key);
+  assert.notEqual(first.evidence.review_scope,other.evidence.review_scope);
+});
+
+test("forward anomaly-grain migration removes the live default and supports observation-only rows", async () => {
+  const fs=await import("node:fs/promises");
+  const sql=await fs.readFile(new URL("../supabase/migrations/20261001_fix_anomaly_grain_derivation.sql",import.meta.url),"utf8");
+  assert.match(sql,/alter column grain drop default/i);
+  assert.match(sql,/set grain = o\.grain/i);
+  assert.match(sql,/observation_id is not null/i);
+  assert.match(sql,/before insert or update of import_id, observation_id, grain/i);
 });
