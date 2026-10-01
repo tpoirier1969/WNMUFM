@@ -203,3 +203,36 @@ test("newsletter deduplication matches the actual recurring change, not the whol
     endSlot:25
   }),false);
 });
+
+
+test("dated null measurements remain missing instead of becoming zero-valued audience context", () => {
+  const sources=[source(2,"2026-02-01",9)];
+  const date="2026-02-10";
+  const entries=[{
+    source_id:2,
+    entry_key:"preview-2026-02:override:2026-02-10:20:00:special-null",
+    issue_month:"2026-02-01",
+    entry_type:"dated_override",
+    specific_date:date,
+    weekday:2,
+    source_weekday:2,
+    start_time:"20:00:00",
+    end_time:"22:00:00",
+    program_title:"Special Concert",
+    replaces_program_title:"Regular Concert",
+    source_page:10,
+    date_scope:"specific_date",
+    evidence_basis:"explicit_dated_listing"
+  }];
+  const peerDates=["2026-01-13","2026-01-20","2026-01-27","2026-02-03","2026-02-17","2026-02-24"];
+  const dailyByMetric={
+    "streaming.listeners":[
+      ...peerDates.map((period_start)=>({period_start,station_value:100,benchmark_value:1000,benchmark_label:"Typical Station"})),
+      {period_start:date,station_value:null,benchmark_value:null,benchmark_label:"Typical Station"}
+    ]
+  };
+  const [finding]=analyzeNewsletterScheduleTakeaways({sources,entries,dailyByMetric});
+  assert.match(finding.summary,/No source-valid daily streaming comparison is available/i);
+  assert.doesNotMatch(finding.summary,/100\.0%/);
+  assert.equal(finding.actionability,80);
+});
