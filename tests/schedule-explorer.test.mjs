@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildScheduleDay,
   entriesAtTime,
+  entriesAtTimeForDay,
   newsletterScheduleForDate,
   renderScheduleDay,
   renderScheduleMonth,
@@ -177,4 +178,52 @@ test("app exposes Schedule as a top-level module with independent controls", asy
   assert.match(app,/renderScheduleExplorer/);
   assert.match(app,/loadNewsletterScheduleEvidence\(range\)/);
   assert.match(app,/fetchExactComposerScheduleRange\(range\.startDate,range\.endDate/);
+});
+
+
+test("unknown Composer end times do not become 24-hour schedule blocks", () => {
+  const entries=[{date:"2026-10-01",start:"10:00",end:"10:00",program:"Unknown Duration"}];
+  assert.deepEqual(entriesAtTime(entries,"10:30"),[]);
+  assert.deepEqual(entriesAtTime(entries,"23:30"),[]);
+});
+
+test("overnight programs carry into the following day's Month and Week slots", () => {
+  const days=[
+    {
+      date:"2026-10-02",
+      sourceKind:"composer-exact",
+      sourceLabel:"Exact Composer episodes",
+      entries:[{date:"2026-10-02",start:"23:30",end:"01:30",program:"Overnight Program",evidenceKind:"composer-exact",sourceLabel:"Exact Composer episodes",exact:true}]
+    },
+    {
+      date:"2026-10-03",
+      sourceKind:"composer-exact",
+      sourceLabel:"Exact Composer episodes",
+      entries:[]
+    }
+  ];
+  assert.deepEqual(entriesAtTimeForDay(days,1,"00:30").map((item)=>item.program),["Overnight Program"]);
+  assert.match(renderScheduleWeek(days,{windowStart:0}),/Overnight Program/);
+  assert.match(renderScheduleMonth(days,{anchorDate:"2026-10-03",time:"00:30"}),/Overnight Program/);
+});
+
+test("dated-only Preview evidence is labeled as dated evidence, not a monthly grid", () => {
+  const newsletter={
+    sources:[source(1,"2023-09-01")],
+    entries:[override(1,"2023-09-01","2023-10-01",0,"15:00:00","16:00:00","Special Program","Regular Program")]
+  };
+  const day=buildScheduleDay({date:"2023-10-01",newsletter,composer:{sourceType:"none",entries:[]}});
+  assert.equal(day.sourceKind,"newsletter-dated");
+  assert.equal(day.sourceLabel,"Preview dated listing");
+});
+
+test("partial exact Composer results can fall back to archived recurrence evidence per missing day", () => {
+  const composer={
+    sourceType:"episodes",
+    entries:[{date:"2026-10-01",start:"12:00",end:"13:00",program:"Exact Day"}],
+    archiveEntries:[{date:"2026-10-02",start:"12:00",end:"13:00",program:"Archive Day"}]
+  };
+  const day=buildScheduleDay({date:"2026-10-02",newsletter:{sources:[],entries:[]},composer});
+  assert.equal(day.sourceKind,"composer-archive");
+  assert.deepEqual(day.entries.map((item)=>item.program),["Archive Day"]);
 });

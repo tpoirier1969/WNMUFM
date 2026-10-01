@@ -1,5 +1,5 @@
 alter table public.wnmufm_analytics_anomalies
-  add column if not exists grain text;
+  alter column grain drop default;
 
 update public.wnmufm_analytics_anomalies a
 set grain = i.grain
@@ -57,7 +57,6 @@ for each row
 execute function public.wnmufm_fill_anomaly_grain();
 
 alter table public.wnmufm_analytics_anomalies
-  alter column grain drop default,
   alter column grain set not null;
 
 alter table public.wnmufm_analytics_anomalies
@@ -66,6 +65,3 @@ alter table public.wnmufm_analytics_anomalies
 alter table public.wnmufm_analytics_anomalies
   add constraint wnmufm_analytics_anomalies_grain_check
   check (grain in ('day','week','month','unknown'));
-
-create index if not exists wnmufm_analytics_anomalies_review_identity_idx
-  on public.wnmufm_analytics_anomalies(status, anomaly_key, grain);

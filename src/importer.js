@@ -238,7 +238,7 @@ export async function importInspectedExport(inspected, userEmail) {
     const normalizedRows = observations.map((item) => ({ ...item, source_import_id: importRecord.id }));
     await batchUpsert("wnmufm_analytics_observations", normalizedRows, OBSERVATION_CONFLICT, 150);
 
-    const anomalies = detectAnomalies(observations, inspected.reportType, inspected.selectedProgram).map((item) => ({
+    const anomalies = detectAnomalies(observations, inspected.reportType, inspected.selectedProgram, inspected.filterContext).map((item) => ({
       ...item,
       import_id: importRecord.id
     }));

@@ -45,6 +45,26 @@ async function fetchComposerViaWnmuProxy(startDate, endDate) {
   return normalized;
 }
 
+async function fetchArchiveRangeViaWnmuProxy(startDate,endDate) {
+  const session=await getSession();
+  if(!session?.access_token) throw new Error("Sign in is required for schedule cross-reference.");
+  const url=new URL(`${CONFIG.supabaseUrl}/functions/v1/wnmufm-composer-schedule`);
+  url.searchParams.set("start",startDate);
+  url.searchParams.set("end",endDate);
+  url.searchParams.set("archive_range","1");
+  const response=await fetch(url.toString(),{
+    cache:"no-store",
+    headers:{
+      apikey:CONFIG.supabasePublishableKey,
+      Authorization:`Bearer ${session.access_token}`
+    }
+  });
+  const body=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(body?.error || `WNMU schedule archive lookup failed (${response.status}).`);
+  const normalized=normalizePayload(body,startDate,endDate);
+  return normalized;
+}
+
 function dateValue(value) {
   const date=new Date(`${value}T12:00:00Z`);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -153,7 +173,21 @@ export async function fetchExactComposerScheduleRange(startDate,endDate,{maxDays
   }
 
   if(proxyResult?.sourceType==="episodes") {
-    return exactEpisodeResult(proxyResult,startDate,endDate);
+    const exact=exactEpisodeResult(proxyResult,startDate,endDate);
+    if(exact.complete) return exact;
+    try {
+      const archive=await fetchArchiveRangeViaWnmuProxy(startDate,endDate);
+      return {
+        ...exact,
+        archiveEntries:archive.entries || [],
+        archiveStart:archive.archiveStart || "",
+        archiveEnd:archive.archiveEnd || "",
+        archiveMissingDates:archive.archiveMissingDates,
+        archiveStaleDates:archive.archiveStaleDates
+      };
+    } catch {
+      return exact;
+    }
   }
 
   if(["archive_recurrences","archive_recurrences_partial"].includes(proxyResult?.sourceType)) {
