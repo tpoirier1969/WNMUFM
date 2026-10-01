@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { analyzeNewsletterScheduleTakeaways } from "../src/newsletter-schedule-analysis.js";
+import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "../src/newsletter-schedule-analysis.js";
 
 function source(id,month,page=8) {
   return {id,source_key:`preview-${month.slice(0,7)}`,issue_month:month,title:`Preview ${month.slice(0,7)}`,schedule_page:page};
@@ -127,4 +127,79 @@ test("explicit dated newsletter listings stay date-specific", () => {
   assert.match(finding.title,/Oct 3, 2023: Carnegie Hall Live replaced Deutche Welle Festival/i);
   assert.equal(finding.sourceStart,"2023-10-03");
   assert.equal(finding.newsletterEvidence.dateScope,"specific_date");
+});
+
+
+test("split and resized newsletter blocks are compared by time coverage", () => {
+  const sources=[source(1,"2023-09-01"),source(2,"2023-10-01",9)];
+  const entries=[
+    grid(1,"2023-09-01",5,"12:00:00","13:00:00","Program A"),
+    grid(2,"2023-10-01",5,"12:00:00","12:30:00","Program A"),
+    grid(2,"2023-10-01",5,"12:30:00","13:00:00","Program B")
+  ];
+  const findings=analyzeNewsletterScheduleTakeaways({sources,entries});
+  assert.equal(findings.length,1);
+  assert.match(findings[0].title,/Program A → Program B on Fridays at 12:30 PM/i);
+  assert.equal(findings[0].newsletterEvidence.changes[0].start_time,"12:30:00");
+  assert.equal(findings[0].newsletterEvidence.changes[0].end_time,"13:00:00");
+});
+
+test("missing streaming measurements stay missing instead of becoming fabricated declines", () => {
+  const sources=[source(1,"2023-09-01"),source(2,"2023-10-01",9)];
+  const entries=[
+    grid(1,"2023-09-01",5,"12:00:00","13:00:00","Program A"),
+    grid(2,"2023-10-01",5,"12:00:00","13:00:00","Program B")
+  ];
+  const monthlyByMetric={
+    "streaming.listeners":[
+      {period_start:"2023-09-01",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station"},
+      {period_start:"2023-10-01",station_value:null,benchmark_value:null,benchmark_label:"Typical Station"}
+    ]
+  };
+  const [finding]=analyzeNewsletterScheduleTakeaways({sources,entries,monthlyByMetric});
+  assert.match(finding.summary,/No source-valid monthly streaming comparison is available/i);
+  assert.doesNotMatch(finding.summary,/100\.0%/);
+});
+
+test("zero audience movement is described as unchanged", () => {
+  const sources=[source(1,"2023-09-01"),source(2,"2023-10-01",9)];
+  const entries=[
+    grid(1,"2023-09-01",5,"12:00:00","13:00:00","Program A"),
+    grid(2,"2023-10-01",5,"12:00:00","13:00:00","Program B")
+  ];
+  const monthlyByMetric={
+    "streaming.listeners":[
+      {period_start:"2023-09-01",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station"},
+      {period_start:"2023-10-01",station_value:100,benchmark_value:1000,benchmark_label:"Typical Station"}
+    ]
+  };
+  const [finding]=analyzeNewsletterScheduleTakeaways({sources,entries,monthlyByMetric});
+  assert.match(finding.summary,/live-stream listeners were unchanged \(0\.0%\)/i);
+  assert.match(finding.summary,/NPR Typical Station listeners were unchanged \(0\.0%\)/i);
+  assert.doesNotMatch(finding.summary,/rose 0\.0%/i);
+});
+
+test("newsletter deduplication matches the actual recurring change, not the whole month", () => {
+  const sources=[source(1,"2023-09-01"),source(2,"2023-10-01",9)];
+  const entries=[
+    grid(1,"2023-09-01",5,"12:00:00","13:00:00","Program A"),
+    grid(2,"2023-10-01",5,"12:00:00","13:00:00","Program B")
+  ];
+  const findings=analyzeNewsletterScheduleTakeaways({sources,entries});
+  assert.equal(newsletterDuplicatesScheduleChange(findings,{
+    effectiveDate:"2023-10-06",
+    weekday:5,
+    fromProgram:"Program A",
+    toProgram:"Program B",
+    startSlot:24,
+    endSlot:25
+  }),true);
+  assert.equal(newsletterDuplicatesScheduleChange(findings,{
+    effectiveDate:"2023-10-06",
+    weekday:5,
+    fromProgram:"Different Program",
+    toProgram:"Another Program",
+    startSlot:24,
+    endSlot:25
+  }),false);
 });
