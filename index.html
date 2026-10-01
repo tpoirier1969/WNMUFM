@@ -51,6 +51,7 @@
           <button class="tab-button active" type="button" data-tab="overview">Overview</button>
           <button class="tab-button" type="button" data-tab="takeaways">Takeaways</button>
           <button class="tab-button" type="button" data-tab="explore">Explore</button>
+          <button class="tab-button" type="button" data-tab="schedule">Schedule</button>
           <button class="tab-button" type="button" data-tab="imports">Imports</button>
         </nav>
         <div class="global-date-range" aria-label="Analysis date range">
@@ -254,6 +255,46 @@
           </div>
           <p id="exploreDescription" class="explore-description"></p>
           <div id="exploreChart"></div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-panel="schedule" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Schedule explorer</p>
+            <h2>What was scheduled when</h2>
+            <p class="section-note">Browse the strongest schedule evidence available for a date. Exact Composer episodes take precedence, followed by WNMU-FM Preview evidence for its named month/date, then archived Composer recurrence snapshots. Missing history stays missing.</p>
+          </div>
+        </div>
+
+        <article class="panel-card schedule-explorer-panel">
+          <div class="schedule-explorer-toolbar">
+            <div>
+              <span class="control-label">View</span>
+              <div id="scheduleViewButtons" class="button-strip" role="group" aria-label="Schedule view"></div>
+            </div>
+            <label>Date
+              <input id="scheduleAnchorDate" type="date">
+            </label>
+            <div class="schedule-nav-buttons" aria-label="Move schedule date">
+              <button id="schedulePrevButton" class="small-button" type="button">← Previous</button>
+              <button id="scheduleTodayButton" class="small-button" type="button">Today</button>
+              <button id="scheduleNextButton" class="small-button" type="button">Next →</button>
+            </div>
+            <label id="scheduleTimeControl">Month snapshot time
+              <input id="scheduleTime" type="time" step="1800" value="12:00">
+            </label>
+            <label id="scheduleWindowControl" hidden>Week window
+              <select id="scheduleWindowStart">
+                <option value="0">12 AM – 6 AM</option>
+                <option value="6" selected>6 AM – 12 PM</option>
+                <option value="12">12 PM – 6 PM</option>
+                <option value="18">6 PM – 12 AM</option>
+              </select>
+            </label>
+          </div>
+          <p id="scheduleSourceNote" class="schedule-source-note" aria-live="polite"></p>
+          <div id="scheduleExplorerBody" class="schedule-explorer-body" aria-live="polite"></div>
         </article>
       </section>
 
