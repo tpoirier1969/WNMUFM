@@ -33,7 +33,7 @@ test("detected anomalies preserve the source grain", () => {
   assert.equal(anomalies.length,1);
   assert.equal(anomalies[0].grain,"week");
   assert.equal(anomalies[0].evidence.grain,"week");
-  assert.match(anomalies[0].anomaly_key,/^website_spike_2026-08-23_[a-z0-9]+$/);
+  assert.equal(anomalies[0].anomaly_key,"website_spike_2026-08-23");
   assert.match(anomalies[0].evidence.review_scope,/^station_website\|/);
 });
 
@@ -125,4 +125,39 @@ test("collection checklist requires historical coverage rather than mere grain e
   assert.match(app,/span\.start>targetStart/);
   assert.match(app,/missing issues preserved as gaps/i);
   assert.doesNotMatch(app,/Preview newsletter grids are loaded for Sep–Dec 2023/);
+});
+
+
+test("unfiltered anomaly keys retain the legacy identity while filtered reports get scoped identities", () => {
+  const observations=Array.from({length:7},(_,index)=>[
+    {grain:"day",period_start:`2026-08-${String(20+index).padStart(2,"0")}`,metric_key:"website.active_users",dimension_type:"",station_value:index===3 ? 10000 : 100},
+    {grain:"day",period_start:`2026-08-${String(20+index).padStart(2,"0")}`,metric_key:"website.engaged_seconds_per_user",dimension_type:"",station_value:index===3 ? 1 : 45}
+  ]).flat();
+  const base=detectAnomalies(observations,REPORT_TYPES.WEBSITE)[0];
+  const filtered=detectAnomalies(observations,REPORT_TYPES.WEBSITE,null,{device:"mobile"})[0];
+  assert.equal(base.anomaly_key,"website_spike_2026-08-23");
+  assert.match(filtered.anomaly_key,/^website_spike_2026-08-23_[a-z0-9]+$/);
+  assert.equal(base.evidence.review_scope,"station_website|{}");
+  assert.notEqual(filtered.evidence.review_scope,base.evidence.review_scope);
+});
+
+test("filtered anomaly reviews do not suppress unfiltered Takeaway outliers", () => {
+  const spikeDate="2026-01-15";
+  const daily=Array.from({length:35},(_,index)=>({
+    period_start:addDays("2026-01-01",index),
+    period_end:addDays("2026-01-01",index),
+    station_value:addDays("2026-01-01",index)===spikeDate ? 1000 : 100,
+    unit:"users"
+  }));
+  const filteredReview=[{
+    anomaly_key:`website_spike_${spikeDate}_abc123`,
+    grain:"day",
+    status:"expected",
+    evidence:{date:spikeDate,grain:"day",review_scope:'station_website|{"device":"mobile"}'}
+  }];
+  const findings=analyzeTakeaways({
+    dailyByMetric:{"website.active_users":daily},
+    reviewedAnomalies:filteredReview
+  });
+  assert.ok(findings.some((finding)=>finding.category==="data-quality"));
 });
