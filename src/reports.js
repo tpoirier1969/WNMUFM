@@ -519,8 +519,10 @@ export function normalizeReport({ reportType, files, stationKey, filterContext =
 export function detectAnomalies(observations, reportType, selectedProgram = null, filterContext = {}) {
   const anomalies = [];
   const grain=String((observations || []).find((item)=>item?.grain)?.grain || "unknown");
+  const filterOnlySignature=filterSignature(filterContext,null);
   const reviewScope=`${reportType}|${filterSignature(filterContext,selectedProgram)}`;
   const reviewScopeHash=scopeHash(reviewScope);
+  const scopedKeySuffix=filterOnlySignature==="{}" ? "" : `_${reviewScopeHash}`;
   if (reportType === REPORT_TYPES.AUDIO || reportType === REPORT_TYPES.AUDIO_DRILLDOWN) {
     const byDate = new Map();
     observations.filter((item) => item.dimension_type === "" && ["audio.downloads", "audio.users", "audio.downloads_per_user"].includes(item.metric_key)).forEach((item) => {
@@ -534,7 +536,7 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
       const ratio = metrics["audio.downloads_per_user"] ?? (downloads && users ? downloads / users : null);
       if ((ratio !== null && ratio >= 10) || (downloads >= 100 && users !== null && users <= 10)) {
         anomalies.push({
-          anomaly_key: `bulk_audio_${date}_${selectedProgram || "overview"}_${reviewScopeHash}`,
+          anomaly_key: `bulk_audio_${date}_${selectedProgram || "overview"}${scopedKeySuffix}`,
           grain,
           severity: ratio >= 25 ? "high" : "warning",
           title: "Possible bulk audio retrieval",
@@ -554,7 +556,7 @@ export function detectAnomalies(observations, reportType, selectedProgram = null
         const engaged = engagement.get(item.period_start);
         if (item.station_value >= typical * 5 && engaged !== undefined && engaged < 10) {
           anomalies.push({
-            anomaly_key: `website_spike_${item.period_start}_${reviewScopeHash}`,
+            anomaly_key: `website_spike_${item.period_start}${scopedKeySuffix}`,
             grain,
             severity: item.station_value >= typical * 20 ? "high" : "warning",
             title: "Website traffic spike with very low engagement",
