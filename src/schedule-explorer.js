@@ -68,7 +68,8 @@ function entryInterval(entry) {
   const start=timeMinutes(entry?.start);
   const rawEnd=timeMinutes(entry?.end);
   if(start===null || rawEnd===null) return null;
-  const end=rawEnd<=start ? rawEnd+1440 : rawEnd;
+  if(rawEnd===start) return null;
+  const end=rawEnd<start ? rawEnd+1440 : rawEnd;
   return {start,end};
 }
 
@@ -146,18 +147,20 @@ export function buildScheduleDay({date,newsletter,composer}={}) {
   const preview=newsletterScheduleForDate(newsletter,date);
   if(preview.length) {
     const hasDated=preview.some((entry)=>entry.evidenceKind==="newsletter-dated");
+    const hasGrid=preview.some((entry)=>entry.evidenceKind==="newsletter-grid");
     return {
       date,
       entries:preview,
-      sourceKind:hasDated ? "newsletter-mixed" : "newsletter-grid",
-      sourceLabel:hasDated ? "Preview grid + dated listing" : "Preview monthly grid"
+      sourceKind:hasDated && hasGrid ? "newsletter-mixed" : hasDated ? "newsletter-dated" : "newsletter-grid",
+      sourceLabel:hasDated && hasGrid ? "Preview grid + dated listing" : hasDated ? "Preview dated listing" : "Preview monthly grid"
     };
   }
 
-  if(["archive_recurrences","archive_recurrences_partial"].includes(composer?.sourceType)) {
-    const archived=composerEntriesForDate(composer,date,"composer-archive","Archived Composer recurrence",false);
-    if(archived.length) return {date,entries:archived,sourceKind:"composer-archive",sourceLabel:"Archived Composer recurrence"};
-  }
+  const archiveEntries=Array.isArray(composer?.archiveEntries)
+    ? composer.archiveEntries
+    : ["archive_recurrences","archive_recurrences_partial"].includes(composer?.sourceType) ? composer.entries : [];
+  const archived=composerEntriesForDate({entries:archiveEntries},date,"composer-archive","Archived Composer recurrence",false);
+  if(archived.length) return {date,entries:archived,sourceKind:"composer-archive",sourceLabel:"Archived Composer recurrence"};
 
   return {date,entries:[],sourceKind:"none",sourceLabel:"No schedule evidence"};
 }
