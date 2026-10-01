@@ -106,3 +106,5 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 
 76. Explicitly dated newsletter schedule evidence is selected by the actual stated date, even when that date falls outside the newsletter's issue month. For example, a September issue that explicitly lists an October 1 airing must remain available to an October 1 analysis. Load the source record needed for provenance without importing that source's monthly grid outside its own issue month.
 
+77. The automated daily Composer archive must use an explicit recurring-catalog capture path. A successful exact-episode response must never satisfy or bypass the archive job; daily archive persistence is a separate responsibility from historical episode lookup.
+78. Newsletter month-to-month schedule comparison must compare actual time coverage, not only rows with identical start/end keys, so added, removed, split, merged, or resized blocks are not silently missed. Missing audience values remain missing and must never be coerced to zero when calculating schedule context.
