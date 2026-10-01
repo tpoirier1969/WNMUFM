@@ -56,3 +56,16 @@ test("schedule proxy rejects invalid or excessive date ranges before archive rec
   assert.match(fn,/requestedDays<1/);
   assert.match(fn,/requestedDays>400/);
 });
+
+
+test("partial exact Composer history can request archived recurrence fallback", async () => {
+  const [client,fn]=await Promise.all([
+    readFile(new URL("../src/schedule-client.js",import.meta.url),"utf8"),
+    readFile(new URL("../supabase/functions/wnmufm-composer-schedule/index.ts",import.meta.url),"utf8")
+  ]);
+  assert.match(client,/fetchArchiveRangeViaWnmuProxy/);
+  assert.match(client,/archiveEntries:archive\.entries/);
+  assert.match(client,/archive_range/);
+  assert.match(fn,/archiveRangeOnly/);
+  assert.match(fn,/archive_range/);
+});
