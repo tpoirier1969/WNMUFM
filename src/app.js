@@ -2052,6 +2052,53 @@ function bindEvents() {
     persistUiState();
     renderTakeawayCards();
   });
+  els.scheduleViewButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-schedule-view]");
+    if(!button) return;
+    state.scheduleView=validChoice(button.dataset.scheduleView,["month","week","day"],"month");
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleAnchorDate.addEventListener("change",()=>{
+    const date=validDateKey(els.scheduleAnchorDate.value);
+    if(!date) {
+      els.scheduleAnchorDate.value=state.scheduleDate || detroitTodayIso();
+      return;
+    }
+    state.scheduleDate=date;
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleTime.addEventListener("change",()=>{
+    state.scheduleTime=validScheduleTime(els.scheduleTime.value,state.scheduleTime || "12:00");
+    applyScheduleControls();
+    persistUiState();
+    if(state.scheduleView==="month") void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleWindowStart.addEventListener("change",()=>{
+    state.scheduleWindowStart=validChoice(els.scheduleWindowStart.value,["0","6","12","18"],"6");
+    persistUiState();
+    if(state.scheduleView==="week") void withBusy(()=>renderScheduleExplorer());
+  });
+  els.schedulePrevButton.addEventListener("click",()=>{
+    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,-1);
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleTodayButton.addEventListener("click",()=>{
+    state.scheduleDate=detroitTodayIso();
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
+  els.scheduleNextButton.addEventListener("click",()=>{
+    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,1);
+    applyScheduleControls();
+    persistUiState();
+    void withBusy(()=>renderScheduleExplorer());
+  });
   els.takeawayList.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-takeaway-evidence]");
     if(!button) return;
