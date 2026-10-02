@@ -57,12 +57,12 @@ test("excluded anomaly periods follow logical source and grain across overlappin
     {import_id:57,grain:"day",evidence:{date:"2025-11-17"}}
   ]);
 
-  assert.ok(context.excludedDatesBySource.get("station_website|grain:day").has("2026-08-26"));
+  assert.ok(context.excludedDatesBySource.get("station_website|{}|grain:day").has("2026-08-26"));
   assert.equal(context.sourceKeyByImport.get(18),"station_website");
-  assert.equal(context.sourceGrainKeyByImport.get(18),"station_website|grain:day");
-  assert.equal(context.excludedDatesBySource.has("station_website|grain:week"),false);
-  assert.ok(context.excludedDatesBySource.get("audio_program_drilldown|Classiclectic|grain:day").has("2025-11-17"));
-  assert.equal(context.excludedDatesBySource.has("audio_program_drilldown|STATION STORIES|grain:day"),false);
+  assert.equal(context.sourceGrainKeyByImport.get(18),"station_website|{}|grain:day");
+  assert.equal(context.excludedDatesBySource.has("station_website|{}|grain:week"),false);
+  assert.ok(context.excludedDatesBySource.get('audio_program_drilldown|{"selected_program":"Classiclectic"}|grain:day').has("2025-11-17"));
+  assert.equal(context.excludedDatesBySource.has('audio_program_drilldown|{"selected_program":"STATION STORIES"}|grain:day'),false);
 });
 
 test("newsletter dated overrides are selected by their actual date, not only the newsletter issue month", async () => {
