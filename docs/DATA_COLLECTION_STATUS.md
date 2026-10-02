@@ -33,7 +33,7 @@ Very large GA4 dimensions are normalized only to the highest-activity rows neede
 
 ## Highest-priority downloads
 
-1. **Live-stream hour, half-hour, or daypart history** from NPR or the stream provider. This remains the most important missing bridge between audience movement and individual broadcast time blocks.
+1. **Verify and extend live-stream time-of-day detail.** StreamGuys hourly TLH from June 2024 forward is now loaded and provisionally aligned from the source Central-time clock to WNMU Eastern schedule time without changing the raw hours. Next priority is confirming that timezone interpretation and obtaining half-hour/session-level detail if StreamGuys exposes it.
 2. **The three missing WNMU-FM Preview issues: November 2025, December 2025, and January 2026**, plus any stronger dated schedule source for those months. The archive now otherwise contains Preview source issues from Sep 2023 through Oct 2026. Do not interpolate across the three-month gap.
 3. **Audio Program Drilldown for additional discrete local programs**, using the longest available Day range and Week/Month where available. The three currently loaded programs already have substantially longer coverage than the original September audit.
 4. **Additional dated Google Analytics 4 content history** when useful, especially Date + Page Path / Landing Page / event detail beyond the currently loaded 2026-07-23 through 2026-09-22 window.
