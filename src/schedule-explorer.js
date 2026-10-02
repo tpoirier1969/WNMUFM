@@ -193,11 +193,13 @@ function spilloverEntriesAtTime(previousEntries,time) {
   });
 }
 
-export function entriesAtTimeForDay(days,index,time) {
+export function entriesAtTimeForDay(days,index,time,carryInEntries=[]) {
   const day=days?.[index];
   if(!day) return [];
   const current=entriesAtTime(day.entries,time);
-  const previous=index>0 ? spilloverEntriesAtTime(days[index-1]?.entries,time) : [];
+  const previous=index>0
+    ? spilloverEntriesAtTime(days[index-1]?.entries,time)
+    : spilloverEntriesAtTime(carryInEntries,time);
   const seen=new Set();
   return [...previous,...current].filter((entry)=>{
     const key=[entry.date || "",entry.start || "",entry.end || "",entry.program || ""].join("|");
@@ -250,7 +252,7 @@ function sourceBadge(entryOrDay) {
   return `<span class="schedule-source-badge schedule-source-${escapeHtml(kind)}">${escapeHtml(labels[kind] || "Source")}</span>`;
 }
 
-export function renderScheduleMonth(days,{anchorDate,time="12:00"}={}) {
+export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=null}={}) {
   const month=monthKey(anchorDate);
   return `
     <div class="schedule-view-heading">
@@ -260,7 +262,7 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00"}={}) {
     <div class="schedule-month-grid" role="grid" aria-label="${escapeHtml(formatMonth(anchorDate))} schedule at ${escapeHtml(formatTime(time))}">
       ${SHORT_DAY_NAMES.map((name)=>`<div class="schedule-month-weekday" role="columnheader">${escapeHtml(name)}</div>`).join("")}
       ${(days || []).map((day,index)=>{
-        const programs=entriesAtTimeForDay(days,index,time);
+        const programs=entriesAtTimeForDay(days,index,time,carryInDay?.entries || []);
         const inMonth=monthKey(day.date)===month;
         const source=programs[0] || day;
         return `<button type="button" class="schedule-month-day${inMonth ? "" : " outside-month"}" role="gridcell" data-schedule-date="${escapeHtml(day.date)}" aria-label="Open ${escapeHtml(formatDate(day.date))} day schedule">
@@ -271,7 +273,7 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00"}={}) {
     </div>`;
 }
 
-export function renderScheduleWeek(days,{windowStart=6}={}) {
+export function renderScheduleWeek(days,{windowStart=6,carryInDay=null}={}) {
   const startHour=Math.max(0,Math.min(18,Number(windowStart) || 0));
   const rows=Array.from({length:12},(_,index)=>startHour*60+index*30);
   const timeText=(minutes)=>`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`;
@@ -287,7 +289,7 @@ export function renderScheduleWeek(days,{windowStart=6}={}) {
           ${rows.map((minutes)=>{
             const clock=timeText(minutes);
             return `<tr><th>${escapeHtml(formatTime(clock))}</th>${days.map((day,index)=>{
-              const programs=entriesAtTimeForDay(days,index,clock);
+              const programs=entriesAtTimeForDay(days,index,clock,carryInDay?.entries || []);
               return `<td>${programs.length ? programs.map((item)=>`<span class="schedule-week-program">${escapeHtml(item.program)}</span>`).join("") : '<span class="schedule-empty">—</span>'}</td>`;
             }).join("")}</tr>`;
           }).join("")}
