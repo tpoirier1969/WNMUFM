@@ -1,5 +1,6 @@
 import { selectRows } from "./api.js";
 import { periodIsComplete } from "./analysis.js";
+import { filterSignature } from "./reports.js";
 
 const DEFAULT_FILTER_SIGNATURE = "{}";
 let contextPromise = null;
@@ -176,20 +177,28 @@ function importSourceKey(item) {
   return reportType;
 }
 
+function importReviewScope(item) {
+  const reportType=String(item?.report_type || "");
+  if(!reportType) return "";
+  return `${reportType}|${filterSignature(item?.filter_context || {},item?.selected_program || null)}`;
+}
+
 function importSourceGrainKey(item) {
-  const sourceKey=importSourceKey(item);
+  const reviewScope=importReviewScope(item);
   const grain=String(item?.grain || "unknown");
-  return sourceKey ? `${sourceKey}|grain:${grain}` : "";
+  return reviewScope ? `${reviewScope}|grain:${grain}` : "";
 }
 
 export function buildObservationExclusionContext(imports = [], excluded = []) {
   const runDateByImport = new Map();
   const sourceKeyByImport = new Map();
+  const reviewScopeByImport = new Map();
   const sourceGrainKeyByImport = new Map();
   imports.forEach((item) => {
     const id=Number(item.id);
     runDateByImport.set(id, item.report_run_date || String(item.imported_at || "").slice(0, 10) || null);
     sourceKeyByImport.set(id,importSourceKey(item));
+    reviewScopeByImport.set(id,importReviewScope(item));
     sourceGrainKeyByImport.set(id,importSourceGrainKey(item));
   });
 
@@ -197,15 +206,15 @@ export function buildObservationExclusionContext(imports = [], excluded = []) {
   excluded.forEach((item) => {
     const date=String(item?.evidence?.date || "");
     const importId=Number(item.import_id);
-    const sourceKey=sourceKeyByImport.get(importId) || "";
+    const reviewScope=String(item?.evidence?.review_scope || reviewScopeByImport.get(importId) || "");
     const grain=String(item?.grain || item?.evidence?.grain || "").trim();
-    const sourceGrainKey=sourceKey && grain ? `${sourceKey}|grain:${grain}` : sourceGrainKeyByImport.get(importId) || "";
+    const sourceGrainKey=reviewScope && grain ? `${reviewScope}|grain:${grain}` : sourceGrainKeyByImport.get(importId) || "";
     if(!date || !sourceGrainKey) return;
     if(!excludedDatesBySource.has(sourceGrainKey)) excludedDatesBySource.set(sourceGrainKey,new Set());
     excludedDatesBySource.get(sourceGrainKey).add(date);
   });
 
-  return { imports, runDateByImport, sourceKeyByImport, sourceGrainKeyByImport, excludedDatesBySource };
+  return { imports, runDateByImport, sourceKeyByImport, reviewScopeByImport, sourceGrainKeyByImport, excludedDatesBySource };
 }
 
 async function loadAnalysisContext() {
@@ -426,4 +435,25 @@ export async function loadDateObservations(date) {
     loadAnalysisContext()
   ]);
   return rows.filter((row) => rowIsUsable(row, context));
+}
+
+
+export async function loadStreamGuysHourly(range = {}) {
+  const params = new URLSearchParams({
+    select: "source_import_id,source_csv,source_row,source_date,source_hour,source_timezone_label,schedule_timezone,offset_hours,alignment_status,schedule_date,schedule_hour,tlh_hours,unit,quality_flags",
+    order: "schedule_date.asc,schedule_hour.asc"
+  });
+  if (range?.startDate) params.set("schedule_date", `gte.${range.startDate}`);
+  if (range?.endDate) params.append("schedule_date", `lte.${range.endDate}`);
+
+  const [rows, context] = await Promise.all([
+    selectPagedRows("wnmufm_streamguys_hourly_aligned", params, { pageSize:1000, maxRows:30000 }),
+    loadAnalysisContext()
+  ]);
+
+  return rows.filter((row) => rowIsUsable({
+    source_import_id: row.source_import_id,
+    period_start: row.source_date,
+    period_end: row.source_date
+  }, context));
 }
