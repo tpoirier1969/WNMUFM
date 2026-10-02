@@ -178,7 +178,7 @@ function recurrenceDateBounds(recurrence: Record<string,unknown>) {
   const start=datePart(recurrence.start_date || recurrence._start_date || recurrence.startDate);
   const noEnd=truthy(recurrence.no_end_date || recurrence.noEndDate);
   const end=noEnd ? null : datePart(recurrence.end_date || recurrence._end_date || recurrence.endDate);
-  return {start,end};
+  return {start,end,noEnd};
 }
 
 function parseRecurrence(value: unknown): Record<string,unknown> | null {
@@ -256,7 +256,7 @@ function programGenre(program: Record<string,unknown>) {
   return candidates.map(textValue).find(Boolean) || "";
 }
 
-function normalizeProgramsForDate(payload: unknown,dateText: string) {
+function normalizeProgramsForDate(payload: unknown,dateText: string,{requireExplicitBounds=false}={}) {
   const body=payload as Record<string,unknown> | null;
   const programs=Array.isArray(payload) ? payload
     : Array.isArray(body?.programs) ? body!.programs as unknown[]
@@ -279,6 +279,7 @@ function normalizeProgramsForDate(payload: unknown,dateText: string) {
       const days=recurrenceDays(recurrence);
       const bounds=recurrenceDateBounds(recurrence);
       if(!start || !end || !days.has(day)) return;
+      if(requireExplicitBounds && (!bounds.start || (!bounds.end && !bounds.noEnd))) return;
       if(bounds.start && dateText<bounds.start) return;
       if(bounds.end && dateText>bounds.end) return;
       output.push({
@@ -321,7 +322,8 @@ async function loadArchiveRange(start: string,end: string) {
     for(let dateText=start;dateText<=end;dateText=addDays(dateText,1)) {
       const candidates=sortedCaptures.filter((capture)=>capture.capture_date<=dateText);
       let capture=candidates.at(-1);
-      if(!capture && firstCapture && dateText<firstCapture.capture_date) {
+      const preCapture=Boolean(!capture && firstCapture && dateText<firstCapture.capture_date);
+      if(preCapture) {
         capture=firstCapture;
         preCaptureDates.push(dateText);
       }
@@ -339,7 +341,10 @@ async function loadArchiveRange(start: string,end: string) {
         continue;
       }
       if(capture.capture_date!==dateText) staleDates.push(dateText);
-      entries.push(...normalizeProgramsForDate(version.payload,dateText));
+      const normalized=normalizeProgramsForDate(version.payload,dateText,{requireExplicitBounds:preCapture});
+      if(preCapture) missingDates.push(dateText);
+      if(!normalized.length) continue;
+      entries.push(...normalized);
       if(!coverageStart) coverageStart=dateText;
       coverageEnd=dateText;
     }
