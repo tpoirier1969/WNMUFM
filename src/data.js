@@ -436,3 +436,24 @@ export async function loadDateObservations(date) {
   ]);
   return rows.filter((row) => rowIsUsable(row, context));
 }
+
+
+export async function loadStreamGuysHourly(range = {}) {
+  const params = new URLSearchParams({
+    select: "source_import_id,source_csv,source_row,source_date,source_hour,source_timezone_label,schedule_timezone,offset_hours,alignment_status,schedule_date,schedule_hour,tlh_hours,unit,quality_flags",
+    order: "schedule_date.asc,schedule_hour.asc"
+  });
+  if (range?.startDate) params.set("schedule_date", `gte.${range.startDate}`);
+  if (range?.endDate) params.append("schedule_date", `lte.${range.endDate}`);
+
+  const [rows, context] = await Promise.all([
+    selectPagedRows("wnmufm_streamguys_hourly_aligned", params, { pageSize:1000, maxRows:30000 }),
+    loadAnalysisContext()
+  ]);
+
+  return rows.filter((row) => rowIsUsable({
+    source_import_id: row.source_import_id,
+    period_start: row.source_date,
+    period_end: row.source_date
+  }, context));
+}
