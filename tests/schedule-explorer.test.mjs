@@ -176,8 +176,8 @@ test("app exposes Schedule as a top-level module with independent controls", asy
   assert.match(html,/data-panel="schedule"/);
   assert.match(html,/id="scheduleAnchorDate"/);
   assert.match(app,/renderScheduleExplorer/);
-  assert.match(app,/loadNewsletterScheduleEvidence\(range\)/);
-  assert.match(app,/fetchExactComposerScheduleRange\(range\.startDate,range\.endDate/);
+  assert.match(app,/loadNewsletterScheduleEvidence\(fetchRange\)/);
+  assert.match(app,/fetchExactComposerScheduleRange\(fetchRange\.startDate,fetchRange\.endDate/);
 });
 
 
@@ -226,4 +226,24 @@ test("partial exact Composer results can fall back to archived recurrence eviden
   const day=buildScheduleDay({date:"2026-10-02",newsletter:{sources:[],entries:[]},composer});
   assert.equal(day.sourceKind,"composer-archive");
   assert.deepEqual(day.entries.map((item)=>item.program),["Archive Day"]);
+});
+
+
+test("the first visible Week or Month day can use overnight carry-in from the fetched prior day", () => {
+  const carryInDay={
+    date:"2026-09-26",
+    entries:[{date:"2026-09-26",start:"23:30",end:"01:30",program:"Saturday Overnight",evidenceKind:"composer-exact",sourceLabel:"Exact Composer episodes",exact:true}]
+  };
+  const visible=[{
+    date:"2026-09-27",
+    sourceKind:"composer-exact",
+    sourceLabel:"Exact Composer episodes",
+    entries:[]
+  }];
+  assert.deepEqual(
+    entriesAtTimeForDay(visible,0,"00:30",carryInDay.entries).map((item)=>item.program),
+    ["Saturday Overnight"]
+  );
+  assert.match(renderScheduleWeek(visible,{windowStart:0,carryInDay}),/Saturday Overnight/);
+  assert.match(renderScheduleMonth(visible,{anchorDate:"2026-09-27",time:"00:30",carryInDay}),/Saturday Overnight/);
 });
