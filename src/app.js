@@ -18,7 +18,7 @@ import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMo
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendModeButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendGrainControl","trendGrain","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendModeButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendGrainControl","trendGrain","trendHourControl","trendHourSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","listeningHourEyebrow","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
@@ -46,6 +46,7 @@ const state = {
   loading:false,
   trendMetrics:initialMetrics,
   trendMode:validChoice(sharedOrRestored("trendMode","overtime"), ["overtime","timeofday"], "overtime"),
+  trendHour:validChoice(sharedOrRestored("trendHour","profile"), ["profile",...Array.from({length:24},(_,hour)=>String(hour).padStart(2,"0"))], "profile"),
   trendGrain:validChoice(sharedOrRestored("trendGrain","day"), ["day","week","month"], "day"),
   trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
   trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
@@ -88,6 +89,7 @@ function viewStateSnapshot() {
     exploreView:state.exploreView,
     trendMetrics:state.trendMetrics,
     trendMode:state.trendMode,
+    trendHour:state.trendHour,
     trendGrain:state.trendGrain,
     trendWeekpart:state.trendWeekpart,
     trendNotable:state.trendNotable,
@@ -252,6 +254,8 @@ function benchmarkDefinition(label) {
 }
 
 function renderTrendControlButtons() {
+  els.trendHourSelect.innerHTML = '<option value="profile">24-hour profile</option>' + Array.from({length:24},(_,hour)=>`<option value="${String(hour).padStart(2,"0")}">${escapeHtml(hourLabel(hour))}</option>`).join("");
+  els.trendHourSelect.value=state.trendHour;
   els.trendMetricButtons.innerHTML = TREND_METRICS.map((item) =>
     `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${state.trendMetrics.includes(item.key)}">${escapeHtml(item.label)}</button>`
   ).join("");
@@ -267,6 +271,7 @@ function refreshTrendControlState() {
   els.trendModeButtons.querySelectorAll("[data-trend-mode]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.trendMode === state.trendMode));
   });
+  if(els.trendHourSelect.value!==state.trendHour) els.trendHourSelect.value=state.trendHour;
   els.trendMetricButtons.querySelectorAll("[data-trend-metric]").forEach((button) => {
     button.setAttribute("aria-pressed", String(state.trendMetrics.includes(button.dataset.trendMetric)));
   });
@@ -1165,13 +1170,12 @@ function rowClass(row, grain) {
 async function renderTimeOfDayTrend(requestId) {
   setHidden(els.trendMetricControl,true);
   setHidden(els.trendGrainControl,true);
+  setHidden(els.trendHourControl,false);
   setHidden(els.trendWeekpartControls,false);
   setHidden(els.trendNotableControls,false);
   setHidden(els.trendProgramControl,true);
-  setHidden(els.trendChartToolbar,true);
   refreshTrendControlState();
 
-  els.trendTitle.textContent="StreamGuys TLH by time of day";
   const filterNotes=[];
   if(state.trendWeekpart!=="all") filterNotes.push(WEEKPARTS.find(([key])=>key===state.trendWeekpart)?.[1]);
   if(state.trendNotable!=="all") filterNotes.push(NOTABLE_MODES.find(([key])=>key===state.trendNotable)?.[1]);
@@ -1190,8 +1194,73 @@ async function renderTimeOfDayTrend(requestId) {
     ? `StreamGuys source hours are preserved unchanged. This view currently applies the provisional +${Number(alignment.offset_hours || 0)} hour mapping from ${alignment.source_timezone_label || "the StreamGuys source clock"} to WNMU Eastern schedule time. Changing or disabling that single alignment setting rolls this interpretation back without changing the imports.`
     : "StreamGuys hourly TLH is not available in this Analysis Range.";
 
+  if(state.trendHour!=="profile") {
+    const hourKey=state.trendHour;
+    const hourNumber=Number(hourKey);
+    const hourRows=filtered.filter((row)=>String(row.schedule_hour || "").startsWith(`${hourKey}:`));
+    const values=hourRows.map((row)=>Number(row.tlh_hours)).filter(Number.isFinite);
+    const medianValue=values.length ? median(values) : null;
+    const averageValue=values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
+    const latest=hourRows.length ? hourRows[hourRows.length-1] : null;
+
+    els.trendTitle.textContent=`StreamGuys TLH at ${hourLabel(hourNumber)}`;
+    els.trendDescription.textContent=
+      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates, so you can see whether that part of the broadcast day is gaining, losing or behaving unusually over time.` +
+      (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
+    els.trendMedianSummary.innerHTML=values.length ? [
+      `<span><strong>Average:</strong> ${escapeHtml(formatMetric(averageValue,"hours"))}</span>`,
+      `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,"hours"))}</span>`,
+      latest ? `<span><strong>Latest:</strong> ${escapeHtml(formatMetric(latest.tlh_hours,"hours"))}</span>` : "",
+      `<span><strong>Observations:</strong> ${values.length.toLocaleString()}</span>`
+    ].join("") : "";
+
+    setHidden(els.trendChartToolbar,false);
+    updateTrendZoomControls();
+    const points=hourRows.map((row)=>({
+      date:row.schedule_date,
+      label:formatDayDate(row.schedule_date),
+      shortLabel:shortDayLabel(row.schedule_date),
+      value:Number(row.tlh_hours),
+      weekend:isWeekendDate(row.schedule_date),
+      tooltipModel:{
+        title:`${formatDayDate(row.schedule_date)} · ${hourLabel(hourNumber)}`,
+        rows:[{
+          tone:"station",
+          label:"TLH",
+          value:formatMetric(row.tlh_hours,"hours"),
+          delta:medianValue===null ? "" : `${signedPercent(percentFromMedian(row.tlh_hours,medianValue))} vs this hour's median`
+        }]
+      }
+    }));
+    const chartPoints=zoomedTrendPoints(points);
+    updateTrendZoomControls();
+    renderLineChart(els.trendChart,chartPoints,{
+      title:`StreamGuys TLH at ${hourLabel(hourNumber)}`,
+      ariaLabel:`StreamGuys total listening hours at ${hourLabel(hourNumber)} over time`,
+      grain:"day",
+      primaryLabel:"TLH",
+      zoomMode:state.trendZoomMode,
+      onZoomSelect:setTrendZoom
+    });
+
+    if(!hourRows.length) {
+      renderTrendDataTable("",0);
+      els.trendPrintColumns.innerHTML="";
+      return;
+    }
+    renderTrendDataTable(`<table class="trend-data-table">
+      <thead><tr><th>Date</th><th class="numeric">TLH</th><th class="numeric">Vs median</th><th>Raw StreamGuys hour</th></tr></thead>
+      <tbody>${hourRows.map((row)=>`<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,medianValue)))}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`).join("")}</tbody>
+    </table>`,hourRows.length);
+    renderTrendPrintDetail(hourRows.map((row)=>({period_start:row.schedule_date,station_value:row.tlh_hours,unit:"hours"})),"day",medianValue);
+    return;
+  }
+
+  clearTrendZoom();
+  setHidden(els.trendChartToolbar,true);
+  els.trendTitle.textContent="StreamGuys TLH by time of day";
   els.trendDescription.textContent=
-    "Each point is the average StreamGuys total listening hours for that WNMU Eastern clock hour across the matching dates. Use the Analysis Range, quick ranges, week-part buttons and notable-date filter to change which days contribute to the profile." +
+    "Each point is the average StreamGuys total listening hours for that WNMU Eastern clock hour across the matching dates. Use the Analysis Range, quick ranges, week-part buttons and notable-date filter to change which days contribute to the profile. Choose an individual Hour focus to trace that hour across time." +
     (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
 
   const buckets=Array.from({length:24},(_,hour)=>({hour,values:[]}));
@@ -1206,7 +1275,6 @@ async function renderTimeOfDayTrend(requestId) {
     const average=values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
     return {
       hour,
-      values,
       average,
       median:values.length ? median(values) : null,
       min:values.length ? sorted[0] : null,
@@ -1272,6 +1340,7 @@ async function renderTrend() {
   }
   setHidden(els.trendMetricControl,false);
   setHidden(els.trendGrainControl,false);
+  setHidden(els.trendHourControl,true);
   setHidden(els.trendChartToolbar,false);
   const validMetricKeys = new Set(TREND_METRICS.map((item)=>item.key));
   state.trendMetrics = state.trendMetrics.filter((key)=>validMetricKeys.has(key));
@@ -2173,6 +2242,12 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>renderTrend());
   });
+  els.trendHourSelect.addEventListener("change",()=>{
+    state.trendHour=validChoice(els.trendHourSelect.value,["profile",...Array.from({length:24},(_,hour)=>String(hour).padStart(2,"0"))],"profile");
+    clearTrendZoom();
+    persistUiState();
+    void withBusy(()=>renderTrend());
+  });
   els.trendMetricButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-trend-metric]");
     if (!button) return;
@@ -2318,6 +2393,7 @@ function bindEvents() {
     state.trendMetrics=metrics.filter((metric)=>validMetrics.has(metric));
     if(!state.trendMetrics.length) return;
     state.trendMode="overtime";
+    state.trendHour="profile";
     state.trendGrain=button.dataset.grain || "day";
     state.trendWeekpart="all";
     state.trendNotable="all";
