@@ -56,29 +56,28 @@
 
     <section id="appPanel" hidden>
       <div class="analysis-period-bar" aria-label="Analysis period">
-        <div class="analysis-period-title">
-          <span class="control-label">Analysis period</span>
-        </div>
-        <div class="analysis-period-dates">
-          <label>Start
-            <input id="globalStartDate" type="date">
-          </label>
-          <label>End
-            <input id="globalEndDate" type="date">
-          </label>
+        <div class="analysis-period-top">
+          <div class="analysis-period-title">
+            <span class="control-label">Analysis period</span>
+          </div>
+          <div class="analysis-period-dates">
+            <label>Start
+              <input id="globalStartDate" type="date">
+            </label>
+            <label>End
+              <input id="globalEndDate" type="date">
+            </label>
+          </div>
+          <span id="availableRangeLabel" class="available-range-label" aria-live="polite"></span>
         </div>
         <div class="analysis-period-presets">
+          <span class="control-label">Presets</span>
           <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Analysis period presets"></div>
         </div>
         <button id="clearDateRange" class="small-button" type="button" hidden>Full range</button>
-        <span id="availableRangeLabel" class="available-range-label" aria-live="polite"></span>
       </div>
 
       <section class="tab-panel" data-panel="overview">
-        <div class="overview-tools">
-          <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
-        </div>
-
         <div class="dashboard-grid two-column">
           <article class="panel-card span-two trend-primary-card">
             <div class="panel-heading trend-heading">
@@ -116,6 +115,14 @@
                   <label id="trendHourControl">Hour focus
                     <select id="trendHourSelect">
                       <option value="profile">24-hour profile</option>
+                    </select>
+                  </label>
+                  <label id="trendProfileCompareControl">Compare profiles by
+                    <select id="trendProfileCompareSelect">
+                      <option value="overall">Overall</option>
+                      <option value="month">Month</option>
+                      <option value="quarter">Quarter</option>
+                      <option value="week">Week</option>
                     </select>
                   </label>
                   <label id="trendProgramControl">Program
@@ -366,6 +373,10 @@
         <button id="dataInfoDialogClose" class="secondary-button" type="button">Close</button>
       </div>
       <p class="panel-note">Coverage is reference information. It explains which sources overlap and which date grains are available; it does not change the analysis unless you choose the common comparable period below.</p>
+      <div class="data-info-actions">
+        <button id="refreshButton" class="secondary-button" type="button">Reload data</button>
+        <span>Normal filter and date changes update automatically. Reload data is only for forcing a fresh dashboard query.</span>
+      </div>
       <div id="dataAvailability" class="data-availability" aria-live="polite">
         <div class="data-availability-head">
           <strong>Data coverage</strong>
