@@ -1324,6 +1324,12 @@ function weekdayMatchesSeriesKey(day,key) {
   return named[key]===day;
 }
 
+function daySeriesKeyForDate(dateString) {
+  const date=new Date(`${dateString}T12:00:00Z`);
+  const keys=["sun","mon","tue","wed","thu","fri","sat"];
+  return Number.isNaN(date.getTime()) ? "all" : keys[date.getUTCDay()];
+}
+
 function newsletterMinutes(value) {
   const match=String(value || "").match(/^(\d{1,2}):(\d{2})/);
   return match ? Number(match[1])*60+Number(match[2]) : null;
@@ -1517,8 +1523,12 @@ async function renderTimeOfDayTrend(requestId) {
   if(state.trendNotable!=="all") filterNotes.push(NOTABLE_MODES.find(([key])=>key===state.trendNotable)?.[1]);
   if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
-  const rows=await loadStreamGuysHourly(selectedRange());
+  const [rows,scheduleEvidence]=await Promise.all([
+    loadStreamGuysHourly(selectedRange()),
+    loadTrendScheduleEvidence(selectedRange())
+  ]);
   if(requestId!==trendRequestId) return;
+  const scheduleEntries=scheduleEvidence?.entries || [];
   const notableFiltered=rows.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
   const filtered=notableFiltered.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
 
@@ -1550,22 +1560,32 @@ async function renderTimeOfDayTrend(requestId) {
 
     setHidden(els.trendChartToolbar,false);
     updateTrendZoomControls();
-    const points=hourRows.map((row)=>({
-      date:row.schedule_date,
-      label:formatDayDate(row.schedule_date),
-      shortLabel:shortDayLabel(row.schedule_date),
-      value:Number(row.tlh_hours),
-      weekend:isWeekendDate(row.schedule_date),
-      tooltipModel:{
-        title:`${formatDayDate(row.schedule_date)} · ${hourLabel(hourNumber)}`,
-        rows:[{
-          tone:"station",
-          label:"TLH",
-          value:formatMetric(row.tlh_hours,"hours"),
-          delta:medianValue===null ? "" : `${signedPercent(percentFromMedian(row.tlh_hours,medianValue))} vs this hour's median`
-        }]
-      }
-    }));
+    const points=hourRows.map((row)=>{
+      const schedule=conciseScheduleContext(scheduleEntries,{
+        hour:hourNumber,
+        startDate:row.schedule_date,
+        endDate:row.schedule_date,
+        daySeriesKey:daySeriesKeyForDate(row.schedule_date)
+      });
+      const tooltipRows=[{
+        tone:"station",
+        label:"TLH",
+        value:formatMetric(row.tlh_hours,"hours"),
+        delta:medianValue===null ? "" : `${signedPercent(percentFromMedian(row.tlh_hours,medianValue))} vs this hour's median`
+      }];
+      if(schedule) tooltipRows.push({label:"Scheduled",value:schedule,delta:""});
+      return {
+        date:row.schedule_date,
+        label:formatDayDate(row.schedule_date),
+        shortLabel:shortDayLabel(row.schedule_date),
+        value:Number(row.tlh_hours),
+        weekend:isWeekendDate(row.schedule_date),
+        tooltipModel:{
+          title:`${formatDayDate(row.schedule_date)} · ${hourLabel(hourNumber)}`,
+          rows:tooltipRows
+        }
+      };
+    });
     const chartPoints=zoomedTrendPoints(points);
     updateTrendZoomControls();
     renderLineChart(els.trendChart,chartPoints,{
@@ -1606,7 +1626,7 @@ async function renderTimeOfDayTrend(requestId) {
     const dayComparison=buildDayComparisonSeries(notableFiltered,state.trendDaySeries);
     els.trendTitle.textContent=dayComparison.groupCount>1 ? "StreamGuys TLH by time of day · day comparison" : `StreamGuys TLH by time of day · ${dayComparison.series[0]?.label || "All days"}`;
     els.trendDescription.textContent=
-      `Each selected Days Included option is shown as its own 24-hour WNMU Eastern TLH profile. ${dayComparison.groupCount.toLocaleString()} line${dayComparison.groupCount===1 ? "" : "s"} shown.` +
+      `Each selected Days Included option is shown as its own 24-hour WNMU Eastern TLH profile. ${dayComparison.groupCount.toLocaleString()} line${dayComparison.groupCount===1 ? "" : "s"} shown. Hover for concise schedule context; click a point to focus that hour.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=[
       `<span><strong>Day profiles:</strong> ${escapeHtml(selectedDaySeriesLabel())}</span>`,
@@ -1620,7 +1640,9 @@ async function renderTimeOfDayTrend(requestId) {
       yAxisLabel:"Total Listening Hours",
       yTickStep:20,
       yTickFormat:"integer",
-      labelEvery:2
+      labelEvery:2,
+      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,scheduleEntries),
+      onPointClick:(point,item)=>drillIntoTimeOfDayPoint(point,item)
     });
     renderTrendDataTable("",0);
     els.trendPrintColumns.classList.add("single");
@@ -1633,7 +1655,7 @@ async function renderTimeOfDayTrend(requestId) {
   if(comparisonMode!=="overall") {
     els.trendTitle.textContent=`StreamGuys TLH by time of day · ${comparisonMode==="day" ? "daily" : comparisonMode==="week" ? "weekly" : comparisonMode==="month" ? "monthly" : "quarterly"} profiles`;
     els.trendDescription.textContent=
-      `Each line is a separate ${comparisonMode} profile across the 24-hour WNMU Eastern clock, using only dates that match the selected day and special-date filters. ${profileComparison.groupCount.toLocaleString()} profiles are shown.` +
+      `Each line is a separate ${comparisonMode} profile across the 24-hour WNMU Eastern clock, using only dates that match the selected day and special-date filters. ${profileComparison.groupCount.toLocaleString()} profiles are shown. Hover for concise schedule context; click a point to drill into that period and hour.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=[
       `<span><strong>Profiles:</strong> ${profileComparison.groupCount.toLocaleString()}</span>`,
@@ -1647,7 +1669,9 @@ async function renderTimeOfDayTrend(requestId) {
       yAxisLabel:"Total Listening Hours",
       yTickStep:20,
       yTickFormat:"integer",
-      labelEvery:2
+      labelEvery:2,
+      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,scheduleEntries),
+      onPointClick:(point,item)=>drillIntoTimeOfDayPoint(point,item)
     });
     renderTrendDataTable("",0);
     els.trendPrintColumns.classList.add("single");
