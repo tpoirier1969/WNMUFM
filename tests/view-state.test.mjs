@@ -233,3 +233,13 @@ test("Overview renders Trend Explorer before secondary overview summaries", asyn
   const body=app.slice(start,end);
   assert.match(body,/await renderTrend\(\);[\s\S]*renderSummary\(\)[\s\S]*renderBreakdowns\(\)/);
 });
+
+
+test("focused Time-of-Day view preserves checked day groups as separate series", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/function buildFocusedHourComparison/);
+  assert.match(app,/Each checked Days Included group is its own colored series/);
+  assert.match(app,/renderMultiLineChart\(els\.trendChart,chartPoints/);
+  assert.match(app,/connectGaps:true/);
+});
