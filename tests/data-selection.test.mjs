@@ -149,3 +149,14 @@ test("repeat analytics queries are cached by range until data cache invalidation
   assert.match(data,/time-series\|\$\{metricKey\}\|\$\{grain\}/);
   assert.match(data,/latest-breakdown\|\$\{metricKey\}\|\$\{dimensionType\}/);
 });
+
+
+test("Schedule evidence range comes only from stored Preview and Composer archive sources", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  assert.match(data,/export async function loadScheduleEvidenceRange/);
+  assert.match(data,/wnmufm_schedule_newsletter_sources/);
+  assert.match(data,/wnmufm_schedule_newsletter_entries/);
+  assert.match(data,/wnmufm_schedule_daily_archive/);
+  assert.match(data,/schedule-evidence-range/);
+});
