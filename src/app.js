@@ -14,7 +14,7 @@ import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_C
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
-import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
+import { addScheduleDays, buildScheduleDays, newsletterScheduleForDate, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
@@ -313,7 +313,7 @@ function setTrendControlDisabled(container, disabled, reason = "") {
   });
 }
 
-function setTrendControlAvailability({ programCapable = false } = {}) {
+function setTrendControlAvailability({ programCapable = false, timeOfDayProgramCapable = false } = {}) {
   const timeOfDay=state.trendMode==="timeofday";
   const dayLevel=timeOfDay || state.trendGrain==="day";
 
@@ -343,11 +343,12 @@ function setTrendControlAvailability({ programCapable = false } = {}) {
     !timeOfDay || state.trendHour!=="profile",
     !timeOfDay ? "Profile comparison is available only in Time of day view." : "Profile comparison applies to the 24-hour profile, not an individual hour focus."
   );
+  const programFilterAvailable=timeOfDay ? timeOfDayProgramCapable : programCapable;
   setTrendControlDisabled(
     els.trendProgramControl,
-    timeOfDay || !programCapable,
+    !programFilterAvailable,
     timeOfDay
-      ? "Program filtering is not available for hourly TLH because an hour can contain more than one program."
+      ? "Program filtering becomes available when stored schedule evidence supplies titles for this Analysis Period."
       : "Program filtering is available only for on-demand audio metrics."
   );
   setHidden(els.trendAudioDetailButton,timeOfDay || !programCapable);
@@ -401,6 +402,39 @@ function programsForExactHour(entries,hour) {
   }).map((entry)=>entry.program).filter((name)=>name && !seen.has(name) && seen.add(name));
 }
 
+function attachScheduleProgramsToHourlyRows(rows,scheduleEvidence) {
+  const byDate=new Map();
+  return (rows || []).map((row)=>{
+    const date=String(row.schedule_date || "");
+    if(!byDate.has(date)) byDate.set(date,newsletterScheduleForDate(scheduleEvidence,date));
+    const hour=Number(String(row.schedule_hour || "00").slice(0,2));
+    const scheduledPrograms=Number.isInteger(hour)
+      ? programsForExactHour(byDate.get(date),hour)
+      : [];
+    return {...row,scheduled_programs:scheduledPrograms};
+  });
+}
+
+function scheduledProgramNames(rows) {
+  return [...new Set((rows || []).flatMap((row)=>row.scheduled_programs || []).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b));
+}
+
+function setProgramFilterOptions(names,{allLabel}={}) {
+  const unique=[...new Set((names || []).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  els.trendProgramSelect.innerHTML = `<option value="">${escapeHtml(allLabel || "All programs")}</option>` +
+    unique.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
+  if(state.trendProgram && unique.includes(state.trendProgram)) {
+    els.trendProgramSelect.value=state.trendProgram;
+    return;
+  }
+  if(state.trendProgram) {
+    state.trendProgram="";
+    persistUiState();
+  }
+  els.trendProgramSelect.value="";
+}
+
 function buildStreamGuysHourProfile(rows) {
   if(!rows?.length) return [];
   const buckets=new Map();
@@ -437,15 +471,10 @@ function streamGuysDailyTable(rows, dayEntries) {
 
 async function renderProgramFilterOptions() {
   const imports = await loadImports();
-  const names = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort((a,b) => a.localeCompare(b));
-  els.trendProgramSelect.innerHTML = '<option value="">All on-demand audio</option>' +
-    names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-  if (state.trendProgram && names.includes(state.trendProgram)) {
-    els.trendProgramSelect.value = state.trendProgram;
-  } else if (state.trendProgram) {
-    state.trendProgram = "";
-    persistUiState();
-  }
+  const names = imports
+    .filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program)
+    .map((item) => item.selected_program);
+  setProgramFilterOptions(names,{allLabel:"All on-demand audio"});
 }
 
 function openDetailDialog(title, html, eyebrow = "Deeper dive") {
@@ -1639,13 +1668,8 @@ function buildTimeOfDayProfileSeries(rows, mode) {
 }
 
 async function renderTimeOfDayTrend(requestId) {
-  setTrendControlAvailability({ programCapable:false });
+  setTrendControlAvailability({ programCapable:false, timeOfDayProgramCapable:false });
   refreshTrendControlState();
-
-  const filterNotes=[];
-  if(!(state.trendDaySeries.length===1 && state.trendDaySeries[0]==="all")) filterNotes.push(selectedDaySeriesLabel());
-  if(state.trendNotable!=="all") filterNotes.push(NOTABLE_MODES.find(([key])=>key===state.trendNotable)?.[1]);
-  if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
   const [rows,scheduleEvidence]=await Promise.all([
     loadStreamGuysHourly(selectedRange()),
@@ -1653,7 +1677,22 @@ async function renderTimeOfDayTrend(requestId) {
   ]);
   if(requestId!==trendRequestId) return;
   const scheduleEntries=scheduleEvidence?.entries || [];
-  const notableFiltered=rows.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
+  const scheduledRows=attachScheduleProgramsToHourlyRows(rows,scheduleEvidence);
+  const programNames=scheduledProgramNames(scheduledRows);
+  setProgramFilterOptions(programNames,{allLabel:"All scheduled programs"});
+  setTrendControlAvailability({ programCapable:false, timeOfDayProgramCapable:programNames.length>0 });
+  refreshTrendControlState();
+
+  const filterNotes=[];
+  if(!(state.trendDaySeries.length===1 && state.trendDaySeries[0]==="all")) filterNotes.push(selectedDaySeriesLabel());
+  if(state.trendNotable!=="all") filterNotes.push(NOTABLE_MODES.find(([key])=>key===state.trendNotable)?.[1]);
+  if(state.trendProgram) filterNotes.push(`Program: ${state.trendProgram}`);
+  if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
+
+  const programFiltered=state.trendProgram
+    ? scheduledRows.filter((row)=>(row.scheduled_programs || []).includes(state.trendProgram))
+    : scheduledRows;
+  const notableFiltered=programFiltered.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
   const filtered=notableFiltered.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
 
   setHidden(els.trendBenchmarkNote,false);
@@ -1682,7 +1721,7 @@ async function renderTimeOfDayTrend(requestId) {
 
     els.trendTitle.textContent=`StreamGuys TLH at ${hourLabel(hourNumber)}`;
     els.trendDescription.textContent=
-      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates. Each checked Days Included group is its own colored series.` +
+      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates. Each checked Days Included group is its own colored series. When a Program is selected, only hourly observations whose stored schedule evidence contains that title are included; TLH remains the whole clock-hour total, not a program-specific audience count.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=seriesStats.map((item)=>[
       `<span><strong>${escapeHtml(item.label)} avg.:</strong> ${item.average===null ? "—" : escapeHtml(formatMetric(item.average,"hours"))}</span>`,
@@ -1754,11 +1793,14 @@ async function renderTimeOfDayTrend(requestId) {
       return;
     }
     renderTrendDataTable(`<table class="trend-data-table">
-      <thead><tr><th>Date</th><th>Series</th><th class="numeric">TLH</th><th class="numeric">Vs series median</th><th>Raw StreamGuys hour</th></tr></thead>
+      <thead><tr><th>Date</th><th>Series</th><th class="numeric">TLH</th><th class="numeric">Vs series median</th><th>Scheduled program(s)</th><th>Raw StreamGuys hour</th></tr></thead>
       <tbody>${tableRows.map((row)=>{
         const meta=selectedSeries.find((item)=>matchesWeekpart(row.schedule_date,item.key));
         const stats=seriesStats.find((item)=>item.key===meta?.key);
-        return `<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td>${escapeHtml(meta?.label || "Selected")}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${stats?.median===null || stats?.median===undefined ? "—" : escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,stats.median)))}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`;
+        const programs=(row.scheduled_programs || []).length
+          ? row.scheduled_programs.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("")
+          : "—";
+        return `<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td>${escapeHtml(meta?.label || "Selected")}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${stats?.median===null || stats?.median===undefined ? "—" : escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,stats.median)))}</td><td>${programs}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`;
       }).join("")}</tbody>
     </table>`,tableRows.length);
     els.trendPrintColumns.classList.add("single");
@@ -1778,7 +1820,7 @@ async function renderTimeOfDayTrend(requestId) {
     const dayComparison=buildDayComparisonSeries(notableFiltered,state.trendDaySeries);
     els.trendTitle.textContent=dayComparison.groupCount>1 ? "StreamGuys TLH by time of day · day comparison" : `StreamGuys TLH by time of day · ${dayComparison.series[0]?.label || "All days"}`;
     els.trendDescription.textContent=
-      `Each selected Days Included option is shown as its own 24-hour WNMU Eastern TLH profile. ${dayComparison.groupCount.toLocaleString()} line${dayComparison.groupCount===1 ? "" : "s"} shown. Hover for concise schedule context; click a point to focus that hour.` +
+      `Each selected Days Included option is shown as its own 24-hour WNMU Eastern TLH profile. ${dayComparison.groupCount.toLocaleString()} line${dayComparison.groupCount===1 ? "" : "s"} shown. Hover for schedule titles; click a point to focus that hour. A Program filter includes only hours whose stored schedule evidence contains that title, while retaining the full hourly TLH measurement.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=[
       `<span><strong>Day profiles:</strong> ${escapeHtml(selectedDaySeriesLabel())}</span>`,
@@ -1807,7 +1849,7 @@ async function renderTimeOfDayTrend(requestId) {
   if(comparisonMode!=="overall") {
     els.trendTitle.textContent=`StreamGuys TLH by time of day · ${comparisonMode==="day" ? "daily" : comparisonMode==="week" ? "weekly" : comparisonMode==="month" ? "monthly" : "quarterly"} profiles`;
     els.trendDescription.textContent=
-      `Each line is a separate ${comparisonMode} profile across the 24-hour WNMU Eastern clock, using only dates that match the selected day and special-date filters. ${profileComparison.groupCount.toLocaleString()} profiles are shown. Hover for concise schedule context; click a point to drill into that period and hour.` +
+      `Each line is a separate ${comparisonMode} profile across the 24-hour WNMU Eastern clock, using only dates that match the selected day, special-date and Program filters. ${profileComparison.groupCount.toLocaleString()} profiles are shown. Hover for schedule titles; click a point to drill into that period and hour. Program matching uses stored schedule evidence and retains the whole clock-hour TLH measurement.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=[
       `<span><strong>Profiles:</strong> ${profileComparison.groupCount.toLocaleString()}</span>`,
@@ -2665,7 +2707,10 @@ function bindEvents() {
     }
     clearTrendZoom();
     persistUiState();
-    void withBusy(()=>renderTrend());
+    void withBusy(async ()=>{
+      if(state.trendMode!=="timeofday") await renderProgramFilterOptions();
+      await renderTrend();
+    });
   });
   els.trendHourSelect.addEventListener("change",()=>{
     state.trendHour=validChoice(els.trendHourSelect.value,["profile",...Array.from({length:24},(_,hour)=>String(hour).padStart(2,"0"))],"profile");
