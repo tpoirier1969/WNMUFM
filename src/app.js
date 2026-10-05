@@ -579,6 +579,8 @@ const EXPLORE_VIEWS = {
     dimension: "episode",
     reportType: "audio_downloads",
     sourceRange: true,
+    emptySourceText: "No imported all-audio episode breakdown is available.",
+    sourceNote: "This episode ranking comes from the complete source-period audio export. It can rank individual episodes/audio items, but the source does not provide a clean daily time series for every episode.",
     description: "Episode-level detail from the latest complete all-audio export. This is the deeper layer beneath All on-demand audio; it ranks individual episode/audio items rather than only program buckets."
   },
   "audio-players": {
@@ -2384,7 +2386,7 @@ async function openExploreDimensionDetail(view,row,periodText) {
           }).join("")}
         </div>
       </section>
-      ${view.sourceRange ? '<p class="source-limit">This Google Analytics 4 export is an aggregate for its complete source period. A Date + Page Path or similarly dated export is still needed before this category can be trended day by day.</p>' : ""}
+      ${view.sourceRange ? `<p class="source-limit">${escapeHtml(view.sourceNote || "This source is an aggregate for its complete reporting period, so it cannot be honestly sliced into daily history without a dated export.")}</p>` : ""}
     `;
   } catch(error) {
     els.detailDialogBody.innerHTML=`<p class="empty-state">Could not load this drilldown: ${escapeHtml(error.message)}</p>`;
@@ -2407,7 +2409,7 @@ async function renderExplore() {
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
-    els.exploreChart.innerHTML = `<p class="empty-state compact">${view.sourceRange ? "No imported Google Analytics 4 source currently supplies this view." : "No complete source breakdown fits inside the selected analysis range."}</p>`;
+    els.exploreChart.innerHTML = `<p class="empty-state compact">${view.sourceRange ? (view.emptySourceText || "No imported source currently supplies this view.") : "No complete source breakdown fits inside the selected analysis range."}</p>`;
     return;
   }
   const periodText=formatPeriod(rows[0], rows[0].grain);
