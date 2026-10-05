@@ -998,7 +998,7 @@ async function renderDataAvailability() {
   const googleText=google.startDate
     ? ` Google Analytics 4 dated detail: ${shortCoverageSpan(google)}.`
     : "";
-  els.dataAvailabilityHint.innerHTML = `${escapeHtml(commonText+googleText)}${commonDaily.startDate ? ` <button type="button" class="coverage-use-range" data-coverage-start="${escapeHtml(commonDaily.startDate)}" data-coverage-end="${escapeHtml(commonDaily.endDate)}">Use common daily window</button>` : ""}`;
+  els.dataAvailabilityHint.innerHTML = `${escapeHtml(commonText+googleText)}${commonDaily.startDate ? ` <button type="button" class="coverage-use-range" data-coverage-start="${escapeHtml(commonDaily.startDate)}" data-coverage-end="${escapeHtml(commonDaily.endDate)}">Use common comparable period</button>` : ""}`;
 
   els.dataAvailabilityRows.innerHTML=rows.map((row)=>`
     <div class="data-availability-row">
