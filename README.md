@@ -21,6 +21,7 @@ Read `PROJECT_RULES.md` before modifying the application.
 - Persistent storage: existing Supabase project `WNMUProgramming data`
 - FM database ownership: every FM analytics database object uses the `wnmufm_` prefix
 - StreamGuys hourly alignment: raw `hour_of_day_local` values are preserved; `wnmufm_streamguys_time_alignment` currently applies a provisional +1 hour Central-to-Eastern schedule mapping, and `wnmufm_streamguys_hourly_aligned` exposes the derived schedule date/hour. Changing the single alignment row or disabling it rolls the interpretation back without changing imported observations.
+- Trend Explorer time-of-day analysis: the `Time of day` view profiles average TLH across the 24-hour WNMU Eastern clock for the selected Analysis Range, and its Hour focus can trace any one Eastern hour across dates while retaining raw StreamGuys-hour provenance.
 - Authentication/authorization: Supabase Auth via GitHub OAuth or email/password, plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
 - Google Analytics 4 import: source-period CSV exports for pages, landing pages, events, acquisition, geography and technical diagnostics; Google Analytics 4 aggregate reports remain separate from dated NPR website metrics
 - Authoritative application version: `src/version.js`
