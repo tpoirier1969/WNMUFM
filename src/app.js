@@ -2,7 +2,7 @@ import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
 import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadStreamGuysHourly, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
-import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, formatMetric } from "./charts.js";
+import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, renderMultiLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
 import { buildHourSchedule, buildTypicalHourContext, entryHourDayOffset, hourLabel } from "./schedule.js";
@@ -18,7 +18,7 @@ import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMo
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendProfileCompareControl","trendProfileCompareSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","listeningHourEyebrow","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
@@ -47,6 +47,7 @@ const state = {
   trendMetrics:initialMetrics,
   trendMode:validChoice(sharedOrRestored("trendMode","overtime"), ["overtime","timeofday"], "overtime"),
   trendHour:validChoice(sharedOrRestored("trendHour","profile"), ["profile",...Array.from({length:24},(_,hour)=>String(hour).padStart(2,"0"))], "profile"),
+  trendProfileCompare:validChoice(sharedOrRestored("trendProfileCompare","overall"), ["overall","day","week","month","quarter"], "overall"),
   trendGrain:validChoice(sharedOrRestored("trendGrain","day"), ["day","week","month"], "day"),
   trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
   trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
@@ -90,6 +91,7 @@ function viewStateSnapshot() {
     trendMetrics:state.trendMetrics,
     trendMode:state.trendMode,
     trendHour:state.trendHour,
+    trendProfileCompare:state.trendProfileCompare,
     trendGrain:state.trendGrain,
     trendWeekpart:state.trendWeekpart,
     trendNotable:state.trendNotable,
@@ -318,6 +320,12 @@ function setTrendControlAvailability({ programCapable = false } = {}) {
     els.trendHourControl,
     !timeOfDay,
     "Hour focus is available only in Time of day view."
+  );
+  updateProfileComparisonControl();
+  setTrendControlDisabled(
+    els.trendProfileCompareControl,
+    !timeOfDay || state.trendHour!=="profile",
+    !timeOfDay ? "Profile comparison is available only in Time of day view." : "Profile comparison applies to the 24-hour profile, not an individual hour focus."
   );
   setTrendControlDisabled(
     els.trendProgramControl,
@@ -1215,6 +1223,92 @@ function rowClass(row, grain) {
   return grain === "day" && isWeekendDate(row.period_start) ? ' class="weekend-row"' : "";
 }
 
+function analysisRangeDayCount() {
+  if(!state.startDate || !state.endDate) return Infinity;
+  const start=new Date(`${state.startDate}T12:00:00Z`);
+  const end=new Date(`${state.endDate}T12:00:00Z`);
+  return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
+    ? Math.floor((end-start)/86400000)+1
+    : Infinity;
+}
+
+function profileComparisonAvailability() {
+  const days=analysisRangeDayCount();
+  return {
+    overall:true,
+    day:days<=31,
+    week:days<=183,
+    month:true,
+    quarter:true
+  };
+}
+
+function updateProfileComparisonControl() {
+  const availability=profileComparisonAvailability();
+  [...els.trendProfileCompareSelect.options].forEach((option)=>{
+    const allowed=availability[option.value]!==false;
+    option.disabled=!allowed;
+    option.title=allowed ? "" : (option.value==="day"
+      ? "Day profiles are available for analysis periods of 31 days or less."
+      : "Week profiles are available for analysis periods of about 6 months or less.");
+  });
+  if(!availability[state.trendProfileCompare]) {
+    state.trendProfileCompare="overall";
+    els.trendProfileCompareSelect.value="overall";
+  } else if(els.trendProfileCompareSelect.value!==state.trendProfileCompare) {
+    els.trendProfileCompareSelect.value=state.trendProfileCompare;
+  }
+}
+
+function mondayIso(dateString) {
+  const date=new Date(`${dateString}T12:00:00Z`);
+  const dow=(date.getUTCDay()+6)%7;
+  date.setUTCDate(date.getUTCDate()-dow);
+  return date.toISOString().slice(0,10);
+}
+
+function profileGroupForDate(dateString, mode) {
+  if(mode==="day") return {key:dateString,label:formatDayDate(dateString)};
+  if(mode==="week") {
+    const start=mondayIso(dateString);
+    return {key:`week-${start}`,label:`Week of ${formatDayDate(start)}`};
+  }
+  if(mode==="month") {
+    const key=String(dateString).slice(0,7);
+    const date=new Date(`${key}-01T12:00:00Z`);
+    return {key:`month-${key}`,label:date.toLocaleDateString(undefined,{month:"short",year:"numeric",timeZone:"UTC"})};
+  }
+  if(mode==="quarter") {
+    const year=Number(String(dateString).slice(0,4));
+    const month=Number(String(dateString).slice(5,7));
+    const quarter=Math.floor((month-1)/3)+1;
+    return {key:`quarter-${year}-Q${quarter}`,label:`Q${quarter} ${year}`};
+  }
+  return {key:"overall",label:"Average TLH"};
+}
+
+function buildTimeOfDayProfileSeries(rows, mode) {
+  const groups=new Map();
+  rows.forEach((row)=>{
+    const group=profileGroupForDate(row.schedule_date,mode);
+    if(!groups.has(group.key)) groups.set(group.key,{...group,hours:Array.from({length:24},()=>[])});
+    const hour=Number(String(row.schedule_hour || "").slice(0,2));
+    const value=Number(row.tlh_hours);
+    if(Number.isInteger(hour) && hour>=0 && hour<24 && Number.isFinite(value)) groups.get(group.key).hours[hour].push(value);
+  });
+  const ordered=[...groups.values()].sort((a,b)=>a.key.localeCompare(b.key));
+  const series=ordered.map((group,index)=>({key:`profile_${index}`,label:group.label,group}));
+  const points=Array.from({length:24},(_,hour)=>({
+    label:hourLabel(hour),
+    shortLabel:hourLabel(hour).replace(":00",""),
+    values:Object.fromEntries(series.map((item)=>{
+      const values=item.group.hours[hour];
+      return [item.key,values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null];
+    }))
+  }));
+  return {series:series.map(({key,label})=>({key,label})),points,groupCount:series.length};
+}
+
 async function renderTimeOfDayTrend(requestId) {
   setTrendControlAvailability({ programCapable:false });
   refreshTrendControlState();
@@ -1305,6 +1399,32 @@ async function renderTimeOfDayTrend(requestId) {
   els.trendDescription.textContent=
     "Each point is the average StreamGuys total listening hours for that WNMU Eastern clock hour across the matching dates. Use the Analysis Range, quick ranges, week-part buttons and notable-date filter to change which days contribute to the profile. Choose an individual Hour focus to trace that hour across time." +
     (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
+
+  updateProfileComparisonControl();
+  const comparisonMode=state.trendProfileCompare;
+  const profileComparison=buildTimeOfDayProfileSeries(filtered,comparisonMode);
+
+  if(comparisonMode!=="overall") {
+    els.trendTitle.textContent=`StreamGuys TLH by time of day · ${comparisonMode==="day" ? "daily" : comparisonMode==="week" ? "weekly" : comparisonMode==="month" ? "monthly" : "quarterly"} profiles`;
+    els.trendDescription.textContent=
+      `Each line is a separate ${comparisonMode} profile across the 24-hour WNMU Eastern clock, using only dates that match the selected day and special-date filters. ${profileComparison.groupCount.toLocaleString()} profiles are shown.` +
+      (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
+    els.trendMedianSummary.innerHTML=[
+      `<span><strong>Profiles:</strong> ${profileComparison.groupCount.toLocaleString()}</span>`,
+      `<span><strong>Hourly observations:</strong> ${filtered.length.toLocaleString()}</span>`
+    ].join("");
+    renderMultiLineChart(els.trendChart,profileComparison.points,{
+      title:"StreamGuys time-of-day profiles",
+      ariaLabel:`StreamGuys total listening hours by time of day compared by ${comparisonMode}`,
+      series:profileComparison.series,
+      formatValue:(value)=>formatMetric(value,"hours"),
+      labelEvery:2
+    });
+    renderTrendDataTable("",0);
+    els.trendPrintColumns.classList.add("single");
+    els.trendPrintColumns.innerHTML=`<p class="print-trend-note"><strong>Time-of-day comparison:</strong> ${profileComparison.groupCount} ${escapeHtml(comparisonMode)} profiles across the selected analysis period.</p>`;
+    return;
+  }
 
   const buckets=Array.from({length:24},(_,hour)=>({hour,values:[]}));
   filtered.forEach((row)=>{
@@ -2291,6 +2411,11 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>renderTrend());
   });
+  els.trendProfileCompareSelect.addEventListener("change",()=>{
+    state.trendProfileCompare=validChoice(els.trendProfileCompareSelect.value,["overall","day","week","month","quarter"],"overall");
+    persistUiState();
+    void withBusy(()=>renderTrend());
+  });
   els.trendMetricButtons.addEventListener("click", (event) => {
     const button = event.target.closest("[data-trend-metric]");
     if (!button) return;
@@ -2432,6 +2557,7 @@ function bindEvents() {
     if(!state.trendMetrics.length) return;
     state.trendMode="overtime";
     state.trendHour="profile";
+    state.trendProfileCompare="overall";
     state.trendGrain=button.dataset.grain || "day";
     state.trendWeekpart="all";
     state.trendNotable="all";
