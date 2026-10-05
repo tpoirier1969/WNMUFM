@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildNewsletterScheduleIndex,
   buildScheduleDay,
   entriesAtTime,
   entriesAtTimeForDay,
@@ -67,6 +68,21 @@ test("newsletter monthly grids never leak outside their named month", () => {
   };
   assert.equal(newsletterScheduleForDate(schedule,"2023-10-03").length,1);
   assert.equal(newsletterScheduleForDate(schedule,"2023-11-07").length,0);
+});
+
+test("newsletter schedule index returns the complete date schedule without rescanning all evidence", () => {
+  const schedule={
+    sources:[source(1,"2023-10-01")],
+    entries:[
+      grid(1,"2023-10-01",2,"08:00:00","08:30:00","First Half"),
+      grid(1,"2023-10-01",2,"08:30:00","09:00:00","Second Half")
+    ]
+  };
+  const index=buildNewsletterScheduleIndex(schedule);
+  assert.deepEqual(
+    newsletterScheduleForDate(schedule,"2023-10-03",index).map((item)=>item.program),
+    ["First Half","Second Half"]
+  );
 });
 
 test("a dated Preview override replaces the overlapping base grid only on its stated date", () => {

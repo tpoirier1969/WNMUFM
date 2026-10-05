@@ -14,7 +14,7 @@ import { analyzeTakeaways, sortTakeaways, TAKEAWAY_BENCHMARK_METRICS, TAKEAWAY_C
 import { analyzeScheduleTakeaways, addScheduleContextToTrendFindings } from "./schedule-analysis.js";
 import { analyzeNewsletterScheduleTakeaways, newsletterDuplicatesScheduleChange } from "./newsletter-schedule-analysis.js";
 import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
-import { addScheduleDays, buildScheduleDays, newsletterScheduleForDate, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
+import { addScheduleDays, buildNewsletterScheduleIndex, buildScheduleDays, newsletterScheduleForDate, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
@@ -85,6 +85,7 @@ let takeawayScheduleNotice = "";
 let rangeEditPending = false;
 let rangeBlurCommitTimer = null;
 const trendScheduleEvidenceCache = new Map();
+const trendHourlyScheduleCache = new Map();
 
 function viewStateSnapshot() {
   return {
@@ -389,7 +390,7 @@ function clockMinutes(value) {
   return Number(match[1])*60+Number(match[2]);
 }
 
-function programsForExactHour(entries,hour) {
+function scheduleItemsForExactHour(entries,hour) {
   const hourStart=Number(hour)*60;
   const hourEnd=hourStart+60;
   const seen=new Set();
@@ -399,19 +400,49 @@ function programsForExactHour(entries,hour) {
     if(start===null || end===null) return false;
     if(end<=start) end+=1440;
     return start<hourEnd && end>hourStart;
-  }).map((entry)=>entry.program).filter((name)=>name && !seen.has(name) && seen.add(name));
+  }).map((entry)=>({
+    program:String(entry.program || "").trim(),
+    start:String(entry.start || "").slice(0,5),
+    end:String(entry.end || "").slice(0,5)
+  })).filter((item)=>{
+    if(!item.program) return false;
+    const key=`${item.start}|${item.end}|${item.program}`;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a,b)=>
+    String(a.start).localeCompare(String(b.start)) ||
+    String(a.end).localeCompare(String(b.end)) ||
+    a.program.localeCompare(b.program)
+  );
+}
+
+function programsForExactHour(entries,hour) {
+  return [...new Set(scheduleItemsForExactHour(entries,hour).map((item)=>item.program))];
+}
+
+function formatHourlyScheduleItem(item) {
+  const start=scheduleTime(item?.start);
+  const end=scheduleTime(item?.end);
+  const time=start && end ? `${start}–${end}` : start || end || "";
+  return [time,item?.program].filter(Boolean).join(" · ");
 }
 
 function attachScheduleProgramsToHourlyRows(rows,scheduleEvidence) {
   const byDate=new Map();
+  const scheduleIndex=buildNewsletterScheduleIndex(scheduleEvidence);
   return (rows || []).map((row)=>{
     const date=String(row.schedule_date || "");
-    if(!byDate.has(date)) byDate.set(date,newsletterScheduleForDate(scheduleEvidence,date));
+    if(!byDate.has(date)) byDate.set(date,newsletterScheduleForDate(scheduleEvidence,date,scheduleIndex));
     const hour=Number(String(row.schedule_hour || "00").slice(0,2));
-    const scheduledPrograms=Number.isInteger(hour)
-      ? programsForExactHour(byDate.get(date),hour)
+    const scheduledItems=Number.isInteger(hour)
+      ? scheduleItemsForExactHour(byDate.get(date),hour)
       : [];
-    return {...row,scheduled_programs:scheduledPrograms};
+    return {
+      ...row,
+      scheduled_items:scheduledItems,
+      scheduled_programs:[...new Set(scheduledItems.map((item)=>item.program))]
+    };
   });
 }
 
@@ -462,10 +493,10 @@ function buildStreamGuysHourProfile(rows) {
 
 function streamGuysDailyTable(rows, dayEntries) {
   if(!rows?.length) return "";
-  return `<div class="table-wrap"><table class="hour-table"><thead><tr><th>Eastern hour</th><th class="numeric">TLH</th><th>Scheduled program</th></tr></thead><tbody>${rows.map((row)=>{
+  return `<div class="table-wrap"><table class="hour-table"><thead><tr><th>Eastern hour</th><th class="numeric">TLH</th><th>Scheduled program(s)</th></tr></thead><tbody>${rows.map((row)=>{
     const hour=Number(String(row.schedule_hour || "00").slice(0,2));
-    const programs=programsForExactHour(dayEntries,hour);
-    return `<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td>${programs.length ? programs.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("") : "—"}</td></tr>`;
+    const items=scheduleItemsForExactHour(dayEntries,hour);
+    return `<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td>${items.length ? items.map((item)=>`<span class="program-line">${escapeHtml(formatHourlyScheduleItem(item))}</span>`).join("") : "—"}</td></tr>`;
   }).join("")}</tbody></table></div>`;
 }
 
@@ -1444,28 +1475,6 @@ function daySeriesKeyForDate(dateString) {
   return Number.isNaN(date.getTime()) ? "all" : keys[date.getUTCDay()];
 }
 
-function newsletterMinutes(value) {
-  const match=String(value || "").match(/^(\d{1,2}):(\d{2})/);
-  return match ? Number(match[1])*60+Number(match[2]) : null;
-}
-
-function newsletterEntryHourDayOffset(entry,hour) {
-  const start=newsletterMinutes(entry.start_time);
-  const rawEnd=newsletterMinutes(entry.end_time);
-  if(start===null || rawEnd===null || start===rawEnd) return null;
-  const wraps=rawEnd<start;
-  const end=wraps ? rawEnd+1440 : rawEnd;
-  const hourStart=Number(hour)*60;
-  const hourEnd=hourStart+60;
-  if(start<hourEnd && end>hourStart) return 0;
-  if(wraps) {
-    const shiftedStart=hourStart+1440;
-    const shiftedEnd=hourEnd+1440;
-    if(start<shiftedEnd && end>shiftedStart) return 1;
-  }
-  return null;
-}
-
 async function loadTrendScheduleEvidence(range) {
   const key=`${range?.startDate || ""}|${range?.endDate || ""}`;
   if(trendScheduleEvidenceCache.has(key)) return trendScheduleEvidenceCache.get(key);
@@ -1478,36 +1487,87 @@ async function loadTrendScheduleEvidence(range) {
   return promise;
 }
 
-function conciseScheduleContext(entries,{hour,startDate,endDate,daySeriesKey="all"}={}) {
-  if(!Array.isArray(entries) || !entries.length || !startDate || !endDate) return "";
-  const exact=(entries || []).filter((entry)=>{
-    if(entry.entry_type!=="dated_override" || !entry.specific_date) return false;
-    if(entry.specific_date<startDate || entry.specific_date>endDate) return false;
-    const date=new Date(`${entry.specific_date}T12:00:00Z`);
-    if(!weekdayMatchesSeriesKey(date.getUTCDay(),daySeriesKey)) return false;
-    return newsletterEntryHourDayOffset(entry,hour)!==null;
+async function loadHourlyScheduleContext(range) {
+  const key=`${range?.startDate || ""}|${range?.endDate || ""}`;
+  if(trendHourlyScheduleCache.has(key)) return trendHourlyScheduleCache.get(key);
+  const promise=Promise.all([
+    loadStreamGuysHourly(range),
+    loadTrendScheduleEvidence(range)
+  ]).then(([rows,scheduleEvidence])=>{
+    const scheduledRows=attachScheduleProgramsToHourlyRows(rows,scheduleEvidence);
+    const rowsByHour=new Map();
+    const rowsByProgram=new Map();
+    scheduledRows.forEach((row)=>{
+      const hour=String(row.schedule_hour || "").slice(0,2);
+      if(hour) {
+        if(!rowsByHour.has(hour)) rowsByHour.set(hour,[]);
+        rowsByHour.get(hour).push(row);
+      }
+      (row.scheduled_programs || []).forEach((program)=>{
+        if(!rowsByProgram.has(program)) rowsByProgram.set(program,[]);
+        rowsByProgram.get(program).push(row);
+      });
+    });
+    return {
+      rows:scheduledRows,
+      rowsByHour,
+      rowsByProgram,
+      scheduleEvidence,
+      programNames:scheduledProgramNames(scheduledRows),
+      scheduleContextCache:new Map()
+    };
+  }).catch((error)=>{
+    trendHourlyScheduleCache.delete(key);
+    throw error;
   });
-  const source=exact.length ? exact : (entries || []).filter((entry)=>{
-    if(entry.entry_type!=="monthly_grid" || !entry.issue_month) return false;
-    const issueMonth=String(entry.issue_month).slice(0,7);
-    if(issueMonth<String(startDate).slice(0,7) || issueMonth>String(endDate).slice(0,7)) return false;
-    const offset=newsletterEntryHourDayOffset(entry,hour);
-    if(offset===null) return false;
-    const weekday=(Number(entry.weekday)+offset)%7;
-    return weekdayMatchesSeriesKey(weekday,daySeriesKey);
-  });
-  const titles=source.map((entry)=>String(entry.program_title || "").trim()).filter(Boolean);
-  if(!titles.length) return "";
-  const counts=new Map();
-  titles.forEach((title)=>counts.set(title,(counts.get(title)||0)+1));
-  const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
-  if(ranked.length===1) return ranked[0][0];
-  if(ranked[0][1]/titles.length>=0.7) return `${ranked[0][0]} · dominant`;
-  if(ranked.length<=3) return ranked.map(([title])=>title).join(" / ");
-  return `${ranked.slice(0,3).map(([title])=>title).join(" / ")} + ${ranked.length-3} more`;
+  trendHourlyScheduleCache.set(key,promise);
+  if(trendHourlyScheduleCache.size>6) {
+    const oldest=trendHourlyScheduleCache.keys().next().value;
+    trendHourlyScheduleCache.delete(oldest);
+  }
+  return promise;
 }
 
-function profilePointTooltip(point,item,value,scheduleEntries) {
+function hourlyScheduleItems(context,{hour,startDate,endDate,daySeriesKey="all"}={}) {
+  if(!context || !startDate || !endDate) return [];
+  const cacheKey=`${hour}|${startDate}|${endDate}|${daySeriesKey}`;
+  if(context.scheduleContextCache?.has(cacheKey)) return context.scheduleContextCache.get(cacheKey);
+  const seen=new Set();
+  const items=[];
+  const hourKey=String(Number(hour)).padStart(2,"0");
+  (context.rowsByHour?.get(hourKey) || []).forEach((row)=>{
+    if(row.schedule_date<startDate || row.schedule_date>endDate) return;
+    const date=new Date(`${row.schedule_date}T12:00:00Z`);
+    if(Number.isNaN(date.getTime()) || !weekdayMatchesSeriesKey(date.getUTCDay(),daySeriesKey)) return;
+    (row.scheduled_items || []).forEach((item)=>{
+      const key=`${item.start}|${item.end}|${item.program}`;
+      if(seen.has(key)) return;
+      seen.add(key);
+      items.push(item);
+    });
+  });
+  items.sort((a,b)=>
+    String(a.start).localeCompare(String(b.start)) ||
+    String(a.end).localeCompare(String(b.end)) ||
+    String(a.program).localeCompare(String(b.program))
+  );
+  context.scheduleContextCache?.set(cacheKey,items);
+  return items;
+}
+
+function scheduleTooltipRows(context,options) {
+  const items=hourlyScheduleItems(context,options);
+  if(!items.length) {
+    return [{label:"Scheduled",value:"No schedule title is loaded for this period/hour.",delta:""}];
+  }
+  return items.map((item,index)=>({
+    label:index===0 ? "Scheduled" : "",
+    value:formatHourlyScheduleItem(item),
+    delta:""
+  }));
+}
+
+function profilePointTooltip(point,item,value,hourlyContext) {
   const rows=[{
     tone:"station",
     label:"Average TLH",
@@ -1517,17 +1577,12 @@ function profilePointTooltip(point,item,value,scheduleEntries) {
   const daySeriesKey=item.daySeriesKey || state.trendDaySeries[0] || "all";
   const startDate=item.startDate || state.startDate;
   const endDate=item.endDate || state.endDate;
-  const schedule=conciseScheduleContext(scheduleEntries,{
+  rows.push(...scheduleTooltipRows(hourlyContext,{
     hour:point.hour,
     startDate,
     endDate,
     daySeriesKey
-  });
-  rows.push({
-    label:"Scheduled",
-    value:schedule || "No schedule title is loaded for this period/hour.",
-    delta:""
-  });
+  }));
   const periodLabel=item.startDate && item.endDate ? item.label : "selected range";
   return {
     title:`${item.label} · ${point.label}`,
@@ -1672,14 +1727,11 @@ async function renderTimeOfDayTrend(requestId) {
   setTrendControlAvailability({ programCapable:false, timeOfDayProgramCapable:false });
   refreshTrendControlState();
 
-  const [rows,scheduleEvidence]=await Promise.all([
-    loadStreamGuysHourly(selectedRange()),
-    loadTrendScheduleEvidence(selectedRange())
-  ]);
+  const hourlyContext=await loadHourlyScheduleContext(selectedRange());
   if(requestId!==trendRequestId) return;
-  const scheduleEntries=scheduleEvidence?.entries || [];
-  const scheduledRows=attachScheduleProgramsToHourlyRows(rows,scheduleEvidence);
-  const programNames=scheduledProgramNames(scheduledRows);
+  const rows=hourlyContext.rows;
+  const scheduledRows=hourlyContext.rows;
+  const programNames=hourlyContext.programNames;
   setProgramFilterOptions(programNames,{allLabel:"All scheduled programs"});
   setTrendControlAvailability({ programCapable:false, timeOfDayProgramCapable:programNames.length>0 });
   refreshTrendControlState();
@@ -1691,7 +1743,7 @@ async function renderTimeOfDayTrend(requestId) {
   if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
   const programFiltered=state.trendProgram
-    ? scheduledRows.filter((row)=>(row.scheduled_programs || []).includes(state.trendProgram))
+    ? (hourlyContext.rowsByProgram.get(state.trendProgram) || [])
     : scheduledRows;
   const notableFiltered=programFiltered.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
   const filtered=notableFiltered.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
@@ -1754,23 +1806,18 @@ async function renderTimeOfDayTrend(requestId) {
       connectGaps:true,
       tooltipModel:(point,item,value)=>{
         const itemStats=seriesStats.find((candidate)=>candidate.key===item.daySeriesKey);
-        const schedule=conciseScheduleContext(scheduleEntries,{
-          hour:hourNumber,
-          startDate:point.date,
-          endDate:point.date,
-          daySeriesKey:item.daySeriesKey
-        });
         const rows=[{
           tone:"station",
           label:item.label,
           value:formatMetric(value,"hours"),
           delta:itemStats?.median===null || itemStats?.median===undefined ? "" : `${signedPercent(percentFromMedian(value,itemStats.median))} vs ${item.label} median`
         }];
-        rows.push({
-          label:"Scheduled",
-          value:schedule || "No schedule title is loaded for this date/hour.",
-          delta:""
-        });
+        rows.push(...scheduleTooltipRows(hourlyContext,{
+          hour:hourNumber,
+          startDate:point.date,
+          endDate:point.date,
+          daySeriesKey:item.daySeriesKey
+        }));
         return {
           title:`${formatDayDate(point.date)} · ${hourLabel(hourNumber)}`,
           rows,
@@ -1798,8 +1845,8 @@ async function renderTimeOfDayTrend(requestId) {
       <tbody>${tableRows.map((row)=>{
         const meta=selectedSeries.find((item)=>matchesWeekpart(row.schedule_date,item.key));
         const stats=seriesStats.find((item)=>item.key===meta?.key);
-        const programs=(row.scheduled_programs || []).length
-          ? row.scheduled_programs.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("")
+        const programs=(row.scheduled_items || []).length
+          ? row.scheduled_items.map((item)=>`<span class="program-line">${escapeHtml(formatHourlyScheduleItem(item))}</span>`).join("")
           : "—";
         return `<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td>${escapeHtml(meta?.label || "Selected")}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${stats?.median===null || stats?.median===undefined ? "—" : escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,stats.median)))}</td><td>${programs}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`;
       }).join("")}</tbody>
@@ -1836,7 +1883,7 @@ async function renderTimeOfDayTrend(requestId) {
       yTickStep:20,
       yTickFormat:"integer",
       labelEvery:2,
-      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,scheduleEntries),
+      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,hourlyContext),
       onPointClick:(point,item)=>drillIntoTimeOfDayPoint(point,item)
     });
     renderTrendDataTable("",0);
@@ -1865,7 +1912,7 @@ async function renderTimeOfDayTrend(requestId) {
       yTickStep:20,
       yTickFormat:"integer",
       labelEvery:2,
-      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,scheduleEntries),
+      tooltipModel:(point,item,value)=>profilePointTooltip(point,item,value,hourlyContext),
       onPointClick:(point,item)=>drillIntoTimeOfDayPoint(point,item)
     });
     renderTrendDataTable("",0);
@@ -2564,6 +2611,8 @@ async function processFiles(fileList) {
       }
     }
     invalidateDataCache();
+    trendHourlyScheduleCache.clear();
+    trendScheduleEvidenceCache.clear();
     takeawayRangeKey="";
     importRangeChange=await syncAvailableDataRange();
     await renderProgramFilterOptions();
@@ -2685,6 +2734,7 @@ function bindEvents() {
     if(stored===null) return;
     invalidateDataCache();
     trendScheduleEvidenceCache.clear();
+    trendHourlyScheduleCache.clear();
     takeawayRangeKey="";
     await withBusy(async ()=>{
       await syncAvailableDataRange();
@@ -2974,6 +3024,8 @@ function bindEvents() {
         reviewed_at: new Date().toISOString()
       });
       invalidateDataCache();
+      trendHourlyScheduleCache.clear();
+      trendScheduleEvidenceCache.clear();
       takeawayRangeKey="";
       await Promise.all([renderAnomalies(), refreshAnalysisViews()]);
     } catch (error) {

@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {}
 };
 
-const { buildObservationExclusionContext, collapseOpenAnomalies, selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
+const { buildObservationExclusionContext, collapseOpenAnomalies, selectAvailableObservationRange, selectLongestBreakdownRows, splitIsoRangeByMonth } = await import("../src/data.js");
 
 test("range profiles prefer the longest available source period", () => {
   const rows = [
@@ -68,13 +68,53 @@ test("excluded anomaly periods follow logical source and grain across overlappin
 test("newsletter dated overrides are selected by their actual date, not only the newsletter issue month", async () => {
   const fs=await import("node:fs/promises");
   const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
-  assert.match(data,/entry_type:"eq\.dated_override"/);
-  assert.match(data,/specific_date",`gte\.\$\{range\.startDate\}`/);
-  assert.match(data,/specific_date",`lte\.\$\{range\.endDate\}`/);
-  assert.match(data,/missingSourceIds/);
-  assert.match(data,/entries:\[\.\.\.monthlyBatches\.flat\(\),\.\.\.datedEntries\]/);
+  const start=data.indexOf("export async function loadNewsletterScheduleEvidence");
+  const end=data.indexOf("function importSourceKey",start);
+  const body=data.slice(start,end);
+  assert.match(body,/entry_type:"eq\.dated_override"/);
+  assert.match(body,/specific_date",`gte\.\$\{range\.startDate\}`/);
+  assert.match(body,/specific_date",`lte\.\$\{range\.endDate\}`/);
+  assert.match(body,/missingSourceIds/);
+  assert.match(body,/selectPagedRows\("wnmufm_schedule_newsletter_entries",monthlyParams/);
+  assert.match(body,/entries:\[\.\.\.monthlyEntries,\.\.\.datedEntries\]/);
+  assert.doesNotMatch(body,/Promise\.all\(monthSources\.map/);
 });
 
+
+test("StreamGuys hourly ranges split into month-sized chunks for bounded concurrent loading", () => {
+  assert.deepEqual(splitIsoRangeByMonth("2025-12-29","2026-02-03"),[
+    {startDate:"2025-12-29",endDate:"2025-12-31"},
+    {startDate:"2026-01-01",endDate:"2026-01-31"},
+    {startDate:"2026-02-01",endDate:"2026-02-03"}
+  ]);
+  assert.deepEqual(splitIsoRangeByMonth("2026-02-03","2026-02-03"),[
+    {startDate:"2026-02-03",endDate:"2026-02-03"}
+  ]);
+});
+
+test("StreamGuys month chunks query the indexed source date and trim back to exact schedule dates", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  const start=data.indexOf("async function loadStreamGuysHourlyChunked");
+  const end=data.indexOf("export async function loadStreamGuysHourly",start);
+  const body=data.slice(start,end);
+  assert.match(body,/source_date/);
+  assert.match(body,/shiftIsoDate\(chunk\.startDate,-1\)/);
+  assert.match(body,/shiftIsoDate\(chunk\.endDate,1\)/);
+  assert.match(body,/row\.schedule_date>=chunk\.startDate && row\.schedule_date<=chunk\.endDate/);
+  assert.doesNotMatch(body,/chunkParams\.set\("schedule_date"/);
+});
+
+test("summary latest values use one multi-metric query instead of one request per card", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  const start=data.indexOf("export async function loadLatestValues");
+  const end=data.indexOf("export async function loadDateObservations",start);
+  const body=data.slice(start,end);
+  assert.match(body,/metric_key: \`in\.\(/);
+  assert.doesNotMatch(body,/Promise\.all\(metricKeys\.map/);
+  assert.match(body,/latest-values\|/);
+});
 
 test("open anomaly rows collapse only when logical key and grain both match", () => {
   const collapsed=collapseOpenAnomalies([

@@ -51,7 +51,7 @@ test("Trend Explorer time-of-day mode is shareable and wired to StreamGuys hourl
   assert.match(html,/data-trend-view="month"/);
   assert.match(html,/data-trend-view="timeofday"/);
   assert.match(app,/renderTimeOfDayTrend/);
-  assert.match(app,/loadStreamGuysHourly\(selectedRange\(\)\)/);
+  assert.match(app,/loadHourlyScheduleContext\(selectedRange\(\)\)/);
   assert.match(app,/StreamGuys TLH by time of day/);
   assert.match(html,/Hour focus/);
   assert.match(html,/id="trendQuickRangeButtons"/);
@@ -68,7 +68,7 @@ test("Time-of-Day profile controls expose day series, schedule-aware drilldown a
   assert.match(html,/id="trendProfileCompareSelect"/);
   assert.match(html,/id="trendAudioDetailButton"/);
   assert.match(app,/buildDayComparisonSeries/);
-  assert.match(app,/conciseScheduleContext/);
+  assert.match(app,/scheduleTooltipRows/);
   assert.match(app,/profilePointTooltip/);
   assert.match(app,/drillIntoTimeOfDayPoint/);
   assert.match(app,/audio-episodes/);
@@ -82,9 +82,23 @@ test("Time-of-Day program filtering uses stored schedule titles while keeping TL
   assert.match(app,/newsletterScheduleForDate/);
   assert.match(app,/All scheduled programs/);
   assert.match(app,/scheduled_programs/);
+  assert.match(app,/scheduled_items/);
+  assert.match(app,/scheduleItemsForExactHour/);
+  assert.match(app,/formatHourlyScheduleItem/);
   assert.match(app,/Scheduled program\(s\)/);
   assert.match(app,/whole clock-hour total, not a program-specific audience count/);
+  assert.doesNotMatch(app,/conciseScheduleContext|· dominant|ranked\.length/);
   assert.doesNotMatch(app,/Program filtering is not available for hourly TLH/);
+});
+
+test("Time-of-Day caches joined schedule/hour data and indexes it by hour and program", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/const trendHourlyScheduleCache = new Map\(\)/);
+  assert.match(app,/rowsByHour=new Map\(\)/);
+  assert.match(app,/rowsByProgram=new Map\(\)/);
+  assert.match(app,/rowsByProgram\.get\(state\.trendProgram\)/);
+  assert.match(app,/scheduleContextCache:new Map\(\)/);
 });
 
 test("shareable view parsing distinguishes absent values from explicit empty values", () => {
