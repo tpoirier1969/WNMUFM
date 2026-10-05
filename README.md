@@ -72,3 +72,4 @@ Cloudflare Pages is live at `https://wnmufm.pages.dev/` without replacing GitHub
 
 
 Preview newsletter schedule evidence now feeds Scheduling Takeaways directly. Consecutive known monthly grids surface program/slot changes with monthly streaming movement as context, while explicitly dated newsletter listings can use daily same-weekday streaming context when that grain exists. The integration queries WNMU-FM schedule tables dynamically, so additional newsletter months participate without code changes.
+- Performance and UI cleanup: analytics queries are cached per range until data changes, expensive modules load only when their tab is active, Trend Explorer renders before secondary overview cards, and Time-of-Day comparison checkboxes/series colors are rendered explicitly for reliable weekday/weekend comparisons.

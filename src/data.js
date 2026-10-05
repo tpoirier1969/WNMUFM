@@ -5,6 +5,17 @@ import { filterSignature } from "./reports.js";
 const DEFAULT_FILTER_SIGNATURE = "{}";
 let contextPromise = null;
 let importsPromise = null;
+const observationQueryCache = new Map();
+
+function cachedQuery(key, loader) {
+  if(observationQueryCache.has(key)) return observationQueryCache.get(key);
+  const promise=Promise.resolve().then(loader).catch((error)=>{
+    observationQueryCache.delete(key);
+    throw error;
+  });
+  observationQueryCache.set(key,promise);
+  return promise;
+}
 
 function applyDateRange(params, range = {}) {
   if (range?.startDate) params.set("period_start", `gte.${range.startDate}`);
@@ -15,6 +26,7 @@ function applyDateRange(params, range = {}) {
 export function invalidateDataCache() {
   contextPromise = null;
   importsPromise = null;
+  observationQueryCache.clear();
 }
 
 export async function loadImports() {
@@ -275,67 +287,76 @@ export async function loadAvailableDataRange() {
 }
 
 export async function loadTimeSeriesRange(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE) {
-  const context = await loadAnalysisContext();
-  const query = (order) => new URLSearchParams({
-    select: "period_start,period_end,station_value,source_import_id",
-    metric_key: `eq.${metricKey}`,
-    grain: `eq.${grain}`,
-    dimension_type: "eq.",
-    filter_signature: `eq.${filterSignature}`,
-    order,
-    limit: "500"
-  }).toString();
+  const cacheKey=`time-series-range|${metricKey}|${grain}|${filterSignature}`;
+  return cachedQuery(cacheKey,async ()=>{
+    const context = await loadAnalysisContext();
+    const query = (order) => new URLSearchParams({
+      select: "period_start,period_end,station_value,source_import_id",
+      metric_key: `eq.${metricKey}`,
+      grain: `eq.${grain}`,
+      dimension_type: "eq.",
+      filter_signature: `eq.${filterSignature}`,
+      order,
+      limit: "500"
+    }).toString();
 
-  const [earlyRows, lateRows] = await Promise.all([
-    selectRows("wnmufm_analytics_observations", query("period_start.asc")),
-    selectRows("wnmufm_analytics_observations", query("period_end.desc"))
-  ]);
-  const usable = [...earlyRows,...lateRows].filter((row) => rowIsUsable(row, context));
-  return selectAvailableObservationRange(usable);
+    const [earlyRows, lateRows] = await Promise.all([
+      selectRows("wnmufm_analytics_observations", query("period_start.asc")),
+      selectRows("wnmufm_analytics_observations", query("period_end.desc"))
+    ]);
+    const usable = [...earlyRows,...lateRows].filter((row) => rowIsUsable(row, context));
+    return selectAvailableObservationRange(usable);
+  });
 }
 
 export async function loadTimeSeries(metricKey, grain = "day", filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
-  const params = applyDateRange(new URLSearchParams({
-    select: "period_start,period_end,station_value,benchmark_value,benchmark_label,unit,quality_flags,source_import_id",
-    metric_key: `eq.${metricKey}`,
-    grain: `eq.${grain}`,
-    dimension_type: "eq.",
-    filter_signature: `eq.${filterSignature}`,
-    order: "period_start.asc",
-    limit: "1000"
-  }), range);
-  const [rows, context] = await Promise.all([
-    selectRows("wnmufm_analytics_observations", params.toString()),
-    loadAnalysisContext()
-  ]);
-  return rows.filter((row) => rowIsUsable(row, context));
+  const cacheKey=`time-series|${metricKey}|${grain}|${filterSignature}|${range?.startDate || ""}|${range?.endDate || ""}`;
+  return cachedQuery(cacheKey,async ()=>{
+    const params = applyDateRange(new URLSearchParams({
+      select: "period_start,period_end,station_value,benchmark_value,benchmark_label,unit,quality_flags,source_import_id",
+      metric_key: `eq.${metricKey}`,
+      grain: `eq.${grain}`,
+      dimension_type: "eq.",
+      filter_signature: `eq.${filterSignature}`,
+      order: "period_start.asc",
+      limit: "1000"
+    }), range);
+    const [rows, context] = await Promise.all([
+      selectRows("wnmufm_analytics_observations", params.toString()),
+      loadAnalysisContext()
+    ]);
+    return rows.filter((row) => rowIsUsable(row, context));
+  });
 }
 
 export async function loadLatestBreakdown(metricKey, dimensionType, filterSignature = DEFAULT_FILTER_SIGNATURE, range = {}) {
-  const params = applyDateRange(new URLSearchParams({
-    select: "dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
-    metric_key: `eq.${metricKey}`,
-    dimension_type: `eq.${dimensionType}`,
-    filter_signature: `eq.${filterSignature}`,
-    order: "period_end.desc",
-    limit: "1000"
-  }), range);
-  const [rows, context] = await Promise.all([
-    selectRows("wnmufm_analytics_observations", params.toString()),
-    loadAnalysisContext()
-  ]);
-  const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
-  if (!usable.length) return [];
+  const cacheKey=`latest-breakdown|${metricKey}|${dimensionType}|${filterSignature}|${range?.startDate || ""}|${range?.endDate || ""}`;
+  return cachedQuery(cacheKey,async ()=>{
+    const params = applyDateRange(new URLSearchParams({
+      select: "dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
+      metric_key: `eq.${metricKey}`,
+      dimension_type: `eq.${dimensionType}`,
+      filter_signature: `eq.${filterSignature}`,
+      order: "period_end.desc",
+      limit: "1000"
+    }), range);
+    const [rows, context] = await Promise.all([
+      selectRows("wnmufm_analytics_observations", params.toString()),
+      loadAnalysisContext()
+    ]);
+    const usable = rows.filter((row) => breakdownRowIsUsable(row, context));
+    if (!usable.length) return [];
 
-  const complete = usable.filter((row) => periodIsComplete(
-    row.period_end,
-    context.runDateByImport.get(Number(row.source_import_id))
-  ));
-  const pool = complete.length ? complete : usable;
-  const latestEnd = pool.reduce((latest, row) => !latest || row.period_end > latest ? row.period_end : latest, null);
-  const latest = pool.filter((row) => row.period_end === latestEnd);
-  const latestStart = latest.reduce((earliest, row) => !earliest || row.period_start < earliest ? row.period_start : earliest, null);
-  return latest.filter((row) => row.period_start === latestStart).map((row) => withBreakdownStatus(row, context));
+    const complete = usable.filter((row) => periodIsComplete(
+      row.period_end,
+      context.runDateByImport.get(Number(row.source_import_id))
+    ));
+    const pool = complete.length ? complete : usable;
+    const latestEnd = pool.reduce((latest, row) => !latest || row.period_end > latest ? row.period_end : latest, null);
+    const latest = pool.filter((row) => row.period_end === latestEnd);
+    const latestStart = latest.reduce((earliest, row) => !earliest || row.period_start < earliest ? row.period_start : earliest, null);
+    return latest.filter((row) => row.period_start === latestStart).map((row) => withBreakdownStatus(row, context));
+  });
 }
 
 
@@ -473,21 +494,24 @@ export async function loadDateObservations(date) {
 
 
 export async function loadStreamGuysHourly(range = {}) {
-  const params = new URLSearchParams({
-    select: "source_import_id,source_csv,source_row,source_date,source_hour,source_timezone_label,schedule_timezone,offset_hours,alignment_status,schedule_date,schedule_hour,tlh_hours,unit,quality_flags",
-    order: "schedule_date.asc,schedule_hour.asc"
+  const cacheKey=`streamguys-hourly|${range?.startDate || ""}|${range?.endDate || ""}`;
+  return cachedQuery(cacheKey,async ()=>{
+    const params = new URLSearchParams({
+      select: "source_import_id,source_csv,source_row,source_date,source_hour,source_timezone_label,schedule_timezone,offset_hours,alignment_status,schedule_date,schedule_hour,tlh_hours,unit,quality_flags",
+      order: "schedule_date.asc,schedule_hour.asc"
+    });
+    if (range?.startDate) params.set("schedule_date", `gte.${range.startDate}`);
+    if (range?.endDate) params.append("schedule_date", `lte.${range.endDate}`);
+
+    const [rows, context] = await Promise.all([
+      selectPagedRows("wnmufm_streamguys_hourly_aligned", params, { pageSize:1000, maxRows:30000 }),
+      loadAnalysisContext()
+    ]);
+
+    return rows.filter((row) => rowIsUsable({
+      source_import_id: row.source_import_id,
+      period_start: row.source_date,
+      period_end: row.source_date
+    }, context));
   });
-  if (range?.startDate) params.set("schedule_date", `gte.${range.startDate}`);
-  if (range?.endDate) params.append("schedule_date", `lte.${range.endDate}`);
-
-  const [rows, context] = await Promise.all([
-    selectPagedRows("wnmufm_streamguys_hourly_aligned", params, { pageSize:1000, maxRows:30000 }),
-    loadAnalysisContext()
-  ]);
-
-  return rows.filter((row) => rowIsUsable({
-    source_import_id: row.source_import_id,
-    period_start: row.source_date,
-    period_end: row.source_date
-  }, context));
 }

@@ -738,6 +738,22 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
 }
 
 
+function chartSeriesColor(index) {
+  const colors=[
+    "var(--brand)",
+    "var(--accent)",
+    "var(--success)",
+    "#7655a6",
+    "#c15b2d",
+    "#2f7e7e",
+    "#9a3f73",
+    "#66722c",
+    "#8b6f47",
+    "#4d6fa9"
+  ];
+  return colors[Math.abs(Number(index) || 0)%colors.length];
+}
+
 export function renderMultiLineChart(container, points, options = {}) {
   clear(container);
   const series=Array.isArray(options.series) ? options.series : [];
@@ -783,7 +799,7 @@ export function renderMultiLineChart(container, points, options = {}) {
     const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%10 : index%10;
     const est=Math.max(110,String(item.label||item.key).length*7+42);
     if(legendX>margin.left && legendX+est>width-margin.right){legendX=margin.left;legendY+=18;}
-    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+colorIndex}));
+    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+colorIndex,stroke:chartSeriesColor(colorIndex)}));
     const label=svgElement("text",{x:legendX+26,y:legendY+4,class:"chart-legend-label"});
     label.textContent=item.label||item.key; svg.appendChild(label); legendX+=est;
   });
@@ -797,7 +813,7 @@ export function renderMultiLineChart(container, points, options = {}) {
       path+=(drawing?" L":"M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
       drawing=true;
     });
-    if(path) svg.appendChild(svgElement("path",{d:path,class:"chart-metric-line chart-series-"+colorIndex}));
+    if(path) svg.appendChild(svgElement("path",{d:path,class:"chart-metric-line chart-series-"+colorIndex,stroke:chartSeriesColor(colorIndex)}));
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
       if(value===null) return;
@@ -808,7 +824,9 @@ export function renderMultiLineChart(container, points, options = {}) {
         r:2.3,
         class:"chart-metric-point chart-series-"+colorIndex+(clickable ? " clickable" : ""),
         tabindex:"0",
-        role:clickable ? "button" : "img"
+        role:clickable ? "button" : "img",
+        fill:chartSeriesColor(colorIndex),
+        stroke:chartSeriesColor(colorIndex)
       });
       const model=typeof options.tooltipModel==="function"
         ? options.tooltipModel(point,item,value,index)

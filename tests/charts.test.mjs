@@ -174,3 +174,16 @@ test("chart zoom provides an actual keyboard selection path", async () => {
   assert.match(chartSource,/keyboardStartIndex/);
   assert.match(chartSource,/onZoomSelect\(points\[startIndex\],points\[endIndex\]/);
 });
+
+
+test("Time-of-Day comparison series use explicit colors and compact checkbox controls", async () => {
+  const fs=await import("node:fs/promises");
+  const [charts,css]=await Promise.all([
+    fs.readFile(new URL("../src/charts.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../styles.css",import.meta.url),"utf8")
+  ]);
+  assert.match(charts,/function chartSeriesColor/);
+  assert.match(charts,/stroke:chartSeriesColor\(colorIndex\)/);
+  assert.match(charts,/fill:chartSeriesColor\(colorIndex\)/);
+  assert.match(css,/\.day-series-option input\[type="checkbox"\]\s*\{[^}]*width:14px;[^}]*height:14px;[^}]*min-height:0;/s);
+});
