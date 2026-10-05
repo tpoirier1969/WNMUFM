@@ -801,11 +801,31 @@ export function renderMultiLineChart(container, points, options = {}) {
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
       if(value===null) return;
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(value),r:2.3,class:"chart-metric-point chart-series-"+colorIndex,tabindex:"0",role:"img"});
-      bindChartTooltip(container,circle,{
-        title:point.label,
-        rows:[{label:item.label||item.key,value:options.formatValue?options.formatValue(value):compactNumber(value),delta:""}]
+      const clickable=typeof options.onPointClick==="function";
+      const circle=svgElement("circle",{
+        cx:xFor(index),
+        cy:yFor(value),
+        r:2.3,
+        class:"chart-metric-point chart-series-"+colorIndex+(clickable ? " clickable" : ""),
+        tabindex:"0",
+        role:clickable ? "button" : "img"
       });
+      const model=typeof options.tooltipModel==="function"
+        ? options.tooltipModel(point,item,value,index)
+        : {
+            title:point.label,
+            rows:[{label:item.label||item.key,value:options.formatValue?options.formatValue(value):compactNumber(value),delta:""}]
+          };
+      bindChartTooltip(container,circle,model);
+      if(clickable) {
+        const activate=(event)=>{
+          if(event.type==="keydown" && event.key!=="Enter" && event.key!==" ") return;
+          if(event.type==="keydown") event.preventDefault();
+          options.onPointClick(point,item,value,index);
+        };
+        circle.addEventListener("click",activate);
+        circle.addEventListener("keydown",activate);
+      }
       svg.appendChild(circle);
     });
   });
