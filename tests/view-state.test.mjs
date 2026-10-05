@@ -9,6 +9,7 @@ test("shareable view state round-trips through the query string", () => {
     endDate:"2026-09-20",
     rangeMode:"custom",
     trendMetrics:["streaming.listeners","streaming.listener_hours"],
+    trendMode:"timeofday",
     trendGrain:"week",
     trendWeekpart:"weekend",
     trendNotable:"exclude",
@@ -26,6 +27,25 @@ test("shareable view state round-trips through the query string", () => {
   const search = buildViewSearch(original);
   const parsed = parseViewState(search);
   assert.deepEqual(parsed, original);
+});
+
+test("Trend Explorer time-of-day mode is shareable and wired to StreamGuys hourly data", async () => {
+  const search=buildViewSearch({
+    activeTab:"overview",
+    trendMode:"timeofday",
+    startDate:"2025-09-01",
+    endDate:"2026-09-01"
+  });
+  assert.equal(parseViewState(search).trendMode,"timeofday");
+
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  const html=await fs.readFile(new URL("../index.html",import.meta.url),"utf8");
+  assert.match(html,/data-trend-mode="overtime"/);
+  assert.match(html,/data-trend-mode="timeofday"/);
+  assert.match(app,/renderTimeOfDayTrend/);
+  assert.match(app,/loadStreamGuysHourly\(selectedRange\(\)\)/);
+  assert.match(app,/StreamGuys TLH by time of day/);
 });
 
 test("shareable view parsing distinguishes absent values from explicit empty values", () => {
