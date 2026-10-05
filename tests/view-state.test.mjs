@@ -87,7 +87,7 @@ test("Time-of-Day program filtering uses stored schedule titles while keeping TL
   assert.match(app,/formatHourlyScheduleItem/);
   assert.match(app,/Scheduled program\(s\)/);
   assert.match(app,/whole clock-hour total, not a program-specific audience count/);
-  assert.doesNotMatch(app,/dominant|more`/);
+  assert.doesNotMatch(app,/conciseScheduleContext|· dominant|ranked\.length/);
   assert.doesNotMatch(app,/Program filtering is not available for hourly TLH/);
 });
 
