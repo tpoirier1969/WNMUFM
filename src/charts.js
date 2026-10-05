@@ -780,7 +780,7 @@ export function renderMultiLineChart(container, points, options = {}) {
 
   let legendX=margin.left, legendY=20;
   series.forEach((item,index)=>{
-    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%8 : index%8;
+    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%10 : index%10;
     const est=Math.max(110,String(item.label||item.key).length*7+42);
     if(legendX>margin.left && legendX+est>width-margin.right){legendX=margin.left;legendY+=18;}
     svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+colorIndex}));
@@ -789,7 +789,7 @@ export function renderMultiLineChart(container, points, options = {}) {
   });
 
   series.forEach((item,seriesIndex)=>{
-    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%8 : seriesIndex%8;
+    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%10 : seriesIndex%10;
     let path="",drawing=false;
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
