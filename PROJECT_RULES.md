@@ -134,3 +134,5 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 94. Time-of-Day multi-series comparisons must visually distinguish every selected Days Included series. Checkbox controls must override global form sizing, and chart line/point colors should be explicit enough that a cached or reordered stylesheet cannot collapse a comparison into one apparent series.
 
 95. In Time-of-Day, Days Included selections remain separate analytical series in both 24-hour profile and individual Hour focus views. Do not collapse multiple checked groups into one union line. Series colors must match their control accents, and checkbox indicators must render at a fixed browser-independent size.
+
+96. Time-of-Day node tooltips must not silently suppress schedule context merely because an hour contains several titles. Show one dominant title when appropriate; otherwise show up to three distinct titles plus a compact remainder count. If no schedule title is loaded for that period/hour, say so explicitly. Every profile/focused-hour tooltip must expose a visible drill action that narrows Analysis Period to the point period/date and Hour focus to that clock hour.
