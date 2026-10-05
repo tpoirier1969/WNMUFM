@@ -364,6 +364,28 @@ function attachHorizontalZoom(svg, points, { width, margin, plotWidth, plotHeigh
   svg.appendChild(hitbox);
 }
 
+function axisTicks(min,max,step=null) {
+  if(Number.isFinite(Number(step)) && Number(step)>0) {
+    const tickStep=Number(step);
+    const start=Math.floor(min/tickStep)*tickStep;
+    const end=Math.ceil(max/tickStep)*tickStep;
+    const ticks=[];
+    for(let value=start; value<=end+tickStep*0.001; value+=tickStep) ticks.push(value);
+    return {min:start,max:end,ticks};
+  }
+  const ticks=Array.from({length:5},(_,i)=>max-(max-min)*(i/4));
+  return {min,max,ticks};
+}
+
+function addYAxisLabel(svg, text, margin, plotHeight) {
+  if(!text) return;
+  const x=18;
+  const y=margin.top+plotHeight/2;
+  const label=svgElement("text",{x,y,"text-anchor":"middle",class:"chart-axis-title",transform:`rotate(-90 ${x} ${y})`});
+  label.textContent=text;
+  svg.appendChild(label);
+}
+
 export function renderLineChart(container, points, options = {}) {
   clear(container);
   if (!points?.length) {
@@ -383,6 +405,8 @@ export function renderLineChart(container, points, options = {}) {
   let max = Math.max(...values);
   if (min === max) { min = Math.max(0,min-1); max += 1; }
   if (min > 0 && options.zeroBaseline !== false) min = 0;
+  const axis=axisTicks(min,max,options.yTickStep);
+  min=axis.min; max=axis.max;
 
   const svg = svgElement("svg",{
     viewBox:"0 0 " + width + " " + height,
@@ -426,14 +450,14 @@ export function renderLineChart(container, points, options = {}) {
     });
   }
 
-  for(let i=0;i<=4;i+=1) {
-    const fraction=i/4;
-    const y=margin.top+plotHeight*fraction;
-    const value=max-(max-min)*fraction;
+  axis.ticks.forEach((value)=>{
+    const y=yFor(value);
     svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:y,y2:y,class:"chart-grid"}));
     const label=svgElement("text",{x:margin.left-10,y:y+4,"text-anchor":"end",class:"chart-axis-label"});
-    label.textContent=compactNumber(value); svg.appendChild(label);
-  }
+    label.textContent=options.yTickFormat==="integer" ? String(Math.round(value)) : compactNumber(value);
+    svg.appendChild(label);
+  });
+  addYAxisLabel(svg,options.yAxisLabel,margin,plotHeight);
 
   const primaryPath=linePath(points,"value",xFor,yFor);
   if(primaryPath) svg.appendChild(svgElement("path",{d:primaryPath,class:"chart-line"}));
@@ -733,19 +757,26 @@ export function renderMultiLineChart(container, points, options = {}) {
   }
   let min=Math.min(...values), max=Math.max(...values);
   if(min===max){min=Math.max(0,min-1);max+=1;}
-  const pad=Math.max((max-min)*0.08,0.5);
-  min=Math.max(0,min-pad); max+=pad;
+  if(options.zeroBaseline!==false && min>0) min=0;
+  if(!options.yTickStep) {
+    const pad=Math.max((max-min)*0.08,0.5);
+    min=Math.max(0,min-pad); max+=pad;
+  }
+  const axis=axisTicks(min,max,options.yTickStep);
+  min=axis.min; max=axis.max;
 
   const svg=svgElement("svg",{viewBox:`0 0 ${width} ${height}`,role:"img","aria-label":options.ariaLabel||options.title||"Multi-line chart",class:"chart-svg"});
   const xFor=(index)=>margin.left+(points.length===1?plotWidth/2:(index/(points.length-1))*plotWidth);
   const yFor=(value)=>margin.top+((max-Number(value))/(max-min))*plotHeight;
 
-  for(let i=0;i<=4;i+=1){
-    const frac=i/4, y=margin.top+plotHeight*frac, value=max-(max-min)*frac;
+  axis.ticks.forEach((value)=>{
+    const y=yFor(value);
     svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:y,y2:y,class:"chart-grid"}));
     const label=svgElement("text",{x:margin.left-10,y:y+4,"text-anchor":"end",class:"chart-axis-label"});
-    label.textContent=compactNumber(value); svg.appendChild(label);
-  }
+    label.textContent=options.yTickFormat==="integer" ? String(Math.round(value)) : compactNumber(value);
+    svg.appendChild(label);
+  });
+  addYAxisLabel(svg,options.yAxisLabel,margin,plotHeight);
 
   let legendX=margin.left, legendY=20;
   series.forEach((item,index)=>{
