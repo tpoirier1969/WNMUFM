@@ -253,3 +253,20 @@ test("Time-of-Day drill action narrows the period and hour explicitly", async ()
   assert.match(app,/state\.trendHour=String\(Number\(point\.hour\)\)/);
   assert.match(app,/label:`Drill into \$\{periodLabel\} · \$\{point\.label\}`/);
 });
+
+
+test("Schedule picker is bounded by stored Preview and Composer evidence", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,html]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../index.html",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/id="scheduleAnchorDate" type="date"/);
+  assert.match(app,/loadScheduleEvidenceRange/);
+  assert.match(app,/scheduleAvailableRange/);
+  assert.match(app,/scheduleAnchorDate\.min=state\.scheduleAvailableRange\.startDate/);
+  assert.match(app,/scheduleAnchorDate\.max=state\.scheduleAvailableRange\.endDate/);
+  assert.match(app,/function clampScheduleDate/);
+  assert.match(app,/schedulePrevButton\.disabled/);
+  assert.match(app,/scheduleNextButton\.disabled/);
+});
