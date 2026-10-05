@@ -75,6 +75,18 @@ test("Time-of-Day profile controls expose day series, schedule-aware drilldown a
   assert.match(app,/loadLatestBreakdownForImportScope/);
 });
 
+test("Time-of-Day program filtering uses stored schedule titles while keeping TLH hourly", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/attachScheduleProgramsToHourlyRows/);
+  assert.match(app,/newsletterScheduleForDate/);
+  assert.match(app,/All scheduled programs/);
+  assert.match(app,/scheduled_programs/);
+  assert.match(app,/Scheduled program\(s\)/);
+  assert.match(app,/whole clock-hour total, not a program-specific audience count/);
+  assert.doesNotMatch(app,/Program filtering is not available for hourly TLH/);
+});
+
 test("shareable view parsing distinguishes absent values from explicit empty values", () => {
   const parsed = parseViewState("?program=&tab=overview");
   assert.equal(parsed.trendProgram, "");
