@@ -749,14 +749,16 @@ export function renderMultiLineChart(container, points, options = {}) {
 
   let legendX=margin.left, legendY=20;
   series.forEach((item,index)=>{
+    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%8 : index%8;
     const est=Math.max(110,String(item.label||item.key).length*7+42);
     if(legendX>margin.left && legendX+est>width-margin.right){legendX=margin.left;legendY+=18;}
-    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+(index%8)}));
+    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+colorIndex}));
     const label=svgElement("text",{x:legendX+26,y:legendY+4,class:"chart-legend-label"});
     label.textContent=item.label||item.key; svg.appendChild(label); legendX+=est;
   });
 
   series.forEach((item,seriesIndex)=>{
+    const colorIndex=Number.isInteger(Number(item.colorIndex)) ? Number(item.colorIndex)%8 : seriesIndex%8;
     let path="",drawing=false;
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
@@ -764,11 +766,11 @@ export function renderMultiLineChart(container, points, options = {}) {
       path+=(drawing?" L":"M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
       drawing=true;
     });
-    if(path) svg.appendChild(svgElement("path",{d:path,class:"chart-metric-line chart-series-"+(seriesIndex%8)}));
+    if(path) svg.appendChild(svgElement("path",{d:path,class:"chart-metric-line chart-series-"+colorIndex}));
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
       if(value===null) return;
-      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(value),r:2.3,class:"chart-metric-point chart-series-"+(seriesIndex%8),tabindex:"0",role:"img"});
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(value),r:2.3,class:"chart-metric-point chart-series-"+colorIndex,tabindex:"0",role:"img"});
       bindChartTooltip(container,circle,{
         title:point.label,
         rows:[{label:item.label||item.key,value:options.formatValue?options.formatValue(value):compactNumber(value),delta:""}]
