@@ -71,10 +71,12 @@ test("partial exact Composer history can request archived recurrence fallback", 
 });
 
 
-test("pre-capture archive fallback requires source-stated recurrence bounds", async () => {
+test("pre-capture dates never borrow a later Composer archive snapshot", async () => {
   const fn=await readFile(new URL("../supabase/functions/wnmufm-composer-schedule/index.ts",import.meta.url),"utf8");
-  assert.match(fn,/requireExplicitBounds/);
-  assert.match(fn,/!bounds\.start \|\| \(!bounds\.end && !bounds\.noEnd\)/);
-  assert.match(fn,/normalizeProgramsForDate\(version\.payload,dateText,\{requireExplicitBounds:preCapture\}\)/);
-  assert.match(fn,/if\(preCapture\) missingDates\.push\(dateText\)/);
+  assert.match(fn,/const capture=candidates\.at\(-1\)/);
+  assert.match(fn,/if\(!capture\) \{/);
+  assert.match(fn,/dateText<firstCapture\.capture_date/);
+  assert.match(fn,/missingDates\.push\(dateText\)/);
+  assert.doesNotMatch(fn,/capture=firstCapture/);
+  assert.doesNotMatch(fn,/requireExplicitBounds:preCapture/);
 });
