@@ -40,6 +40,11 @@ const initialRangeMode = validChoice(sharedOrRestored("rangeMode",""), ["all","c
 const initialMetrics = Array.isArray(sharedView.trendMetrics) && sharedView.trendMetrics.length
   ? sharedView.trendMetrics
   : (Array.isArray(restoredUi.trendMetrics) && restoredUi.trendMetrics.length ? restoredUi.trendMetrics : ["streaming.listeners"]);
+const DAY_SERIES_KEYS=["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"];
+const initialWeekpart=validChoice(sharedOrRestored("trendWeekpart","all"),DAY_SERIES_KEYS,"all");
+const restoredDaySeries=Array.isArray(sharedView.trendDaySeries) ? sharedView.trendDaySeries : (Array.isArray(restoredUi.trendDaySeries) ? restoredUi.trendDaySeries : []);
+const initialDaySeries=[...new Set(restoredDaySeries.filter((key)=>DAY_SERIES_KEYS.includes(key)))];
+if(!initialDaySeries.length) initialDaySeries.push(initialWeekpart);
 
 const state = {
   role:null,
@@ -49,7 +54,8 @@ const state = {
   trendHour:validChoice(sharedOrRestored("trendHour","profile"), ["profile",...Array.from({length:24},(_,hour)=>String(hour).padStart(2,"0"))], "profile"),
   trendProfileCompare:validChoice(sharedOrRestored("trendProfileCompare","overall"), ["overall","day","week","month","quarter"], "overall"),
   trendGrain:validChoice(sharedOrRestored("trendGrain","day"), ["day","week","month"], "day"),
-  trendWeekpart:validChoice(sharedOrRestored("trendWeekpart","all"), ["all","weekday","weekend","mon","tue","wed","thu","fri","sat","sun"], "all"),
+  trendWeekpart:initialWeekpart,
+  trendDaySeries:initialDaySeries,
   trendNotable:validChoice(sharedOrRestored("trendNotable","all"), ["all","exclude","only"], "all"),
   trendProgram:sharedOrRestored("trendProgram",""),
   trendZoomStart:initialTrendZoomStart,
@@ -94,6 +100,7 @@ function viewStateSnapshot() {
     trendProfileCompare:state.trendProfileCompare,
     trendGrain:state.trendGrain,
     trendWeekpart:state.trendWeekpart,
+    trendDaySeries:state.trendDaySeries,
     trendNotable:state.trendNotable,
     trendProgram:state.trendProgram,
     trendZoomStart:state.trendZoomStart,
@@ -234,9 +241,19 @@ const TREND_METRICS = [
 ];
 
 const WEEKPARTS = [
-  ["all","All days"],["weekday","Mon–Fri"],["weekend","Weekend"],
-  ["mon","Mon"],["tue","Tue"],["wed","Wed"],["thu","Thu"],["fri","Fri"],["sat","Sat"],["sun","Sun"]
+  ["all","All days",0],["weekday","Mon–Fri",1],["weekend","Weekend",2],
+  ["mon","Mon",3],["tue","Tue",4],["wed","Wed",5],["thu","Thu",6],["fri","Fri",7],["sat","Sat",0],["sun","Sun",1]
 ];
+function daySeriesMeta(key) {
+  const row=WEEKPARTS.find(([value])=>value===key);
+  return row ? {key:row[0],label:row[1],colorIndex:row[2]} : {key,label:key,colorIndex:0};
+}
+function matchesSelectedDaySeries(date, keys=state.trendDaySeries) {
+  return (keys?.length ? keys : ["all"]).some((key)=>matchesWeekpart(date,key));
+}
+function selectedDaySeriesLabel(keys=state.trendDaySeries) {
+  return (keys?.length ? keys : ["all"]).map((key)=>daySeriesMeta(key).label).join(" + ");
+}
 const NOTABLE_MODES = [["all","All dates"],["exclude","Exclude notable dates"],["only","Notable dates only"]];
 
 function trendMetricLabel(key) {
@@ -261,8 +278,8 @@ function renderTrendControlButtons() {
   els.trendMetricButtons.innerHTML = TREND_METRICS.map((item) =>
     `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${state.trendMetrics.includes(item.key)}">${escapeHtml(item.label)}</button>`
   ).join("");
-  els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label]) =>
-    `<button type="button" class="filter-button" data-weekpart="${key}" aria-pressed="${key === state.trendWeekpart}">${label}</button>`
+  els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label,colorIndex]) =>
+    `<label class="day-series-option day-color-${colorIndex}" data-day-series="${key}"><input type="checkbox" data-weekpart="${key}" ${state.trendDaySeries.includes(key) ? "checked" : ""}><span>${label}</span></label>`
   ).join("");
   els.trendNotableButtons.innerHTML = NOTABLE_MODES.map(([key,label]) =>
     `<button type="button" class="filter-button" data-notable-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
@@ -278,8 +295,8 @@ function refreshTrendControlState() {
   els.trendMetricButtons.querySelectorAll("[data-trend-metric]").forEach((button) => {
     button.setAttribute("aria-pressed", String(state.trendMetrics.includes(button.dataset.trendMetric)));
   });
-  els.trendWeekpartButtons.querySelectorAll("[data-weekpart]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.weekpart === state.trendWeekpart));
+  els.trendWeekpartButtons.querySelectorAll("input[data-weekpart]").forEach((input) => {
+    input.checked=state.trendDaySeries.includes(input.dataset.weekpart);
   });
   els.trendNotableButtons.querySelectorAll("[data-notable-mode]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.notableMode === state.trendNotable));
@@ -1234,12 +1251,13 @@ function analysisRangeDayCount() {
 
 function profileComparisonAvailability() {
   const days=analysisRangeDayCount();
+  const oneDaySeries=state.trendDaySeries.length<=1;
   return {
     overall:true,
-    day:days<=31,
-    week:days<=183,
-    month:true,
-    quarter:true
+    day:oneDaySeries && days<=31,
+    week:oneDaySeries && days<=183,
+    month:oneDaySeries,
+    quarter:oneDaySeries
   };
 }
 
@@ -1248,9 +1266,11 @@ function updateProfileComparisonControl() {
   [...els.trendProfileCompareSelect.options].forEach((option)=>{
     const allowed=availability[option.value]!==false;
     option.disabled=!allowed;
-    option.title=allowed ? "" : (option.value==="day"
-      ? "Day profiles are available for analysis periods of 31 days or less."
-      : "Week profiles are available for analysis periods of about 6 months or less.");
+    option.title=allowed ? "" : (state.trendDaySeries.length>1
+      ? "Choose one Days Included option to compare profiles by calendar period."
+      : option.value==="day"
+        ? "Day profiles are available for analysis periods of 31 days or less."
+        : "Week profiles are available for analysis periods of about 6 months or less.");
   });
   if(!availability[state.trendProfileCompare]) {
     state.trendProfileCompare="overall";
@@ -1287,6 +1307,23 @@ function profileGroupForDate(dateString, mode) {
   return {key:"overall",label:"Average TLH"};
 }
 
+function buildDayComparisonSeries(rows, keys=state.trendDaySeries) {
+  const selected=(keys?.length ? keys : ["all"]).map(daySeriesMeta);
+  const series=selected.map((meta,index)=>({key:`days_${index}`,label:meta.label,colorIndex:meta.colorIndex,meta}));
+  const points=Array.from({length:24},(_,hour)=>({
+    label:hourLabel(hour),
+    shortLabel:hourLabel(hour).replace(":00",""),
+    values:Object.fromEntries(series.map((item)=>{
+      const values=rows.filter((row)=>
+        matchesWeekpart(row.schedule_date,item.meta.key) &&
+        Number(String(row.schedule_hour || "").slice(0,2))===hour
+      ).map((row)=>Number(row.tlh_hours)).filter(Number.isFinite);
+      return [item.key,values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null];
+    }))
+  }));
+  return {series:series.map(({key,label,colorIndex})=>({key,label,colorIndex})),points,groupCount:series.length};
+}
+
 function buildTimeOfDayProfileSeries(rows, mode) {
   const groups=new Map();
   rows.forEach((row)=>{
@@ -1314,16 +1351,14 @@ async function renderTimeOfDayTrend(requestId) {
   refreshTrendControlState();
 
   const filterNotes=[];
-  if(state.trendWeekpart!=="all") filterNotes.push(WEEKPARTS.find(([key])=>key===state.trendWeekpart)?.[1]);
+  if(!(state.trendDaySeries.length===1 && state.trendDaySeries[0]==="all")) filterNotes.push(selectedDaySeriesLabel());
   if(state.trendNotable!=="all") filterNotes.push(NOTABLE_MODES.find(([key])=>key===state.trendNotable)?.[1]);
   if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
   const rows=await loadStreamGuysHourly(selectedRange());
   if(requestId!==trendRequestId) return;
-  const filtered=rows.filter((row)=>
-    matchesWeekpart(row.schedule_date,state.trendWeekpart) &&
-    matchesNotableDateMode(row.schedule_date,state.trendNotable)
-  );
+  const notableFiltered=rows.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
+  const filtered=notableFiltered.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
 
   setHidden(els.trendBenchmarkNote,false);
   const alignment=filtered[0] || rows[0] || null;
@@ -1402,6 +1437,29 @@ async function renderTimeOfDayTrend(requestId) {
 
   updateProfileComparisonControl();
   const comparisonMode=state.trendProfileCompare;
+  if(comparisonMode==="overall") {
+    const dayComparison=buildDayComparisonSeries(notableFiltered,state.trendDaySeries);
+    els.trendTitle.textContent=dayComparison.groupCount>1 ? "StreamGuys TLH by time of day · day comparison" : `StreamGuys TLH by time of day · ${dayComparison.series[0]?.label || "All days"}`;
+    els.trendDescription.textContent=
+      `Each selected Days Included option is shown as its own 24-hour WNMU Eastern TLH profile. ${dayComparison.groupCount.toLocaleString()} line${dayComparison.groupCount===1 ? "" : "s"} shown.` +
+      (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
+    els.trendMedianSummary.innerHTML=[
+      `<span><strong>Day profiles:</strong> ${escapeHtml(selectedDaySeriesLabel())}</span>`,
+      `<span><strong>Hourly observations:</strong> ${filtered.length.toLocaleString()}</span>`
+    ].join("");
+    renderMultiLineChart(els.trendChart,dayComparison.points,{
+      title:"StreamGuys TLH by time of day",
+      ariaLabel:"StreamGuys total listening hours by WNMU Eastern clock hour for selected day groups",
+      series:dayComparison.series,
+      formatValue:(value)=>formatMetric(value,"hours"),
+      labelEvery:2
+    });
+    renderTrendDataTable("",0);
+    els.trendPrintColumns.classList.add("single");
+    els.trendPrintColumns.innerHTML=`<p class="print-trend-note"><strong>Time-of-day day comparison:</strong> ${escapeHtml(selectedDaySeriesLabel())}.</p>`;
+    return;
+  }
+
   const profileComparison=buildTimeOfDayProfileSeries(filtered,comparisonMode);
 
   if(comparisonMode!=="overall") {
@@ -1522,7 +1580,7 @@ async function renderTrend() {
     : selectedProgram ? `${metricLabels[0]}: ${selectedProgram}` : metricLabels[0];
 
   const filterNotes = [];
-  if (grain === "day" && state.trendWeekpart !== "all") filterNotes.push(WEEKPARTS.find(([key]) => key === state.trendWeekpart)?.[1]);
+  if (grain === "day" && !(state.trendDaySeries.length===1 && state.trendDaySeries[0]==="all")) filterNotes.push(selectedDaySeriesLabel());
   if (grain === "day" && state.trendNotable !== "all") filterNotes.push(NOTABLE_MODES.find(([key]) => key === state.trendNotable)?.[1]);
   if (selectedProgram) filterNotes.push(`Program: ${selectedProgram}`);
   if (state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
@@ -1543,7 +1601,7 @@ async function renderTrend() {
       loadTimeSeriesRange(metricKey,grain,filterSignature)
     ]);
     const filteredRows = grain === "day"
-      ? rows.filter((row)=>matchesWeekpart(row.period_start,state.trendWeekpart) && matchesNotableDateMode(row.period_start,state.trendNotable))
+      ? rows.filter((row)=>matchesSelectedDaySeries(row.period_start) && matchesNotableDateMode(row.period_start,state.trendNotable))
       : rows;
     const numericValues = filteredRows.map((row)=>row.station_value).filter((value)=>value!==null && Number.isFinite(Number(value)));
     const benchmarkValues = filteredRows.map((row)=>row.benchmark_value).filter((value)=>value!==null && Number.isFinite(Number(value)));
@@ -2442,10 +2500,24 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>refreshAnalysisViews());
   });
-  els.trendWeekpartButtons.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-weekpart]");
-    if (!button) return;
-    state.trendWeekpart = button.dataset.weekpart;
+  els.trendWeekpartButtons.addEventListener("change", (event) => {
+    const input=event.target.closest("input[data-weekpart]");
+    if(!input) return;
+    const key=input.dataset.weekpart;
+    let next=[...state.trendDaySeries];
+    if(input.checked) {
+      if(!next.includes(key)) next.push(key);
+    } else {
+      next=next.filter((item)=>item!==key);
+    }
+    if(!next.length) {
+      next=["all"];
+      input.checked=true;
+    }
+    state.trendDaySeries=next;
+    state.trendWeekpart=next[0] || "all";
+    if(state.trendDaySeries.length>1 && state.trendProfileCompare!=="overall") state.trendProfileCompare="overall";
+    updateProfileComparisonControl();
     persistUiState();
     void withBusy(() => renderTrend());
   });
@@ -2460,10 +2532,6 @@ function bindEvents() {
     state.trendProgram = els.trendProgramSelect.value;
     persistUiState();
     void withBusy(() => renderTrend());
-  });
-  els.scheduleProgramFilter.addEventListener("change", () => {
-    state.scheduleProgram = els.scheduleProgramFilter.value;
-    if (listeningHourContext) renderListeningHourContext(listeningHourContext);
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
   els.trendZoomButton.addEventListener("click",()=>{
@@ -2560,6 +2628,7 @@ function bindEvents() {
     state.trendProfileCompare="overall";
     state.trendGrain=button.dataset.grain || "day";
     state.trendWeekpart="all";
+    state.trendDaySeries=["all"];
     state.trendNotable="all";
     state.trendProgram="";
     if(button.dataset.start && button.dataset.end) {
