@@ -1421,9 +1421,9 @@ function conciseScheduleContext(entries,{hour,startDate,endDate,daySeriesKey="al
   titles.forEach((title)=>counts.set(title,(counts.get(title)||0)+1));
   const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
   if(ranked.length===1) return ranked[0][0];
-  if(ranked[0][1]/titles.length>=0.7) return ranked[0][0];
-  if(ranked.length<=2) return ranked.map(([title])=>title).join(" / ");
-  return "";
+  if(ranked[0][1]/titles.length>=0.7) return `${ranked[0][0]} · dominant`;
+  if(ranked.length<=3) return ranked.map(([title])=>title).join(" / ");
+  return `${ranked.slice(0,3).map(([title])=>title).join(" / ")} + ${ranked.length-3} more`;
 }
 
 function profilePointTooltip(point,item,value,scheduleEntries) {
@@ -1442,10 +1442,20 @@ function profilePointTooltip(point,item,value,scheduleEntries) {
     endDate,
     daySeriesKey
   });
-  if(schedule) rows.push({label:"Scheduled",value:schedule,delta:""});
+  rows.push({
+    label:"Scheduled",
+    value:schedule || "No schedule title is loaded for this period/hour.",
+    delta:""
+  });
   const periodLabel=item.startDate && item.endDate ? item.label : "selected range";
-  rows.push({label:"Drill down",value:`Click point to view ${periodLabel} at ${point.label}`,delta:""});
-  return {title:`${item.label} · ${point.label}`,rows};
+  return {
+    title:`${item.label} · ${point.label}`,
+    rows,
+    action:{
+      label:`Drill into ${periodLabel} · ${point.label}`,
+      onActivate:()=>drillIntoTimeOfDayPoint(point,item)
+    }
+  };
 }
 
 function drillIntoTimeOfDayPoint(point,item) {
@@ -1665,8 +1675,24 @@ async function renderTimeOfDayTrend(requestId) {
           value:formatMetric(value,"hours"),
           delta:itemStats?.median===null || itemStats?.median===undefined ? "" : `${signedPercent(percentFromMedian(value,itemStats.median))} vs ${item.label} median`
         }];
-        if(schedule) rows.push({label:"Scheduled",value:schedule,delta:""});
-        return {title:`${formatDayDate(point.date)} · ${hourLabel(hourNumber)}`,rows};
+        rows.push({
+          label:"Scheduled",
+          value:schedule || "No schedule title is loaded for this date/hour.",
+          delta:""
+        });
+        return {
+          title:`${formatDayDate(point.date)} · ${hourLabel(hourNumber)}`,
+          rows,
+          action:{
+            label:`Drill into ${formatDayDate(point.date)} · ${hourLabel(hourNumber)}`,
+            onActivate:()=>drillIntoTimeOfDayPoint(point,{
+              ...item,
+              label:formatDayDate(point.date),
+              startDate:point.date,
+              endDate:point.date
+            })
+          }
+        };
       }
     });
 

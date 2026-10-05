@@ -57,6 +57,7 @@ function tooltipModelText(model) {
       if(metric.benchmark) lines.push([metric.benchmark.label || "NPR benchmark",metric.benchmark.value,metric.benchmark.delta].filter(Boolean).join(" · "));
     });
   }
+  if(model.action?.label) lines.push(model.action.label);
   return lines.filter(Boolean).join("\n");
 }
 
@@ -67,6 +68,15 @@ function chartTooltip(container) {
   tooltip.className="chart-tooltip";
   tooltip.hidden=true;
   tooltip.setAttribute("role","tooltip");
+  tooltip.addEventListener("pointerenter",()=>{
+    if(tooltip._hideTimer) {
+      clearTimeout(tooltip._hideTimer);
+      tooltip._hideTimer=null;
+    }
+  });
+  tooltip.addEventListener("pointerleave",()=>{
+    tooltip.hidden=true;
+  });
   container.appendChild(tooltip);
   return tooltip;
 }
@@ -117,6 +127,20 @@ function populateTooltip(tooltip, model) {
       tooltip.appendChild(row);
     });
   }
+
+  if(model?.action?.label && typeof model.action.onActivate==="function") {
+    const action=document.createElement("button");
+    action.type="button";
+    action.className="chart-tooltip-action";
+    action.textContent=model.action.label;
+    action.addEventListener("click",(event)=>{
+      event.preventDefault();
+      event.stopPropagation();
+      tooltip.hidden=true;
+      model.action.onActivate();
+    });
+    tooltip.appendChild(action);
+  }
 }
 
 function positionTooltip(container, tooltip, event, target) {
@@ -140,12 +164,25 @@ function bindChartTooltip(container, element, model) {
     const existing=element.getAttribute("aria-label");
     element.setAttribute("aria-label",(existing ? existing+". " : "")+text.replace(/\n/g,". "));
   }
+  const cancelHide=()=>{
+    if(tooltip._hideTimer) {
+      clearTimeout(tooltip._hideTimer);
+      tooltip._hideTimer=null;
+    }
+  };
   const show=(event)=>{
+    cancelHide();
     populateTooltip(tooltip,model);
     tooltip.hidden=false;
     positionTooltip(container,tooltip,event,element);
   };
-  const hide=()=>{ tooltip.hidden=true; };
+  const hide=()=>{
+    cancelHide();
+    tooltip._hideTimer=setTimeout(()=>{
+      tooltip.hidden=true;
+      tooltip._hideTimer=null;
+    },180);
+  };
   element.addEventListener("pointerenter",show);
   element.addEventListener("pointermove",(event)=>positionTooltip(container,tooltip,event,element));
   element.addEventListener("pointerleave",hide);
