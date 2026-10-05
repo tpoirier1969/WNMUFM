@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestBreakdownForImportScope, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadStreamGuysHourly, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestBreakdownForImportScope, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadScheduleEvidenceRange, loadStreamGuysHourly, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, renderMultiLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -70,6 +70,7 @@ const state = {
   takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all"),
   scheduleView:validChoice(sharedOrRestored("scheduleView","month"), ["month","week","day"], "month"),
   scheduleDate:validDateKey(sharedOrRestored("scheduleDate","")),
+  scheduleAvailableRange:{startDate:"",endDate:""},
   scheduleTime:validScheduleTime(sharedOrRestored("scheduleTime","12:00")),
   scheduleWindowStart:validChoice(sharedOrRestored("scheduleWindowStart","6"), ["0","6","12","18"], "6")
 };
@@ -759,11 +760,40 @@ function renderScheduleViewButtons() {
   ).join("");
 }
 
+function clampScheduleDate(value) {
+  const start=state.scheduleAvailableRange.startDate;
+  const end=state.scheduleAvailableRange.endDate;
+  let date=validDateKey(value) || end || detroitTodayIso();
+  if(start && date<start) date=start;
+  if(end && date>end) date=end;
+  return date;
+}
+
 function applyScheduleControls() {
-  const displayDate=state.scheduleDate || detroitTodayIso();
-  if(els.scheduleAnchorDate) els.scheduleAnchorDate.value=displayDate;
+  const displayDate=clampScheduleDate(state.scheduleDate || detroitTodayIso());
+  state.scheduleDate=displayDate;
+  if(els.scheduleAnchorDate) {
+    els.scheduleAnchorDate.min=state.scheduleAvailableRange.startDate || "";
+    els.scheduleAnchorDate.max=state.scheduleAvailableRange.endDate || "";
+    els.scheduleAnchorDate.value=displayDate;
+  }
   if(els.scheduleTime) els.scheduleTime.value=state.scheduleTime;
   if(els.scheduleWindowStart) els.scheduleWindowStart.value=state.scheduleWindowStart;
+  if(els.schedulePrevButton) {
+    const previous=shiftScheduleDate(displayDate,state.scheduleView,-1);
+    els.schedulePrevButton.disabled=Boolean(state.scheduleAvailableRange.startDate && previous<state.scheduleAvailableRange.startDate);
+  }
+  if(els.scheduleNextButton) {
+    const next=shiftScheduleDate(displayDate,state.scheduleView,1);
+    els.scheduleNextButton.disabled=Boolean(state.scheduleAvailableRange.endDate && next>state.scheduleAvailableRange.endDate);
+  }
+  if(els.scheduleTodayButton) {
+    const today=detroitTodayIso();
+    els.scheduleTodayButton.disabled=Boolean(
+      (state.scheduleAvailableRange.startDate && today<state.scheduleAvailableRange.startDate) ||
+      (state.scheduleAvailableRange.endDate && today>state.scheduleAvailableRange.endDate)
+    );
+  }
   setHidden(els.scheduleTimeControl,state.scheduleView!=="month");
   setHidden(els.scheduleWindowControl,state.scheduleView!=="week");
   renderScheduleViewButtons();
@@ -771,7 +801,21 @@ function applyScheduleControls() {
 
 async function renderScheduleExplorer() {
   if(!els.scheduleExplorerBody || !els.scheduleSourceNote) return;
-  if(!state.scheduleDate) state.scheduleDate=detroitTodayIso();
+
+  const available=await loadScheduleEvidenceRange();
+  state.scheduleAvailableRange=available || {startDate:"",endDate:""};
+  if(!state.scheduleAvailableRange.startDate || !state.scheduleAvailableRange.endDate) {
+    els.scheduleSourceNote.textContent="No stored schedule evidence is available yet.";
+    els.scheduleExplorerBody.innerHTML='<p class="empty-state">No schedule evidence has been loaded.</p>';
+    if(els.scheduleAnchorDate) {
+      els.scheduleAnchorDate.min="";
+      els.scheduleAnchorDate.max="";
+      els.scheduleAnchorDate.value="";
+    }
+    return;
+  }
+
+  state.scheduleDate=clampScheduleDate(state.scheduleDate || state.scheduleAvailableRange.endDate);
   applyScheduleControls();
 
   const range=scheduleViewRange(state.scheduleView,state.scheduleDate);
@@ -2726,10 +2770,11 @@ function bindEvents() {
   els.scheduleAnchorDate.addEventListener("change",()=>{
     const date=validDateKey(els.scheduleAnchorDate.value);
     if(!date) {
-      els.scheduleAnchorDate.value=state.scheduleDate || detroitTodayIso();
+      els.scheduleAnchorDate.value=state.scheduleDate || state.scheduleAvailableRange.endDate || detroitTodayIso();
       return;
     }
-    state.scheduleDate=date;
+    state.scheduleDate=clampScheduleDate(date);
+    applyScheduleControls();
     persistUiState();
     void withBusy(()=>renderScheduleExplorer());
   });
@@ -2745,19 +2790,19 @@ function bindEvents() {
     if(state.scheduleView==="week") void withBusy(()=>renderScheduleExplorer());
   });
   els.schedulePrevButton.addEventListener("click",()=>{
-    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,-1);
+    state.scheduleDate=clampScheduleDate(shiftScheduleDate(state.scheduleDate || state.scheduleAvailableRange.endDate || detroitTodayIso(),state.scheduleView,-1));
     applyScheduleControls();
     persistUiState();
     void withBusy(()=>renderScheduleExplorer());
   });
   els.scheduleTodayButton.addEventListener("click",()=>{
-    state.scheduleDate=detroitTodayIso();
+    state.scheduleDate=clampScheduleDate(detroitTodayIso());
     applyScheduleControls();
     persistUiState();
     void withBusy(()=>renderScheduleExplorer());
   });
   els.scheduleNextButton.addEventListener("click",()=>{
-    state.scheduleDate=shiftScheduleDate(state.scheduleDate || detroitTodayIso(),state.scheduleView,1);
+    state.scheduleDate=clampScheduleDate(shiftScheduleDate(state.scheduleDate || state.scheduleAvailableRange.endDate || detroitTodayIso(),state.scheduleView,1));
     applyScheduleControls();
     persistUiState();
     void withBusy(()=>renderScheduleExplorer());
