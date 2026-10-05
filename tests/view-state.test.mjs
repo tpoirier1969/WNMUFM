@@ -126,13 +126,14 @@ test("date-range edits do not refresh on intermediate date-part changes", async 
 });
 
 
-test("source-range mismatch stays inline and never opens the detail modal", async () => {
+test("obsolete separate Listening by Hour source-range UI is removed", async () => {
   const fs = await import("node:fs/promises");
-  const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
-  assert.match(app,/Source range notice/);
-  assert.match(app,/this graph remains on the NPR source period/);
-  assert.doesNotMatch(app,/rangeNoticeArmed/);
-  assert.doesNotMatch(app,/Listening by Hour uses a different source period/);
+  const [app,html] = await Promise.all([
+    fs.readFile(new URL("../src/app.js", import.meta.url), "utf8"),
+    fs.readFile(new URL("../index.html", import.meta.url), "utf8")
+  ]);
+  assert.doesNotMatch(app,/renderListeningByHour|renderListeningHourContext|Source range notice/);
+  assert.doesNotMatch(html,/id="listeningHourPanel"|id="nprHourChart"|id="scheduleProgramFilter"/);
 });
 
 
