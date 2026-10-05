@@ -49,7 +49,7 @@ test("Trend Explorer time-of-day mode is shareable and wired to StreamGuys hourl
   assert.match(app,/renderTimeOfDayTrend/);
   assert.match(app,/loadStreamGuysHourly\(selectedRange\(\)\)/);
   assert.match(app,/StreamGuys TLH by time of day/);
-  assert.match(app,/Hour focus/);
+  assert.match(html,/Hour focus/);
   assert.match(app,/trace that hour across time/);
 });
 
