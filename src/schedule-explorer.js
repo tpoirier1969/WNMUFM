@@ -239,6 +239,12 @@ function formatTime(value) {
   return `${hour24%12 || 12}${minute ? `:${String(minute).padStart(2,"0")}` : ""} ${suffix}`;
 }
 
+function dateWithinAvailable(date,startDate,endDate) {
+  if(startDate && date<startDate) return false;
+  if(endDate && date>endDate) return false;
+  return true;
+}
+
 function sourceBadge(entryOrDay) {
   const kind=entryOrDay?.evidenceKind || entryOrDay?.sourceKind || "none";
   const labels={
