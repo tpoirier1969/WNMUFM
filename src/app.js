@@ -1097,9 +1097,9 @@ async function syncAvailableDataRange() {
 }
 
 async function renderOverviewPrimary() {
+  await renderTrend();
   await Promise.all([
     renderSummary(),
-    renderTrend(),
     renderBreakdowns()
   ]);
 }
