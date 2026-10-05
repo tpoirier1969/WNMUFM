@@ -856,12 +856,19 @@ async function renderScheduleExplorer() {
       const day=days.find((item)=>item.date===state.scheduleDate) || days[0] || null;
       els.scheduleExplorerBody.innerHTML=renderScheduleDay(day);
     } else if(state.scheduleView==="week") {
-      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{windowStart:Number(state.scheduleWindowStart),carryInDay});
+      els.scheduleExplorerBody.innerHTML=renderScheduleWeek(days,{
+        windowStart:Number(state.scheduleWindowStart),
+        carryInDay,
+        availableStart:state.scheduleAvailableRange.startDate,
+        availableEnd:state.scheduleAvailableRange.endDate
+      });
     } else {
       els.scheduleExplorerBody.innerHTML=renderScheduleMonth(days,{
         anchorDate:state.scheduleDate,
         time:state.scheduleTime,
-        carryInDay
+        carryInDay,
+        availableStart:state.scheduleAvailableRange.startDate,
+        availableEnd:state.scheduleAvailableRange.endDate
       });
     }
   } catch(error) {
