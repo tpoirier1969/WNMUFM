@@ -17,7 +17,7 @@ import { buildCoverageRows, intersectRanges } from "./coverage-summary.js";
 import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMonth, renderScheduleWeek, scheduleSourceSummary, scheduleViewRange, shiftScheduleDate } from "./schedule-explorer.js";
 
 const els = Object.fromEntries([
-  "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
+  "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","listeningHourEyebrow","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
@@ -1126,6 +1126,9 @@ function setAuthenticated(isAuthenticated) {
   setHidden(els.startupPanel, true);
   setHidden(els.authPanel, isAuthenticated);
   setHidden(els.appPanel, !isAuthenticated);
+  setHidden(els.headerNav, !isAuthenticated);
+  setHidden(els.dataInfoButton, !isAuthenticated);
+  setHidden(els.copyViewButton, !isAuthenticated);
   setHidden(els.logoutButton, !isAuthenticated);
   setHidden(els.printButton, !isAuthenticated);
   setHidden(els.userBadge, !isAuthenticated);
@@ -2465,6 +2468,11 @@ function bindEvents() {
     persistUiState();
     void withBusy(()=>refreshAnalysisViews());
   });
+  els.dataInfoButton.addEventListener("click",()=>{
+    if(typeof els.dataInfoDialog.showModal==="function") els.dataInfoDialog.showModal();
+    else els.dataInfoDialog.setAttribute("open","");
+  });
+  els.dataInfoDialogClose.addEventListener("click",()=>els.dataInfoDialog.close());
   els.copyViewButton.addEventListener("click", () => {
     const stored=storePendingRangeEdit();
     if(stored===null) return;
