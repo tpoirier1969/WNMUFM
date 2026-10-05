@@ -357,20 +357,22 @@
       </section>
 
         <dialog id="dataInfoDialog" class="detail-dialog data-info-dialog">
-    <div class="dialog-heading">
-      <div>
-        <p class="eyebrow">Data & coverage</p>
-        <h2>What data is available?</h2>
+    <div class="detail-dialog-shell">
+      <div class="detail-dialog-heading">
+        <div>
+          <p class="eyebrow">Data & coverage</p>
+          <h2>What data is available?</h2>
+        </div>
+        <button id="dataInfoDialogClose" class="secondary-button" type="button">Close</button>
       </div>
-      <button id="dataInfoDialogClose" class="small-button" type="button">Close</button>
-    </div>
-    <p class="panel-note">Coverage is reference information. It explains which sources overlap and which date grains are available; it does not change the analysis unless you choose the common comparable period below.</p>
-    <div id="dataAvailability" class="data-availability" aria-live="polite">
-      <div class="data-availability-head">
-        <strong>Data coverage</strong>
-        <span id="dataAvailabilityHint"></span>
+      <p class="panel-note">Coverage is reference information. It explains which sources overlap and which date grains are available; it does not change the analysis unless you choose the common comparable period below.</p>
+      <div id="dataAvailability" class="data-availability" aria-live="polite">
+        <div class="data-availability-head">
+          <strong>Data coverage</strong>
+          <span id="dataAvailabilityHint"></span>
+        </div>
+        <div id="dataAvailabilityRows" class="data-availability-rows"></div>
       </div>
-      <div id="dataAvailabilityRows" class="data-availability-rows"></div>
     </div>
   </dialog>
 
