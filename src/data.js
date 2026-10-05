@@ -506,8 +506,8 @@ export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
       grain: `eq.${grain}`,
       dimension_type: "eq.",
       filter_signature: `eq.${DEFAULT_FILTER_SIGNATURE}`,
-      order: "metric_key.asc,period_start.desc",
-      limit: String(Math.max(100,keys.length*100))
+      order: "period_start.desc",
+      limit: "500"
     }), range);
     const [rows,context]=await Promise.all([
       selectRows("wnmufm_analytics_observations",params.toString()),
@@ -519,10 +519,27 @@ export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
       if(!key || output[key] || !rowIsUsable(candidate,context)) return;
       output[key]=candidate;
     });
+
+    const missingKeys=keys.filter((key)=>!output[key]);
+    if(missingKeys.length) {
+      const fallbackRows=await Promise.all(missingKeys.map(async (metricKey)=>{
+        const fallbackParams=applyDateRange(new URLSearchParams({
+          select:"metric_key,metric_label,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,source_import_id",
+          metric_key:`eq.${metricKey}`,
+          grain:`eq.${grain}`,
+          dimension_type:"eq.",
+          filter_signature:`eq.${DEFAULT_FILTER_SIGNATURE}`,
+          order:"period_start.desc",
+          limit:"100"
+        }),range);
+        const candidates=await selectRows("wnmufm_analytics_observations",fallbackParams.toString());
+        return candidates.find((candidate)=>rowIsUsable(candidate,context)) || null;
+      }));
+      fallbackRows.filter(Boolean).forEach((row)=>{ output[row.metric_key]=row; });
+    }
     return output;
   });
 }
-
 
 export async function loadDateObservations(date) {
   const params = new URLSearchParams({
