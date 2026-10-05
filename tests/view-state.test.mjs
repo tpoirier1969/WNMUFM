@@ -209,3 +209,27 @@ test("Trend Explorer workflow keeps incompatible controls visible but disabled",
   assert.match(app,/Time of day currently uses StreamGuys TLH/);
   assert.match(app,/Days included is available for Day and Time of day views/);
 });
+
+
+test("dashboard refresh is scoped to the active module and Data info loads on demand", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  const start=app.indexOf("async function refreshDashboard()");
+  const end=app.indexOf("function filterContext()",start);
+  assert.ok(start>=0 && end>start);
+  const refreshBody=app.slice(start,end);
+  assert.match(refreshBody,/await renderActiveTab\(\)/);
+  assert.doesNotMatch(refreshBody,/renderExplore\(|renderImportHistory\(|renderDataAvailability\(/);
+  assert.match(app,/async function renderActiveTab/);
+  assert.match(app,/if\(tab==="imports"\)[\s\S]*renderImportHistory\(\),renderCollectionChecklist\(\)/);
+  assert.match(app,/dataInfoButton\.addEventListener[\s\S]*renderDataAvailability\(\),renderCoverage\(\)/);
+});
+
+test("Overview renders Trend Explorer before secondary overview summaries", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  const start=app.indexOf("async function renderOverviewPrimary()");
+  const end=app.indexOf("async function renderActiveTab",start);
+  const body=app.slice(start,end);
+  assert.match(body,/await renderTrend\(\);[\s\S]*renderSummary\(\)[\s\S]*renderBreakdowns\(\)/);
+});
