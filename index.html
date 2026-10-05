@@ -9,12 +9,21 @@
 </head>
 <body>
   <header class="site-header">
-    <div>
+    <div class="header-brand">
       <p class="eyebrow">WNMU-FM</p>
       <h1>Audience Analytics</h1>
-      <p class="subtitle">NPR reports, turned into station decisions instead of spreadsheet archaeology.</p>
     </div>
+    <nav id="headerNav" class="tab-bar header-tabs" aria-label="Analytics sections" hidden>
+      <button class="tab-button active" type="button" data-tab="overview">Overview</button>
+      <button class="tab-button" type="button" data-tab="takeaways">Takeaways</button>
+      <button class="tab-button" type="button" data-tab="explore">Explore</button>
+      <button class="tab-button" type="button" data-tab="schedule">Schedule</button>
+      <button class="tab-button" type="button" data-tab="imports">Imports</button>
+    </nav>
     <div class="header-meta">
+      <button id="dataInfoButton" class="header-utility" type="button" hidden>Data info</button>
+      <button id="copyViewButton" class="header-utility" type="button" hidden>Share view</button>
+      <span id="copyViewStatus" class="copy-view-status" aria-live="polite"></span>
       <span id="versionBadge" class="version-badge"></span>
       <span id="userBadge" class="user-badge" hidden></span>
       <button id="printButton" class="secondary-button" type="button" hidden>Print / Save PDF</button>
@@ -46,57 +55,32 @@
     </section>
 
     <section id="appPanel" hidden>
-      <div class="app-toolbar">
-        <nav class="tab-bar" aria-label="Analytics sections">
-          <button class="tab-button active" type="button" data-tab="overview">Overview</button>
-          <button class="tab-button" type="button" data-tab="takeaways">Takeaways</button>
-          <button class="tab-button" type="button" data-tab="explore">Explore</button>
-          <button class="tab-button" type="button" data-tab="schedule">Schedule</button>
-          <button class="tab-button" type="button" data-tab="imports">Imports</button>
-        </nav>
-        <div class="global-date-range analysis-period" aria-label="Analysis period">
-          <div class="analysis-period-dates">
-            <span class="control-label">Analysis period</span>
-            <label>Start
-              <input id="globalStartDate" type="date">
-            </label>
-            <label>End
-              <input id="globalEndDate" type="date">
-            </label>
-          </div>
-          <div class="analysis-period-presets">
-            <span class="control-label">Presets</span>
-            <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Analysis period presets"></div>
-          </div>
-          <button id="clearDateRange" class="small-button" type="button" hidden>Full range</button>
-          <button id="copyViewButton" class="small-button" type="button">Copy view link</button>
-          <span id="copyViewStatus" class="copy-view-status" aria-live="polite"></span>
-          <span id="availableRangeLabel" class="available-range-label" aria-live="polite"></span>
+      <div class="analysis-period-bar" aria-label="Analysis period">
+        <div class="analysis-period-title">
+          <span class="control-label">Analysis period</span>
         </div>
-      </div>
-
-      <div id="dataAvailability" class="data-availability" aria-live="polite">
-        <div class="data-availability-head">
-          <strong>Data coverage</strong>
-          <span id="dataAvailabilityHint"></span>
+        <div class="analysis-period-dates">
+          <label>Start
+            <input id="globalStartDate" type="date">
+          </label>
+          <label>End
+            <input id="globalEndDate" type="date">
+          </label>
         </div>
-        <div id="dataAvailabilityRows" class="data-availability-rows"></div>
+        <div class="analysis-period-presets">
+          <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Analysis period presets"></div>
+        </div>
+        <button id="clearDateRange" class="small-button" type="button" hidden>Full range</button>
+        <span id="availableRangeLabel" class="available-range-label" aria-live="polite"></span>
       </div>
 
       <section class="tab-panel" data-panel="overview">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Current picture</p>
-            <h2>Station overview</h2>
-            <p class="section-note">Analysis stops before the report run date, so incomplete run-day figures and incomplete current weeks/months are not presented as completed results.</p>
-          </div>
+        <div class="overview-tools">
           <button id="refreshButton" class="secondary-button" type="button">Refresh</button>
         </div>
 
-        <div id="summaryCards" class="metric-grid" aria-live="polite"></div>
-
         <div class="dashboard-grid two-column">
-          <article class="panel-card span-two">
+          <article class="panel-card span-two trend-primary-card">
             <div class="panel-heading trend-heading">
               <div>
                 <p class="eyebrow">Trend explorer</p>
@@ -156,6 +140,17 @@
             </details>
             <div id="trendPrintColumns" class="print-trend-columns"></div>
           </article>
+
+          <section class="period-snapshot span-two" aria-labelledby="periodSnapshotTitle">
+            <div class="period-snapshot-heading">
+              <div>
+                <p class="eyebrow">Latest complete values in this analysis period</p>
+                <h3 id="periodSnapshotTitle">Quick snapshot</h3>
+              </div>
+              <p>These remain latest-complete-day values for now. Period summary math is the next analytics pass.</p>
+            </div>
+            <div id="summaryCards" class="metric-grid compact-metric-grid" aria-live="polite"></div>
+          </section>
 
           <article class="panel-card">
             <p class="eyebrow">On-demand audio</p>
@@ -361,7 +356,25 @@
         </article>
       </section>
 
-      <dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailDialogTitle">
+        <dialog id="dataInfoDialog" class="detail-dialog data-info-dialog">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">Data & coverage</p>
+        <h2>What data is available?</h2>
+      </div>
+      <button id="dataInfoDialogClose" class="small-button" type="button">Close</button>
+    </div>
+    <p class="panel-note">Coverage is reference information. It explains which sources overlap and which date grains are available; it does not change the analysis unless you choose the common comparable period below.</p>
+    <div id="dataAvailability" class="data-availability" aria-live="polite">
+      <div class="data-availability-head">
+        <strong>Data coverage</strong>
+        <span id="dataAvailabilityHint"></span>
+      </div>
+      <div id="dataAvailabilityRows" class="data-availability-rows"></div>
+    </div>
+  </dialog>
+
+<dialog id="detailDialog" class="detail-dialog" aria-labelledby="detailDialogTitle">
         <div class="detail-dialog-shell">
           <div class="detail-dialog-heading">
             <div>
