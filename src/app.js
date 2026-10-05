@@ -1245,13 +1245,13 @@ async function renderTimeOfDayTrend(requestId) {
 
     els.trendTitle.textContent=`StreamGuys TLH at ${hourLabel(hourNumber)}`;
     els.trendDescription.textContent=
-      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates, so you can see whether that part of the broadcast day is gaining, losing or behaving unusually over time.` +
+      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates using one StreamGuys observation per day. Date labels are thinned for readability, but the line and nodes use the full daily series.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
     els.trendMedianSummary.innerHTML=values.length ? [
       `<span><strong>Average:</strong> ${escapeHtml(formatMetric(averageValue,"hours"))}</span>`,
       `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,"hours"))}</span>`,
       latest ? `<span><strong>Latest:</strong> ${escapeHtml(formatMetric(latest.tlh_hours,"hours"))}</span>` : "",
-      `<span><strong>Observations:</strong> ${values.length.toLocaleString()}</span>`
+      `<span><strong>Daily observations:</strong> ${values.length.toLocaleString()}</span>`
     ].join("") : "";
 
     setHidden(els.trendChartToolbar,false);
