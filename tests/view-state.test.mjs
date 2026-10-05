@@ -233,3 +233,25 @@ test("Overview renders Trend Explorer before secondary overview summaries", asyn
   const body=app.slice(start,end);
   assert.match(body,/await renderTrend\(\);[\s\S]*renderSummary\(\)[\s\S]*renderBreakdowns\(\)/);
 });
+
+
+test("focused Time-of-Day view renders each selected day group as its own colored series", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/function buildFocusedHourComparison/);
+  assert.match(app,/Each checked Days Included group is its own colored series/);
+  assert.match(app,/renderMultiLineChart\(els\.trendChart,chartPoints/);
+  assert.match(app,/connectGaps:true/);
+  assert.match(app,/daySeriesMeta/);
+});
+
+test("day-series controls use a fixed custom checkbox indicator", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,css]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../styles.css",import.meta.url),"utf8")
+  ]);
+  assert.match(app,/class="day-series-check"/);
+  assert.match(css,/\.day-series-check \{[^}]*width:14px;[^}]*height:14px;/s);
+  assert.match(css,/input\[type="checkbox"\][^}]*opacity:0;/s);
+});
