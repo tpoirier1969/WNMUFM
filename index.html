@@ -54,15 +54,21 @@
           <button class="tab-button" type="button" data-tab="schedule">Schedule</button>
           <button class="tab-button" type="button" data-tab="imports">Imports</button>
         </nav>
-        <div class="global-date-range" aria-label="Analysis date range">
-          <span class="control-label">Analysis range</span>
-          <label>Start
-            <input id="globalStartDate" type="date">
-          </label>
-          <label>End
-            <input id="globalEndDate" type="date">
-          </label>
-          <button id="clearDateRange" class="small-button" type="button">Full range</button>
+        <div class="global-date-range analysis-period" aria-label="Analysis period">
+          <div class="analysis-period-dates">
+            <span class="control-label">Analysis period</span>
+            <label>Start
+              <input id="globalStartDate" type="date">
+            </label>
+            <label>End
+              <input id="globalEndDate" type="date">
+            </label>
+          </div>
+          <div class="analysis-period-presets">
+            <span class="control-label">Presets</span>
+            <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Analysis period presets"></div>
+          </div>
+          <button id="clearDateRange" class="small-button" type="button" hidden>Full range</button>
           <button id="copyViewButton" class="small-button" type="button">Copy view link</button>
           <span id="copyViewStatus" class="copy-view-status" aria-live="polite"></span>
           <span id="availableRangeLabel" class="available-range-label" aria-live="polite"></span>
@@ -97,44 +103,38 @@
                 <h3 id="trendTitle">Streaming listeners</h3>
               </div>
               <p id="trendDescription" class="trend-description"></p>
-              <div class="trend-controls">
-                <div>
-                  <span class="control-label">Trend view</span>
-                  <div id="trendModeButtons" class="button-strip" role="group" aria-label="Trend Explorer view">
-                    <button class="filter-button" type="button" data-trend-mode="overtime" aria-pressed="true">Over time</button>
-                    <button class="filter-button" type="button" data-trend-mode="timeofday" aria-pressed="false">Time of day</button>
+              <div class="trend-controls trend-workflow">
+                <div class="trend-filter-row trend-primary-row">
+                  <div>
+                    <span class="control-label">View by</span>
+                    <div id="trendViewButtons" class="button-strip" role="group" aria-label="Trend view by">
+                      <button class="filter-button" type="button" data-trend-view="day" aria-pressed="true">Day</button>
+                      <button class="filter-button" type="button" data-trend-view="week" aria-pressed="false">Week</button>
+                      <button class="filter-button" type="button" data-trend-view="month" aria-pressed="false">Month</button>
+                      <button class="filter-button" type="button" data-trend-view="timeofday" aria-pressed="false">Time of day</button>
+                    </div>
+                  </div>
+                  <div id="trendWeekpartControls">
+                    <span class="control-label">Days included</span>
+                    <div id="trendWeekpartButtons" class="button-strip weekpart-button-strip" role="group" aria-label="Days included"></div>
+                  </div>
+                  <div id="trendNotableControls">
+                    <span class="control-label">Special dates</span>
+                    <div id="trendNotableButtons" class="button-strip" role="group" aria-label="Special-date filter"></div>
                   </div>
                 </div>
-                <div id="trendMetricControl">
-                  <span class="control-label">Metrics · choose one or more</span>
-                  <div id="trendMetricButtons" class="button-strip metric-button-strip" role="group" aria-label="Trend metrics; choose one or more"></div>
-                </div>
-                <div>
-                  <span class="control-label">Quick range</span>
-                  <div id="trendQuickRangeButtons" class="button-strip quick-range-strip" role="group" aria-label="Trend quick date ranges"></div>
-                </div>
-                <div class="trend-filter-row">
-                  <label id="trendGrainControl">View by
-                    <select id="trendGrain">
-                      <option value="day">Day</option>
-                      <option value="week">Week</option>
-                      <option value="month">Month</option>
-                    </select>
-                  </label>
-                  <label id="trendHourControl" hidden>Hour focus
+
+                <div class="trend-filter-row trend-secondary-row">
+                  <div id="trendMetricControl">
+                    <span class="control-label">What to measure · choose one or more</span>
+                    <div id="trendMetricButtons" class="button-strip metric-button-strip" role="group" aria-label="Trend metrics; choose one or more"></div>
+                  </div>
+                  <label id="trendHourControl">Hour focus
                     <select id="trendHourSelect">
                       <option value="profile">24-hour profile</option>
                     </select>
                   </label>
-                  <div id="trendWeekpartControls">
-                    <span class="control-label">Week-part</span>
-                    <div id="trendWeekpartButtons" class="button-strip weekpart-button-strip" role="group" aria-label="Week-part filter"></div>
-                  </div>
-                  <div id="trendNotableControls">
-                    <span class="control-label">Notable / special-programming context</span>
-                    <div id="trendNotableButtons" class="button-strip" role="group" aria-label="Notable-date filter"></div>
-                  </div>
-                  <label id="trendProgramControl" hidden>Program
+                  <label id="trendProgramControl">Program
                     <select id="trendProgramSelect">
                       <option value="">All on-demand audio</option>
                     </select>
