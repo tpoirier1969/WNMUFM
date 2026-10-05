@@ -809,7 +809,10 @@ export function renderMultiLineChart(container, points, options = {}) {
     let path="",drawing=false;
     points.forEach((point,index)=>{
       const value=finiteNumber(point.values?.[item.key]);
-      if(value===null){drawing=false;return;}
+      if(value===null){
+        if(!options.connectGaps) drawing=false;
+        return;
+      }
       path+=(drawing?" L":"M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
       drawing=true;
     });

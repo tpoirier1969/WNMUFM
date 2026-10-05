@@ -277,7 +277,7 @@ function renderTrendControlButtons() {
     `<button type="button" class="filter-button ${item.priority === "diagnostic" ? "diagnostic" : ""}" data-trend-metric="${escapeHtml(item.key)}" aria-pressed="${state.trendMetrics.includes(item.key)}">${escapeHtml(item.label)}</button>`
   ).join("");
   els.trendWeekpartButtons.innerHTML = WEEKPARTS.map(([key,label,colorIndex]) =>
-    `<label class="day-series-option day-color-${colorIndex}" data-day-series="${key}"><input type="checkbox" data-weekpart="${key}" ${state.trendDaySeries.includes(key) ? "checked" : ""}><span>${label}</span></label>`
+    `<label class="day-series-option day-color-${colorIndex}" data-day-series="${key}"><input type="checkbox" data-weekpart="${key}" ${state.trendDaySeries.includes(key) ? "checked" : ""}><span class="day-series-check" aria-hidden="true"></span><span>${label}</span></label>`
   ).join("");
   els.trendNotableButtons.innerHTML = NOTABLE_MODES.map(([key,label]) =>
     `<button type="button" class="filter-button" data-notable-mode="${key}" aria-pressed="${key === state.trendNotable}">${label}</button>`
@@ -1516,6 +1516,36 @@ function buildDayComparisonSeries(rows, keys=state.trendDaySeries) {
   return {series:series.map(({meta,...item})=>item),points,groupCount:series.length};
 }
 
+function buildFocusedHourComparison(rows,hourNumber,keys=state.trendDaySeries) {
+  const selected=(keys?.length ? keys : ["all"]).map(daySeriesMeta);
+  const series=selected.map((meta,index)=>({
+    key:`focused_${index}`,
+    label:meta.label,
+    colorIndex:meta.colorIndex,
+    daySeriesKey:meta.key,
+    startDate:state.startDate,
+    endDate:state.endDate,
+    mode:"focused"
+  }));
+  const byDate=new Map();
+  rows.forEach((row)=>{
+    if(Number(String(row.schedule_hour || "").slice(0,2))!==hourNumber) return;
+    if(!byDate.has(row.schedule_date)) byDate.set(row.schedule_date,Number(row.tlh_hours));
+  });
+  const dates=[...byDate.keys()].sort();
+  const points=dates.map((date)=>({
+    date,
+    label:formatDayDate(date),
+    shortLabel:shortDayLabel(date),
+    hour:hourNumber,
+    values:Object.fromEntries(series.map((item)=>[
+      item.key,
+      matchesWeekpart(date,item.daySeriesKey) ? byDate.get(date) : null
+    ]))
+  }));
+  return {series,points};
+}
+
 function buildTimeOfDayProfileSeries(rows, mode) {
   const groups=new Map();
   rows.forEach((row)=>{
@@ -1574,78 +1604,90 @@ async function renderTimeOfDayTrend(requestId) {
   if(state.trendHour!=="profile") {
     const hourKey=state.trendHour;
     const hourNumber=Number(hourKey);
-    const hourRows=filtered.filter((row)=>String(row.schedule_hour || "").startsWith(`${hourKey}:`));
-    const values=hourRows.map((row)=>Number(row.tlh_hours)).filter(Number.isFinite);
-    const medianValue=values.length ? median(values) : null;
-    const averageValue=values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null;
-    const latest=hourRows.length ? hourRows[hourRows.length-1] : null;
+    const hourRows=notableFiltered.filter((row)=>String(row.schedule_hour || "").startsWith(`${hourKey}:`));
+    const selectedSeries=(state.trendDaySeries.length ? state.trendDaySeries : ["all"]).map(daySeriesMeta);
+    const seriesStats=selectedSeries.map((meta)=>{
+      const groupRows=hourRows.filter((row)=>matchesWeekpart(row.schedule_date,meta.key));
+      const values=groupRows.map((row)=>Number(row.tlh_hours)).filter(Number.isFinite);
+      return {
+        ...meta,
+        rows:groupRows,
+        count:values.length,
+        average:values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null,
+        median:values.length ? median(values) : null,
+        latest:groupRows.length ? groupRows[groupRows.length-1] : null
+      };
+    });
 
     els.trendTitle.textContent=`StreamGuys TLH at ${hourLabel(hourNumber)}`;
     els.trendDescription.textContent=
-      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates using one StreamGuys observation per day. Date labels are thinned for readability, but the line and nodes use the full daily series.` +
+      `This traces the ${hourLabel(hourNumber)}–${hourLabel((hourNumber+1)%24)} WNMU Eastern hour across the selected dates. Each checked Days Included group is its own colored series.` +
       (filterNotes.length ? ` Showing ${filterNotes.join(" · ")}.` : "");
-    els.trendMedianSummary.innerHTML=values.length ? [
-      `<span><strong>Average:</strong> ${escapeHtml(formatMetric(averageValue,"hours"))}</span>`,
-      `<span><strong>Median:</strong> ${escapeHtml(formatMetric(medianValue,"hours"))}</span>`,
-      latest ? `<span><strong>Latest:</strong> ${escapeHtml(formatMetric(latest.tlh_hours,"hours"))}</span>` : "",
-      `<span><strong>Daily observations:</strong> ${values.length.toLocaleString()}</span>`
-    ].join("") : "";
+    els.trendMedianSummary.innerHTML=seriesStats.map((item)=>[
+      `<span><strong>${escapeHtml(item.label)} avg.:</strong> ${item.average===null ? "—" : escapeHtml(formatMetric(item.average,"hours"))}</span>`,
+      `<span><strong>${escapeHtml(item.label)} median:</strong> ${item.median===null ? "—" : escapeHtml(formatMetric(item.median,"hours"))}</span>`,
+      `<span><strong>${escapeHtml(item.label)} days:</strong> ${item.count.toLocaleString()}</span>`
+    ].join("")).join("");
 
     setHidden(els.trendChartToolbar,false);
     updateTrendZoomControls();
-    const points=hourRows.map((row)=>{
-      const schedule=conciseScheduleContext(scheduleEntries,{
-        hour:hourNumber,
-        startDate:row.schedule_date,
-        endDate:row.schedule_date,
-        daySeriesKey:daySeriesKeyForDate(row.schedule_date)
-      });
-      const tooltipRows=[{
-        tone:"station",
-        label:"TLH",
-        value:formatMetric(row.tlh_hours,"hours"),
-        delta:medianValue===null ? "" : `${signedPercent(percentFromMedian(row.tlh_hours,medianValue))} vs this hour's median`
-      }];
-      if(schedule) tooltipRows.push({label:"Scheduled",value:schedule,delta:""});
-      return {
-        date:row.schedule_date,
-        label:formatDayDate(row.schedule_date),
-        shortLabel:shortDayLabel(row.schedule_date),
-        value:Number(row.tlh_hours),
-        weekend:isWeekendDate(row.schedule_date),
-        tooltipModel:{
-          title:`${formatDayDate(row.schedule_date)} · ${hourLabel(hourNumber)}`,
-          rows:tooltipRows
-        }
-      };
-    });
-    const chartPoints=zoomedTrendPoints(points);
+    const comparison=buildFocusedHourComparison(hourRows,hourNumber,state.trendDaySeries);
+    let chartPoints=comparison.points;
+    if(state.trendZoomStart && state.trendZoomEnd) {
+      chartPoints=comparison.points.filter((point)=>point.date>=state.trendZoomStart && point.date<=state.trendZoomEnd);
+      if(chartPoints.length<2) {
+        clearTrendZoom();
+        chartPoints=comparison.points;
+      }
+    }
     updateTrendZoomControls();
-    renderLineChart(els.trendChart,chartPoints,{
+    renderMultiLineChart(els.trendChart,chartPoints,{
       title:`StreamGuys TLH at ${hourLabel(hourNumber)}`,
-      ariaLabel:`StreamGuys total listening hours at ${hourLabel(hourNumber)} over time`,
-      grain:"day",
-      primaryLabel:"TLH",
+      ariaLabel:`StreamGuys total listening hours at ${hourLabel(hourNumber)} over time by selected day groups`,
+      series:comparison.series,
+      formatValue:(value)=>formatMetric(value,"hours"),
       yAxisLabel:"Total Listening Hours",
       yTickStep:20,
       yTickFormat:"integer",
-      zoomMode:state.trendZoomMode,
-      onZoomSelect:setTrendZoom
+      labelEvery:2,
+      connectGaps:true,
+      tooltipModel:(point,item,value)=>{
+        const itemStats=seriesStats.find((candidate)=>candidate.key===item.daySeriesKey);
+        const schedule=conciseScheduleContext(scheduleEntries,{
+          hour:hourNumber,
+          startDate:point.date,
+          endDate:point.date,
+          daySeriesKey:item.daySeriesKey
+        });
+        const rows=[{
+          tone:"station",
+          label:item.label,
+          value:formatMetric(value,"hours"),
+          delta:itemStats?.median===null || itemStats?.median===undefined ? "" : `${signedPercent(percentFromMedian(value,itemStats.median))} vs ${item.label} median`
+        }];
+        if(schedule) rows.push({label:"Scheduled",value:schedule,delta:""});
+        return {title:`${formatDayDate(point.date)} · ${hourLabel(hourNumber)}`,rows};
+      }
     });
 
-    if(!hourRows.length) {
+    const tableRows=hourRows.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
+    if(!tableRows.length) {
       renderTrendDataTable("",0);
       els.trendPrintColumns.innerHTML="";
       return;
     }
     renderTrendDataTable(`<table class="trend-data-table">
-      <thead><tr><th>Date</th><th class="numeric">TLH</th><th class="numeric">Vs median</th><th>Raw StreamGuys hour</th></tr></thead>
-      <tbody>${hourRows.map((row)=>`<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,medianValue)))}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`).join("")}</tbody>
-    </table>`,hourRows.length);
-    renderTrendPrintDetail(hourRows.map((row)=>({period_start:row.schedule_date,station_value:row.tlh_hours,unit:"hours"})),"day",medianValue);
+      <thead><tr><th>Date</th><th>Series</th><th class="numeric">TLH</th><th class="numeric">Vs series median</th><th>Raw StreamGuys hour</th></tr></thead>
+      <tbody>${tableRows.map((row)=>{
+        const meta=selectedSeries.find((item)=>matchesWeekpart(row.schedule_date,item.key));
+        const stats=seriesStats.find((item)=>item.key===meta?.key);
+        return `<tr${isWeekendDate(row.schedule_date) ? ' class="weekend-row"' : ""}><td>${escapeHtml(formatDayDate(row.schedule_date))}</td><td>${escapeHtml(meta?.label || "Selected")}</td><td class="numeric">${escapeHtml(formatMetric(row.tlh_hours,"hours"))}</td><td class="numeric">${stats?.median===null || stats?.median===undefined ? "—" : escapeHtml(signedPercent(percentFromMedian(row.tlh_hours,stats.median)))}</td><td>${escapeHtml(row.source_hour || "—")}</td></tr>`;
+      }).join("")}</tbody>
+    </table>`,tableRows.length);
+    els.trendPrintColumns.classList.add("single");
+    els.trendPrintColumns.innerHTML=`<p class="print-trend-note"><strong>Focused-hour comparison:</strong> ${escapeHtml(selectedDaySeriesLabel())} at ${escapeHtml(hourLabel(hourNumber))}.</p>`;
     return;
   }
-
   clearTrendZoom();
   setHidden(els.trendChartToolbar,true);
   els.trendTitle.textContent="StreamGuys TLH by time of day";

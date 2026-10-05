@@ -575,8 +575,11 @@ body.app-busy * {
   .period-snapshot-heading p { text-align:left; }
 }
 
-.day-series-option { --day-color:var(--brand); display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:5px 9px 5px 7px; border:1px solid var(--line); border-left:3px solid var(--day-color); border-radius:999px; background:var(--surface); color:var(--muted); font-size:.78rem; font-weight:800; cursor:pointer; }
-.day-series-option input[type="checkbox"] { width:14px; height:14px; min-height:0; padding:0; margin:0; flex:0 0 14px; accent-color:var(--day-color); }
+.day-series-option { --day-color:var(--brand); position:relative; display:inline-flex; align-items:center; gap:6px; min-height:34px; padding:5px 9px 5px 7px; border:1px solid var(--line); border-left:3px solid var(--day-color); border-radius:999px; background:var(--surface); color:var(--muted); font-size:.78rem; font-weight:800; cursor:pointer; }
+.day-series-option input[type="checkbox"] { position:absolute; width:1px; height:1px; min-height:0; padding:0; margin:0; opacity:0; pointer-events:none; }
+.day-series-check { width:14px; height:14px; flex:0 0 14px; display:inline-grid; place-items:center; border:1px solid currentColor; border-radius:3px; color:var(--day-color); background:transparent; font-size:11px; line-height:1; font-weight:900; }
+.day-series-option input[type="checkbox"]:checked + .day-series-check { background:var(--day-color); border-color:var(--day-color); color:#fff; }
+.day-series-option input[type="checkbox"]:checked + .day-series-check::after { content:"✓"; transform:translateY(-.5px); }
 .day-series-option:focus-within { outline:2px solid rgba(67,167,203,.28); outline-offset:2px; }
 .day-series-option.day-color-0 { --day-color:var(--brand); }
 .day-series-option.day-color-1 { --day-color:var(--accent); }
