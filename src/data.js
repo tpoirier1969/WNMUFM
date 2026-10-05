@@ -137,23 +137,23 @@ function monthEndFromStart(value) {
 export async function loadScheduleEvidenceRange() {
   return cachedQuery("schedule-evidence-range",async ()=>{
     const queries=[
-      ["wnmufm_schedule_newsletter_sources",new URLSearchParams({select:"issue_month",order:"issue_month.asc",limit:"1"}).toString()],
-      ["wnmufm_schedule_newsletter_sources",new URLSearchParams({select:"issue_month",order:"issue_month.desc",limit:"1"}).toString()],
+      ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"issue_month",entry_type:"eq.monthly_grid",order:"issue_month.asc",limit:"1"}).toString()],
+      ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"issue_month",entry_type:"eq.monthly_grid",order:"issue_month.desc",limit:"1"}).toString()],
       ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"specific_date",entry_type:"eq.dated_override",specific_date:"not.is.null",order:"specific_date.asc",limit:"1"}).toString()],
       ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"specific_date",entry_type:"eq.dated_override",specific_date:"not.is.null",order:"specific_date.desc",limit:"1"}).toString()],
       ["wnmufm_schedule_daily_archive",new URLSearchParams({select:"capture_date",order:"capture_date.asc",limit:"1"}).toString()],
       ["wnmufm_schedule_daily_archive",new URLSearchParams({select:"capture_date",order:"capture_date.desc",limit:"1"}).toString()]
     ];
-    const [previewFirst,previewLast,datedFirst,datedLast,archiveFirst,archiveLast]=await Promise.all(
+    const [gridFirst,gridLast,datedFirst,datedLast,archiveFirst,archiveLast]=await Promise.all(
       queries.map(([table,query])=>selectRows(table,query))
     );
     const starts=[
-      previewFirst?.[0]?.issue_month,
+      gridFirst?.[0]?.issue_month,
       datedFirst?.[0]?.specific_date,
       archiveFirst?.[0]?.capture_date
     ].filter(Boolean).sort();
     const ends=[
-      previewLast?.[0]?.issue_month ? monthEndFromStart(previewLast[0].issue_month) : "",
+      gridLast?.[0]?.issue_month ? monthEndFromStart(gridLast[0].issue_month) : "",
       datedLast?.[0]?.specific_date,
       archiveLast?.[0]?.capture_date
     ].filter(Boolean).sort();
