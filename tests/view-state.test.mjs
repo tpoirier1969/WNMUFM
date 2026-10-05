@@ -44,12 +44,16 @@ test("Trend Explorer time-of-day mode is shareable and wired to StreamGuys hourl
   const fs=await import("node:fs/promises");
   const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
   const html=await fs.readFile(new URL("../index.html",import.meta.url),"utf8");
-  assert.match(html,/data-trend-mode="overtime"/);
-  assert.match(html,/data-trend-mode="timeofday"/);
+  assert.match(html,/data-trend-view="day"/);
+  assert.match(html,/data-trend-view="week"/);
+  assert.match(html,/data-trend-view="month"/);
+  assert.match(html,/data-trend-view="timeofday"/);
   assert.match(app,/renderTimeOfDayTrend/);
   assert.match(app,/loadStreamGuysHourly\(selectedRange\(\)\)/);
   assert.match(app,/StreamGuys TLH by time of day/);
   assert.match(html,/Hour focus/);
+  assert.match(html,/id="trendQuickRangeButtons"/);
+  assert.match(html,/Analysis period/);
   assert.match(app,/trace that hour across time/);
 });
 
@@ -173,4 +177,16 @@ test("schedule view state can be shared independently from the audience Analysis
   assert.equal(parsed.scheduleDate,"2023-10-03");
   assert.equal(parsed.startDate,"2025-09-12");
   assert.equal(parsed.endDate,"2026-09-20");
+});
+
+test("Trend Explorer workflow keeps incompatible controls visible but disabled", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  const html=await fs.readFile(new URL("../index.html",import.meta.url),"utf8");
+  assert.match(html,/Days included/);
+  assert.match(html,/Special dates/);
+  assert.match(html,/What to measure/);
+  assert.match(app,/setTrendControlAvailability/);
+  assert.match(app,/Time of day currently uses StreamGuys TLH/);
+  assert.match(app,/Days included is available for Day and Time of day views/);
 });
