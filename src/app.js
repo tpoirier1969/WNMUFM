@@ -1427,29 +1427,43 @@ function drillIntoTimeOfDayPoint(point,item) {
 }
 
 function profileGroupForDate(dateString, mode) {
-  if(mode==="day") return {key:dateString,label:formatDayDate(dateString)};
+  if(mode==="day") return {key:dateString,label:formatDayDate(dateString),startDate:dateString,endDate:dateString,mode};
   if(mode==="week") {
     const start=mondayIso(dateString);
-    return {key:`week-${start}`,label:`Week of ${formatDayDate(start)}`};
+    return {key:`week-${start}`,label:`Week of ${formatDayDate(start)}`,startDate:start,endDate:addIsoDays(start,6),mode};
   }
   if(mode==="month") {
     const key=String(dateString).slice(0,7);
-    const date=new Date(`${key}-01T12:00:00Z`);
-    return {key:`month-${key}`,label:date.toLocaleDateString(undefined,{month:"short",year:"numeric",timeZone:"UTC"})};
+    const start=`${key}-01`;
+    const date=new Date(`${start}T12:00:00Z`);
+    return {key:`month-${key}`,label:date.toLocaleDateString(undefined,{month:"short",year:"numeric",timeZone:"UTC"}),startDate:start,endDate:monthEndIso(key),mode};
   }
   if(mode==="quarter") {
     const year=Number(String(dateString).slice(0,4));
     const month=Number(String(dateString).slice(5,7));
     const quarter=Math.floor((month-1)/3)+1;
-    return {key:`quarter-${year}-Q${quarter}`,label:`Q${quarter} ${year}`};
+    const startMonth=(quarter-1)*3+1;
+    const start=`${year}-${String(startMonth).padStart(2,"0")}-01`;
+    const endMonthKey=`${year}-${String(startMonth+2).padStart(2,"0")}`;
+    return {key:`quarter-${year}-Q${quarter}`,label:`Q${quarter} ${year}`,startDate:start,endDate:monthEndIso(endMonthKey),mode};
   }
-  return {key:"overall",label:"Average TLH"};
+  return {key:"overall",label:"Average TLH",startDate:state.startDate,endDate:state.endDate,mode:"overall"};
 }
 
 function buildDayComparisonSeries(rows, keys=state.trendDaySeries) {
   const selected=(keys?.length ? keys : ["all"]).map(daySeriesMeta);
-  const series=selected.map((meta,index)=>({key:`days_${index}`,label:meta.label,colorIndex:meta.colorIndex,meta}));
+  const series=selected.map((meta,index)=>({
+    key:`days_${index}`,
+    label:meta.label,
+    colorIndex:meta.colorIndex,
+    meta,
+    daySeriesKey:meta.key,
+    startDate:state.startDate,
+    endDate:state.endDate,
+    mode:"overall"
+  }));
   const points=Array.from({length:24},(_,hour)=>({
+    hour,
     label:hourLabel(hour),
     shortLabel:hourLabel(hour).replace(":00",""),
     values:Object.fromEntries(series.map((item)=>{
@@ -1460,7 +1474,7 @@ function buildDayComparisonSeries(rows, keys=state.trendDaySeries) {
       return [item.key,values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null];
     }))
   }));
-  return {series:series.map(({key,label,colorIndex})=>({key,label,colorIndex})),points,groupCount:series.length};
+  return {series:series.map(({meta,...item})=>item),points,groupCount:series.length};
 }
 
 function buildTimeOfDayProfileSeries(rows, mode) {
@@ -1473,8 +1487,17 @@ function buildTimeOfDayProfileSeries(rows, mode) {
     if(Number.isInteger(hour) && hour>=0 && hour<24 && Number.isFinite(value)) groups.get(group.key).hours[hour].push(value);
   });
   const ordered=[...groups.values()].sort((a,b)=>a.key.localeCompare(b.key));
-  const series=ordered.map((group,index)=>({key:`profile_${index}`,label:group.label,group}));
+  const series=ordered.map((group,index)=>({
+    key:`profile_${index}`,
+    label:group.label,
+    startDate:group.startDate,
+    endDate:group.endDate,
+    mode:group.mode,
+    daySeriesKey:state.trendDaySeries[0] || "all",
+    group
+  }));
   const points=Array.from({length:24},(_,hour)=>({
+    hour,
     label:hourLabel(hour),
     shortLabel:hourLabel(hour).replace(":00",""),
     values:Object.fromEntries(series.map((item)=>{
@@ -1482,7 +1505,7 @@ function buildTimeOfDayProfileSeries(rows, mode) {
       return [item.key,values.length ? values.reduce((sum,value)=>sum+value,0)/values.length : null];
     }))
   }));
-  return {series:series.map(({key,label})=>({key,label})),points,groupCount:series.length};
+  return {series:series.map(({group,...item})=>item),points,groupCount:series.length};
 }
 
 async function renderTimeOfDayTrend(requestId) {
