@@ -242,7 +242,7 @@ const TREND_METRICS = [
 
 const WEEKPARTS = [
   ["all","All days",0],["weekday","Mon–Fri",1],["weekend","Weekend",2],
-  ["mon","Mon",3],["tue","Tue",4],["wed","Wed",5],["thu","Thu",6],["fri","Fri",7],["sat","Sat",0],["sun","Sun",1]
+  ["mon","Mon",3],["tue","Tue",4],["wed","Wed",5],["thu","Thu",6],["fri","Fri",7],["sat","Sat",8],["sun","Sun",9]
 ];
 function daySeriesMeta(key) {
   const row=WEEKPARTS.find(([value])=>value===key);
