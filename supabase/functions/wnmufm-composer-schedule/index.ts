@@ -321,13 +321,9 @@ async function loadArchiveRange(start: string,end: string) {
 
     for(let dateText=start;dateText<=end;dateText=addDays(dateText,1)) {
       const candidates=sortedCaptures.filter((capture)=>capture.capture_date<=dateText);
-      let capture=candidates.at(-1);
-      const preCapture=Boolean(!capture && firstCapture && dateText<firstCapture.capture_date);
-      if(preCapture) {
-        capture=firstCapture;
-        preCaptureDates.push(dateText);
-      }
+      const capture=candidates.at(-1);
       if(!capture) {
+        if(firstCapture && dateText<firstCapture.capture_date) preCaptureDates.push(dateText);
         missingDates.push(dateText);
         continue;
       }
@@ -341,8 +337,7 @@ async function loadArchiveRange(start: string,end: string) {
         continue;
       }
       if(capture.capture_date!==dateText) staleDates.push(dateText);
-      const normalized=normalizeProgramsForDate(version.payload,dateText,{requireExplicitBounds:preCapture});
-      if(preCapture) missingDates.push(dateText);
+      const normalized=normalizeProgramsForDate(version.payload,dateText);
       if(!normalized.length) continue;
       entries.push(...normalized);
       if(!coverageStart) coverageStart=dateText;

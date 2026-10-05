@@ -239,6 +239,12 @@ function formatTime(value) {
   return `${hour24%12 || 12}${minute ? `:${String(minute).padStart(2,"0")}` : ""} ${suffix}`;
 }
 
+function dateWithinAvailable(date,startDate,endDate) {
+  if(startDate && date<startDate) return false;
+  if(endDate && date>endDate) return false;
+  return true;
+}
+
 function sourceBadge(entryOrDay) {
   const kind=entryOrDay?.evidenceKind || entryOrDay?.sourceKind || "none";
   const labels={
@@ -252,7 +258,7 @@ function sourceBadge(entryOrDay) {
   return `<span class="schedule-source-badge schedule-source-${escapeHtml(kind)}">${escapeHtml(labels[kind] || "Source")}</span>`;
 }
 
-export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=null}={}) {
+export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=null,availableStart="",availableEnd=""}={}) {
   const month=monthKey(anchorDate);
   return `
     <div class="schedule-view-heading">
@@ -262,6 +268,9 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=nul
     <div class="schedule-month-grid" role="grid" aria-label="${escapeHtml(formatMonth(anchorDate))} schedule at ${escapeHtml(formatTime(time))}">
       ${SHORT_DAY_NAMES.map((name)=>`<div class="schedule-month-weekday" role="columnheader">${escapeHtml(name)}</div>`).join("")}
       ${(days || []).map((day,index)=>{
+        if(!dateWithinAvailable(day.date,availableStart,availableEnd)) {
+          return '<div class="schedule-month-day outside-evidence" role="gridcell" aria-hidden="true"></div>';
+        }
         const programs=entriesAtTimeForDay(days,index,time,carryInDay?.entries || []);
         const inMonth=monthKey(day.date)===month;
         const source=programs[0] || day;
@@ -273,7 +282,7 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=nul
     </div>`;
 }
 
-export function renderScheduleWeek(days,{windowStart=6,carryInDay=null}={}) {
+export function renderScheduleWeek(days,{windowStart=6,carryInDay=null,availableStart="",availableEnd=""}={}) {
   const startHour=Math.max(0,Math.min(18,Number(windowStart) || 0));
   const rows=Array.from({length:12},(_,index)=>startHour*60+index*30);
   const timeText=(minutes)=>`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`;
@@ -284,11 +293,12 @@ export function renderScheduleWeek(days,{windowStart=6,carryInDay=null}={}) {
     </div>
     <div class="table-wrap schedule-week-wrap">
       <table class="schedule-week-table">
-        <thead><tr><th>Time</th>${days.map((day)=>`<th>${escapeHtml(formatDate(day.date,{weekdayName:true}))}<br>${sourceBadge(day)}</th>`).join("")}</tr></thead>
+        <thead><tr><th>Time</th>${days.map((day)=>dateWithinAvailable(day.date,availableStart,availableEnd) ? `<th>${escapeHtml(formatDate(day.date,{weekdayName:true}))}<br>${sourceBadge(day)}</th>` : '<th class="outside-evidence" aria-hidden="true"></th>').join("")}</tr></thead>
         <tbody>
           ${rows.map((minutes)=>{
             const clock=timeText(minutes);
             return `<tr><th>${escapeHtml(formatTime(clock))}</th>${days.map((day,index)=>{
+              if(!dateWithinAvailable(day.date,availableStart,availableEnd)) return '<td class="outside-evidence" aria-hidden="true"></td>';
               const programs=entriesAtTimeForDay(days,index,clock,carryInDay?.entries || []);
               return `<td>${programs.length ? programs.map((item)=>`<span class="schedule-week-program">${escapeHtml(item.program)}</span>`).join("") : '<span class="schedule-empty">—</span>'}</td>`;
             }).join("")}</tr>`;

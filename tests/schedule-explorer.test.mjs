@@ -247,3 +247,14 @@ test("the first visible Week or Month day can use overnight carry-in from the fe
   assert.match(renderScheduleWeek(visible,{windowStart:0,carryInDay}),/Saturday Overnight/);
   assert.match(renderScheduleMonth(visible,{anchorDate:"2026-09-27",time:"00:30",carryInDay}),/Saturday Overnight/);
 });
+
+
+test("Schedule month and week views hide dates outside stored evidence bounds", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../src/schedule-explorer.js",import.meta.url),"utf8");
+  assert.match(source,/function dateWithinAvailable/);
+  assert.match(source,/availableStart=""\s*,availableEnd=""/);
+  assert.match(source,/schedule-month-day outside-evidence/);
+  assert.match(source,/schedule-week-table/);
+  assert.match(source,/class="outside-evidence"/);
+});

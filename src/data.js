@@ -125,6 +125,45 @@ function monthStart(value) {
   return /^\d{4}-\d{2}/.test(String(value || "")) ? `${String(value).slice(0,7)}-01` : "";
 }
 
+function monthEndFromStart(value) {
+  const start=monthStart(value);
+  if(!start) return "";
+  const date=new Date(`${start}T12:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth()+1);
+  date.setUTCDate(0);
+  return date.toISOString().slice(0,10);
+}
+
+export async function loadScheduleEvidenceRange() {
+  return cachedQuery("schedule-evidence-range",async ()=>{
+    const queries=[
+      ["wnmufm_schedule_newsletter_sources",new URLSearchParams({select:"issue_month",order:"issue_month.asc",limit:"1"}).toString()],
+      ["wnmufm_schedule_newsletter_sources",new URLSearchParams({select:"issue_month",order:"issue_month.desc",limit:"1"}).toString()],
+      ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"specific_date",entry_type:"eq.dated_override",specific_date:"not.is.null",order:"specific_date.asc",limit:"1"}).toString()],
+      ["wnmufm_schedule_newsletter_entries",new URLSearchParams({select:"specific_date",entry_type:"eq.dated_override",specific_date:"not.is.null",order:"specific_date.desc",limit:"1"}).toString()],
+      ["wnmufm_schedule_daily_archive",new URLSearchParams({select:"capture_date",order:"capture_date.asc",limit:"1"}).toString()],
+      ["wnmufm_schedule_daily_archive",new URLSearchParams({select:"capture_date",order:"capture_date.desc",limit:"1"}).toString()]
+    ];
+    const [previewFirst,previewLast,datedFirst,datedLast,archiveFirst,archiveLast]=await Promise.all(
+      queries.map(([table,query])=>selectRows(table,query))
+    );
+    const starts=[
+      previewFirst?.[0]?.issue_month,
+      datedFirst?.[0]?.specific_date,
+      archiveFirst?.[0]?.capture_date
+    ].filter(Boolean).sort();
+    const ends=[
+      previewLast?.[0]?.issue_month ? monthEndFromStart(previewLast[0].issue_month) : "",
+      datedLast?.[0]?.specific_date,
+      archiveLast?.[0]?.capture_date
+    ].filter(Boolean).sort();
+    return {
+      startDate:starts[0] || "",
+      endDate:ends.at(-1) || ""
+    };
+  });
+}
+
 export async function loadNewsletterScheduleEvidence(range = {}) {
   const params=new URLSearchParams({
     select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",

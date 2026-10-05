@@ -593,3 +593,6 @@ body.app-busy * {
 .day-series-option.day-color-7 { --day-color:#66722c; }
 .day-series-option.day-color-8 { --day-color:#8b6f47; }
 .day-series-option.day-color-9 { --day-color:#4d6fa9; }
+
+.schedule-month-day.outside-evidence,
+.schedule-week-table .outside-evidence { background:transparent; border-color:transparent; box-shadow:none; pointer-events:none; }
