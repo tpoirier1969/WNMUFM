@@ -1994,22 +1994,13 @@ async function renderStreamingWeekpart() {
 
 async function renderBreakdowns() {
   const requestId = ++breakdownRequestId;
-  const [programs, devices, channels, rangedHours, streamGuysRows] = await Promise.all([
+  const [programs, devices, channels] = await Promise.all([
     loadLatestBreakdown("audio.downloads_by_program", "program", "{}", selectedRange()),
     loadLatestBreakdown("streaming.device_share_pct", "device", "{}", selectedRange()),
-    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange()),
-    loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart", "{}", selectedRange()),
-    loadStreamGuysHourly(selectedRange())
+    loadLatestBreakdown("website.sessions_by_channel", "traffic_channel", "{}", selectedRange())
   ]);
   if (requestId !== breakdownRequestId) return;
 
-  let hours=rangedHours;
-  let hourRangeMismatch=false;
-  if(!hours.length) {
-    hours=await loadLongestBreakdown("npr_one.average_hourly_listeners", "hour_weekpart");
-    if (requestId !== breakdownRequestId) return;
-    hourRangeMismatch=hours.length>0;
-  }
   renderBarChart(els.programBars, sortBreakdown(programs).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 12, onBarClick:(row)=>openBreakdownDrilldown("On-demand downloads",row,programs[0] ? formatPeriod(programs[0],programs[0].grain) : "") });
   renderBarChart(els.deviceBars, sortBreakdown(devices).map((row) => ({ label: row.dimension_value, value: row.station_value, formattedValue:`${Number(row.station_value).toFixed(1)}%` })), {
     maxValue: 100,
@@ -2017,13 +2008,7 @@ async function renderBreakdowns() {
     onBarClick:(row)=>openBreakdownDrilldown("Live-stream device share",row,devices[0] ? formatPeriod(devices[0],devices[0].grain) : "")
   });
   renderBarChart(els.channelBars, sortBreakdown(channels).map((row) => ({ label: exploreDimensionLabel("website-channels",row.dimension_value), value: row.station_value, formattedValue:formatMetric(row.station_value,row.unit) })), { limit: 8, onBarClick:(row)=>openBreakdownDrilldown("Website sessions",row,channels[0] ? formatPeriod(channels[0],channels[0].grain) : "") });
-  if(streamGuysRows.length) {
-    const profile=buildStreamGuysHourProfile(streamGuysRows);
-    const alignment={ offset_hours:streamGuysRows[0]?.offset_hours, source_timezone_label:streamGuysRows[0]?.source_timezone_label, alignment_status:streamGuysRows[0]?.alignment_status };
-    await Promise.all([renderListeningByHour(profile,requestId,{sourceType:"streamguys",alignment}),renderStreamingWeekpart()]);
-  } else {
-    await Promise.all([renderListeningByHour(hours,requestId,{rangeMismatch:hourRangeMismatch}),renderStreamingWeekpart()]);
-  }
+  await renderStreamingWeekpart();
 }
 
 async function renderAnomalies() {
