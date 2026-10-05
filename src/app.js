@@ -86,6 +86,7 @@ let takeawayRangeKey = "";
 let takeawayScheduleNotice = "";
 let rangeEditPending = false;
 let rangeBlurCommitTimer = null;
+const trendScheduleEvidenceCache = new Map();
 
 function viewStateSnapshot() {
   return {
@@ -1295,6 +1296,134 @@ function mondayIso(dateString) {
   const dow=(date.getUTCDay()+6)%7;
   date.setUTCDate(date.getUTCDate()-dow);
   return date.toISOString().slice(0,10);
+}
+
+function addIsoDays(dateString,days) {
+  const date=new Date(`${dateString}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate()+Number(days || 0));
+  return date.toISOString().slice(0,10);
+}
+
+function monthEndIso(monthKey) {
+  const [year,month]=String(monthKey).split("-").map(Number);
+  return new Date(Date.UTC(year,month,0,12)).toISOString().slice(0,10);
+}
+
+function clampIsoDate(value,minValue,maxValue) {
+  let next=value;
+  if(minValue && next<minValue) next=minValue;
+  if(maxValue && next>maxValue) next=maxValue;
+  return next;
+}
+
+function weekdayMatchesSeriesKey(day,key) {
+  if(key==="all") return true;
+  if(key==="weekday") return day>=1 && day<=5;
+  if(key==="weekend") return day===0 || day===6;
+  const named={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
+  return named[key]===day;
+}
+
+function newsletterMinutes(value) {
+  const match=String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  return match ? Number(match[1])*60+Number(match[2]) : null;
+}
+
+function newsletterEntryHourDayOffset(entry,hour) {
+  const start=newsletterMinutes(entry.start_time);
+  const rawEnd=newsletterMinutes(entry.end_time);
+  if(start===null || rawEnd===null || start===rawEnd) return null;
+  const wraps=rawEnd<start;
+  const end=wraps ? rawEnd+1440 : rawEnd;
+  const hourStart=Number(hour)*60;
+  const hourEnd=hourStart+60;
+  if(start<hourEnd && end>hourStart) return 0;
+  if(wraps) {
+    const shiftedStart=hourStart+1440;
+    const shiftedEnd=hourEnd+1440;
+    if(start<shiftedEnd && end>shiftedStart) return 1;
+  }
+  return null;
+}
+
+async function loadTrendScheduleEvidence(range) {
+  const key=`${range?.startDate || ""}|${range?.endDate || ""}`;
+  if(trendScheduleEvidenceCache.has(key)) return trendScheduleEvidenceCache.get(key);
+  const promise=loadNewsletterScheduleEvidence(range).catch(()=>({sources:[],entries:[]}));
+  trendScheduleEvidenceCache.set(key,promise);
+  if(trendScheduleEvidenceCache.size>6) {
+    const oldest=trendScheduleEvidenceCache.keys().next().value;
+    trendScheduleEvidenceCache.delete(oldest);
+  }
+  return promise;
+}
+
+function conciseScheduleContext(entries,{hour,startDate,endDate,daySeriesKey="all"}={}) {
+  if(!Array.isArray(entries) || !entries.length || !startDate || !endDate) return "";
+  const exact=(entries || []).filter((entry)=>{
+    if(entry.entry_type!=="dated_override" || !entry.specific_date) return false;
+    if(entry.specific_date<startDate || entry.specific_date>endDate) return false;
+    const date=new Date(`${entry.specific_date}T12:00:00Z`);
+    if(!weekdayMatchesSeriesKey(date.getUTCDay(),daySeriesKey)) return false;
+    return newsletterEntryHourDayOffset(entry,hour)!==null;
+  });
+  const source=exact.length ? exact : (entries || []).filter((entry)=>{
+    if(entry.entry_type!=="monthly_grid" || !entry.issue_month) return false;
+    const issueMonth=String(entry.issue_month).slice(0,7);
+    if(issueMonth<String(startDate).slice(0,7) || issueMonth>String(endDate).slice(0,7)) return false;
+    const offset=newsletterEntryHourDayOffset(entry,hour);
+    if(offset===null) return false;
+    const weekday=(Number(entry.weekday)+offset)%7;
+    return weekdayMatchesSeriesKey(weekday,daySeriesKey);
+  });
+  const titles=source.map((entry)=>String(entry.program_title || "").trim()).filter(Boolean);
+  if(!titles.length) return "";
+  const counts=new Map();
+  titles.forEach((title)=>counts.set(title,(counts.get(title)||0)+1));
+  const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1] || a[0].localeCompare(b[0]));
+  if(ranked.length===1) return ranked[0][0];
+  if(ranked[0][1]/titles.length>=0.7) return ranked[0][0];
+  if(ranked.length<=2) return ranked.map(([title])=>title).join(" / ");
+  return "";
+}
+
+function profilePointTooltip(point,item,value,scheduleEntries) {
+  const rows=[{
+    tone:"station",
+    label:"Average TLH",
+    value:formatMetric(value,"hours"),
+    delta:""
+  }];
+  const daySeriesKey=item.daySeriesKey || state.trendDaySeries[0] || "all";
+  const startDate=item.startDate || state.startDate;
+  const endDate=item.endDate || state.endDate;
+  const schedule=conciseScheduleContext(scheduleEntries,{
+    hour:point.hour,
+    startDate,
+    endDate,
+    daySeriesKey
+  });
+  if(schedule) rows.push({label:"Scheduled",value:schedule,delta:""});
+  const periodLabel=item.startDate && item.endDate ? item.label : "selected range";
+  rows.push({label:"Drill down",value:`Click point to view ${periodLabel} at ${point.label}`,delta:""});
+  return {title:`${item.label} · ${point.label}`,rows};
+}
+
+function drillIntoTimeOfDayPoint(point,item) {
+  if(item?.startDate && item?.endDate) {
+    state.startDate=clampIsoDate(item.startDate,state.availableRange.startDate,state.availableRange.endDate);
+    state.endDate=clampIsoDate(item.endDate,state.availableRange.startDate,state.availableRange.endDate);
+    if(state.startDate>state.endDate) [state.startDate,state.endDate]=[state.endDate,state.startDate];
+    state.rangeMode="custom";
+  }
+  state.trendMode="timeofday";
+  state.trendHour=String(Number(point.hour)).padStart(2,"0");
+  state.trendProfileCompare="overall";
+  clearTrendZoom();
+  applyRangeControls();
+  renderTrendQuickRanges();
+  persistUiState();
+  void withBusy(()=>refreshAnalysisViews());
 }
 
 function profileGroupForDate(dateString, mode) {
