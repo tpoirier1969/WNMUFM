@@ -492,7 +492,7 @@ body.app-busy * {
 .chart-zoom-selection { fill:rgba(0,79,113,.12); stroke:var(--brand); stroke-width:1.2; stroke-dasharray:5 4; pointer-events:none; }
 .quick-range-strip .filter-button { min-height:30px; padding:4px 9px; font-size:.74rem; }
 
-.chart-tooltip { position:absolute; z-index:20; width:max-content; max-width:min(620px,calc(100% - 12px)); padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--text); box-shadow:0 10px 28px rgba(0,0,0,.24); pointer-events:none; font-size:.78rem; line-height:1.35; }
+.chart-tooltip { position:absolute; z-index:20; width:max-content; max-width:min(620px,calc(100% - 12px)); padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--text); box-shadow:0 10px 28px rgba(0,0,0,.24); pointer-events:auto; font-size:.78rem; line-height:1.35; }
 .chart-tooltip-title { margin-bottom:7px; padding-bottom:6px; border-bottom:1px solid var(--line); font-weight:900; }
 .chart-tooltip-row { display:grid; grid-template-columns:minmax(120px,1.3fr) auto minmax(100px,1fr); gap:10px; align-items:baseline; padding:3px 0; }
 .chart-tooltip-row.station strong { color:var(--brand); }
@@ -502,6 +502,8 @@ body.app-busy * {
 .chart-tooltip-metric-head { margin-bottom:4px; color:var(--muted); font-size:.68rem; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
 .chart-tooltip-metric-row { padding:5px 0; border-top:1px solid var(--line); }
 .chart-tooltip-metric-row strong { color:var(--text); }
+.chart-tooltip-action { display:block; width:100%; margin-top:8px; padding:7px 9px; border:1px solid var(--brand); border-radius:8px; background:var(--brand); color:#fff; font:inherit; font-weight:850; text-align:left; cursor:pointer; }
+.chart-tooltip-action:hover, .chart-tooltip-action:focus-visible { filter:brightness(.95); outline:2px solid rgba(0,79,113,.22); outline-offset:2px; }
 @media (max-width:640px) {
   .chart-tooltip { max-width:calc(100% - 12px); }
   .chart-tooltip-metric-head { display:none; }
