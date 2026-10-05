@@ -243,3 +243,13 @@ test("focused Time-of-Day view preserves checked day groups as separate series",
   assert.match(app,/renderMultiLineChart\(els\.trendChart,chartPoints/);
   assert.match(app,/connectGaps:true/);
 });
+
+
+test("Time-of-Day drill action narrows the period and hour explicitly", async () => {
+  const fs=await import("node:fs/promises");
+  const app=await fs.readFile(new URL("../src/app.js",import.meta.url),"utf8");
+  assert.match(app,/function drillIntoTimeOfDayPoint/);
+  assert.match(app,/state\.startDate=clampIsoDate\(item\.startDate/);
+  assert.match(app,/state\.trendHour=String\(Number\(point\.hour\)\)/);
+  assert.match(app,/label:`Drill into \$\{periodLabel\} · \$\{point\.label\}`/);
+});
