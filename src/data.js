@@ -165,58 +165,60 @@ export async function loadScheduleEvidenceRange() {
 }
 
 export async function loadNewsletterScheduleEvidence(range = {}) {
-  const params=new URLSearchParams({
-    select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",
-    order:"issue_month.asc",
-    limit:"120"
-  });
-  const startMonth=monthStart(range?.startDate);
-  const endMonth=monthStart(range?.endDate);
-  if(startMonth) params.set("issue_month",`gte.${startMonth}`);
-  if(endMonth) params.append("issue_month",`lte.${endMonth}`);
-
-  const datedParams=new URLSearchParams({
-    select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
-    entry_type:"eq.dated_override",
-    order:"specific_date.asc,start_time.asc",
-    limit:"1000"
-  });
-  if(range?.startDate) datedParams.set("specific_date",`gte.${range.startDate}`);
-  if(range?.endDate) datedParams.append("specific_date",`lte.${range.endDate}`);
-
-  const [monthSources,datedEntries]=await Promise.all([
-    selectRows("wnmufm_schedule_newsletter_sources",params.toString()),
-    selectRows("wnmufm_schedule_newsletter_entries",datedParams.toString())
-  ]);
-
-  const knownSourceIds=new Set(monthSources.map((source)=>Number(source.id)));
-  const missingSourceIds=[...new Set(datedEntries.map((row)=>Number(row.source_id)).filter((id)=>Number.isFinite(id) && !knownSourceIds.has(id)))];
-  let extraSources=[];
-  if(missingSourceIds.length) {
-    const extraParams=new URLSearchParams({
+  const cacheKey=`newsletter-schedule|${range?.startDate || ""}|${range?.endDate || ""}`;
+  return cachedQuery(cacheKey,async ()=>{
+    const sourceParams=new URLSearchParams({
       select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",
-      id:`in.(${missingSourceIds.join(",")})`,
       order:"issue_month.asc",
-      limit:String(missingSourceIds.length)
-    }).toString();
-    extraSources=await selectRows("wnmufm_schedule_newsletter_sources",extraParams);
-  }
+      limit:"120"
+    });
+    const startMonth=monthStart(range?.startDate);
+    const endMonth=monthStart(range?.endDate);
+    if(startMonth) sourceParams.set("issue_month",`gte.${startMonth}`);
+    if(endMonth) sourceParams.append("issue_month",`lte.${endMonth}`);
 
-  const monthlyBatches=await Promise.all(monthSources.map((source)=>{
-    const query=new URLSearchParams({
-      select:"id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes",
-      source_id:`eq.${source.id}`,
+    const entrySelect="id,entry_key,source_id,issue_month,entry_type,specific_date,source_weekday,weekday,effective_start,effective_end,start_time,end_time,program_title,replaces_program_title,source_page,confidence,date_scope,evidence_basis,notes";
+    const monthlyParams=new URLSearchParams({
+      select:entrySelect,
       entry_type:"eq.monthly_grid",
-      order:"weekday.asc,start_time.asc",
-      limit:"1000"
-    }).toString();
-    return selectRows("wnmufm_schedule_newsletter_entries",query);
-  }));
+      order:"issue_month.asc,weekday.asc,start_time.asc"
+    });
+    if(startMonth) monthlyParams.set("issue_month",`gte.${startMonth}`);
+    if(endMonth) monthlyParams.append("issue_month",`lte.${endMonth}`);
 
-  const sources=[...monthSources,...extraSources]
-    .filter((source,index,list)=>list.findIndex((candidate)=>Number(candidate.id)===Number(source.id))===index)
-    .sort((a,b)=>String(a.issue_month).localeCompare(String(b.issue_month)));
-  return {sources,entries:[...monthlyBatches.flat(),...datedEntries]};
+    const datedParams=new URLSearchParams({
+      select:entrySelect,
+      entry_type:"eq.dated_override",
+      order:"specific_date.asc,start_time.asc",
+      limit:"1000"
+    });
+    if(range?.startDate) datedParams.set("specific_date",`gte.${range.startDate}`);
+    if(range?.endDate) datedParams.append("specific_date",`lte.${range.endDate}`);
+
+    const [monthSources,monthlyEntries,datedEntries]=await Promise.all([
+      selectRows("wnmufm_schedule_newsletter_sources",sourceParams.toString()),
+      selectPagedRows("wnmufm_schedule_newsletter_entries",monthlyParams,{pageSize:1000,maxRows:10000}),
+      selectRows("wnmufm_schedule_newsletter_entries",datedParams.toString())
+    ]);
+
+    const knownSourceIds=new Set(monthSources.map((source)=>Number(source.id)));
+    const missingSourceIds=[...new Set(datedEntries.map((row)=>Number(row.source_id)).filter((id)=>Number.isFinite(id) && !knownSourceIds.has(id)))];
+    let extraSources=[];
+    if(missingSourceIds.length) {
+      const extraParams=new URLSearchParams({
+        select:"id,source_key,issue_month,listings_current_as_of,title,file_name,schedule_page,timezone,notes,created_at",
+        id:`in.(${missingSourceIds.join(",")})`,
+        order:"issue_month.asc",
+        limit:String(missingSourceIds.length)
+      }).toString();
+      extraSources=await selectRows("wnmufm_schedule_newsletter_sources",extraParams);
+    }
+
+    const sources=[...monthSources,...extraSources]
+      .filter((source,index,list)=>list.findIndex((candidate)=>Number(candidate.id)===Number(source.id))===index)
+      .sort((a,b)=>String(a.issue_month).localeCompare(String(b.issue_month)));
+    return {sources,entries:[...monthlyEntries,...datedEntries]};
+  });
 }
 
 function importSourceKey(item) {
@@ -494,23 +496,31 @@ export async function loadLatestBreakdownForImportScope(metricKey, dimensionType
 }
 
 export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
-  const context = await loadAnalysisContext();
-  const output = {};
-  await Promise.all(metricKeys.map(async (metricKey) => {
+  const keys=[...new Set((metricKeys || []).filter(Boolean))];
+  if(!keys.length) return {};
+  const cacheKey=`latest-values|${[...keys].sort().join(",")}|${grain}|${range?.startDate || ""}|${range?.endDate || ""}`;
+  return cachedQuery(cacheKey,async ()=>{
     const params = applyDateRange(new URLSearchParams({
       select: "metric_key,metric_label,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,source_import_id",
-      metric_key: `eq.${metricKey}`,
+      metric_key: `in.(${keys.join(",")})`,
       grain: `eq.${grain}`,
       dimension_type: "eq.",
       filter_signature: `eq.${DEFAULT_FILTER_SIGNATURE}`,
-      order: "period_start.desc",
-      limit: "100"
+      order: "metric_key.asc,period_start.desc",
+      limit: String(Math.max(100,keys.length*100))
     }), range);
-    const rows = await selectRows("wnmufm_analytics_observations", params.toString());
-    const row = rows.find((candidate) => rowIsUsable(candidate, context));
-    if (row) output[metricKey] = row;
-  }));
-  return output;
+    const [rows,context]=await Promise.all([
+      selectRows("wnmufm_analytics_observations",params.toString()),
+      loadAnalysisContext()
+    ]);
+    const output={};
+    rows.forEach((candidate)=>{
+      const key=String(candidate.metric_key || "");
+      if(!key || output[key] || !rowIsUsable(candidate,context)) return;
+      output[key]=candidate;
+    });
+    return output;
+  });
 }
 
 
@@ -532,6 +542,43 @@ export async function loadDateObservations(date) {
 }
 
 
+export function splitIsoRangeByMonth(startDate,endDate) {
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || "")) || !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate || "")) || startDate>endDate) return [];
+  const chunks=[];
+  let cursor=String(startDate);
+  while(cursor<=endDate) {
+    const date=new Date(`${cursor}T12:00:00Z`);
+    if(Number.isNaN(date.getTime())) return [];
+    const year=date.getUTCFullYear();
+    const month=date.getUTCMonth();
+    const monthEnd=new Date(Date.UTC(year,month+1,0,12)).toISOString().slice(0,10);
+    const chunkEnd=monthEnd<endDate ? monthEnd : endDate;
+    chunks.push({startDate:cursor,endDate:chunkEnd});
+    const next=new Date(`${chunkEnd}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate()+1);
+    cursor=next.toISOString().slice(0,10);
+  }
+  return chunks;
+}
+
+async function loadStreamGuysHourlyChunked(params,range,{concurrency=6}={}) {
+  const chunks=splitIsoRangeByMonth(range?.startDate,range?.endDate);
+  if(!chunks.length) return selectPagedRows("wnmufm_streamguys_hourly_aligned",params,{pageSize:1000,maxRows:30000});
+  const rows=[];
+  for(let index=0;index<chunks.length;index+=concurrency) {
+    const batch=chunks.slice(index,index+concurrency);
+    const results=await Promise.all(batch.map((chunk)=>{
+      const chunkParams=new URLSearchParams(params);
+      chunkParams.set("schedule_date",`gte.${chunk.startDate}`);
+      chunkParams.append("schedule_date",`lte.${chunk.endDate}`);
+      chunkParams.set("limit","1000");
+      return selectRows("wnmufm_streamguys_hourly_aligned",chunkParams.toString());
+    }));
+    results.forEach((result)=>rows.push(...result));
+  }
+  return rows;
+}
+
 export async function loadStreamGuysHourly(range = {}) {
   const cacheKey=`streamguys-hourly|${range?.startDate || ""}|${range?.endDate || ""}`;
   return cachedQuery(cacheKey,async ()=>{
@@ -539,11 +586,8 @@ export async function loadStreamGuysHourly(range = {}) {
       select: "source_import_id,source_csv,source_row,source_date,source_hour,source_timezone_label,schedule_timezone,offset_hours,alignment_status,schedule_date,schedule_hour,tlh_hours,unit,quality_flags",
       order: "schedule_date.asc,schedule_hour.asc"
     });
-    if (range?.startDate) params.set("schedule_date", `gte.${range.startDate}`);
-    if (range?.endDate) params.append("schedule_date", `lte.${range.endDate}`);
-
     const [rows, context] = await Promise.all([
-      selectPagedRows("wnmufm_streamguys_hourly_aligned", params, { pageSize:1000, maxRows:30000 }),
+      loadStreamGuysHourlyChunked(params,range),
       loadAnalysisContext()
     ]);
 
