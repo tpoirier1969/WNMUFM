@@ -92,6 +92,19 @@ test("StreamGuys hourly ranges split into month-sized chunks for bounded concurr
   ]);
 });
 
+test("StreamGuys month chunks query the indexed source date and trim back to exact schedule dates", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  const start=data.indexOf("async function loadStreamGuysHourlyChunked");
+  const end=data.indexOf("export async function loadStreamGuysHourly",start);
+  const body=data.slice(start,end);
+  assert.match(body,/source_date/);
+  assert.match(body,/shiftIsoDate\(chunk\.startDate,-1\)/);
+  assert.match(body,/shiftIsoDate\(chunk\.endDate,1\)/);
+  assert.match(body,/row\.schedule_date>=chunk\.startDate && row\.schedule_date<=chunk\.endDate/);
+  assert.doesNotMatch(body,/chunkParams\.set\("schedule_date"/);
+});
+
 test("summary latest values use one multi-metric query instead of one request per card", async () => {
   const fs=await import("node:fs/promises");
   const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
