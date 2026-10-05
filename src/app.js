@@ -470,6 +470,7 @@ function streamGuysDailyTable(rows, dayEntries) {
 }
 
 async function renderProgramFilterOptions() {
+  if(state.trendMode==="timeofday") return;
   const imports = await loadImports();
   const names = imports
     .filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program)
