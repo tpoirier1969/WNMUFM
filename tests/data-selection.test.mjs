@@ -137,3 +137,15 @@ test("anomaly review updates every open row for the logical key and grain only",
   assert.match(app,/grain:\`eq\.\$\{anomalyGrain\}\`/);
   assert.match(app,/status:"eq\.open"/);
 });
+
+
+test("repeat analytics queries are cached by range until data cache invalidation", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  assert.match(data,/const observationQueryCache = new Map\(\)/);
+  assert.match(data,/function cachedQuery\(/);
+  assert.match(data,/observationQueryCache\.clear\(\)/);
+  assert.match(data,/streamguys-hourly\|\$\{range\?\.startDate/);
+  assert.match(data,/time-series\|\$\{metricKey\}\|\$\{grain\}/);
+  assert.match(data,/latest-breakdown\|\$\{metricKey\}\|\$\{dimensionType\}/);
+});
