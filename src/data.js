@@ -561,18 +561,26 @@ export function splitIsoRangeByMonth(startDate,endDate) {
   return chunks;
 }
 
+function shiftIsoDate(value,days) {
+  const date=new Date(`${value}T12:00:00Z`);
+  if(Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate()+Number(days || 0));
+  return date.toISOString().slice(0,10);
+}
+
 async function loadStreamGuysHourlyChunked(params,range,{concurrency=6}={}) {
   const chunks=splitIsoRangeByMonth(range?.startDate,range?.endDate);
   if(!chunks.length) return selectPagedRows("wnmufm_streamguys_hourly_aligned",params,{pageSize:1000,maxRows:30000});
   const rows=[];
   for(let index=0;index<chunks.length;index+=concurrency) {
     const batch=chunks.slice(index,index+concurrency);
-    const results=await Promise.all(batch.map((chunk)=>{
+    const results=await Promise.all(batch.map(async (chunk)=>{
       const chunkParams=new URLSearchParams(params);
-      chunkParams.set("schedule_date",`gte.${chunk.startDate}`);
-      chunkParams.append("schedule_date",`lte.${chunk.endDate}`);
+      chunkParams.set("source_date",`gte.${shiftIsoDate(chunk.startDate,-1)}`);
+      chunkParams.append("source_date",`lte.${shiftIsoDate(chunk.endDate,1)}`);
       chunkParams.set("limit","1000");
-      return selectRows("wnmufm_streamguys_hourly_aligned",chunkParams.toString());
+      const result=await selectRows("wnmufm_streamguys_hourly_aligned",chunkParams.toString());
+      return result.filter((row)=>row.schedule_date>=chunk.startDate && row.schedule_date<=chunk.endDate);
     }));
     results.forEach((result)=>rows.push(...result));
   }
