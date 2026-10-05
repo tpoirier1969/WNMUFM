@@ -176,14 +176,18 @@ test("chart zoom provides an actual keyboard selection path", async () => {
 });
 
 
-test("Time-of-Day comparison series use explicit colors and compact checkbox controls", async () => {
+test("Time-of-Day comparison series use explicit colors and fixed custom checkbox controls", async () => {
   const fs=await import("node:fs/promises");
-  const [charts,css]=await Promise.all([
+  const [charts,css,app]=await Promise.all([
     fs.readFile(new URL("../src/charts.js",import.meta.url),"utf8"),
-    fs.readFile(new URL("../styles.css",import.meta.url),"utf8")
+    fs.readFile(new URL("../styles.css",import.meta.url),"utf8"),
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8")
   ]);
   assert.match(charts,/function chartSeriesColor/);
   assert.match(charts,/stroke:chartSeriesColor\(colorIndex\)/);
   assert.match(charts,/fill:chartSeriesColor\(colorIndex\)/);
-  assert.match(css,/\.day-series-option input\[type="checkbox"\]\s*\{[^}]*width:14px;[^}]*height:14px;[^}]*min-height:0;/s);
+  assert.match(app,/class="day-series-check"/);
+  assert.match(css,/\.day-series-check \{[^}]*width:14px;[^}]*height:14px;/s);
+  assert.match(css,/input\[type="checkbox"\][^}]*opacity:0;/s);
+  assert.match(charts,/if\(!options\.connectGaps\) drawing=false/);
 });
