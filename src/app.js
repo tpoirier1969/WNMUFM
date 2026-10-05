@@ -987,8 +987,7 @@ function activateTab(tab, persist = true) {
   document.querySelectorAll(".tab-button").forEach((item) => item.classList.toggle("active", item.dataset.tab === target));
   document.querySelectorAll(".tab-panel").forEach((panel) => setHidden(panel, panel.dataset.panel !== target));
   if (persist) persistUiState();
-  if(target==="takeaways" && state.role) void withBusy(()=>renderTakeaways());
-  if(target==="schedule" && state.role) void withBusy(()=>renderScheduleExplorer());
+  if(state.role) void withBusy(()=>renderActiveTab(target));
 }
 
 function formattedRange(range) {
@@ -1097,14 +1096,49 @@ async function syncAvailableDataRange() {
   return { previous, next:{ ...next }, availableChanged, selectionChanged };
 }
 
-async function refreshAnalysisViews() {
+async function renderOverviewPrimary() {
   await Promise.all([
     renderSummary(),
     renderTrend(),
-    renderBreakdowns(),
-    renderExplore(),
-    state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve()
+    renderBreakdowns()
   ]);
+}
+
+async function renderActiveTab(tab = state.activeTab) {
+  if(tab==="overview") {
+    await renderOverviewPrimary();
+    void renderAnomalies().catch((error)=>console.error("Could not refresh anomalies",error));
+    return;
+  }
+  if(tab==="takeaways") {
+    await renderTakeaways();
+    return;
+  }
+  if(tab==="explore") {
+    await renderExplore();
+    return;
+  }
+  if(tab==="schedule") {
+    await renderScheduleExplorer();
+    return;
+  }
+  if(tab==="imports") {
+    await Promise.all([renderImportHistory(),renderCollectionChecklist()]);
+  }
+}
+
+async function refreshAnalysisViews() {
+  if(state.activeTab==="overview") {
+    await renderOverviewPrimary();
+    return;
+  }
+  if(state.activeTab==="takeaways") {
+    await renderTakeaways();
+    return;
+  }
+  if(state.activeTab==="explore") {
+    await renderExplore();
+  }
 }
 
 function validateAndStoreRange() {
@@ -2300,22 +2334,12 @@ async function refreshDashboard() {
   setBusy(true);
   els.refreshButton.disabled = true;
   try {
-    await Promise.all([
-      renderSummary(),
-      renderTrend(),
-      renderBreakdowns(),
-      renderAnomalies(),
-      renderCoverage(),
-      renderImportHistory(),
-      renderCollectionChecklist(),
-      renderExplore(),
-      renderDataAvailability(),
-      state.activeTab==="takeaways" ? renderTakeaways() : Promise.resolve(),
-      state.activeTab==="schedule" ? renderScheduleExplorer() : Promise.resolve()
-    ]);
+    await renderActiveTab();
   } catch (error) {
     console.error(error);
-    els.summaryCards.innerHTML = `<p class="empty-state">Could not load analytics: ${escapeHtml(error.message)}</p>`;
+    if(state.activeTab==="overview") {
+      els.summaryCards.innerHTML = `<p class="empty-state">Could not load analytics: ${escapeHtml(error.message)}</p>`;
+    }
   } finally {
     state.loading = false;
     els.refreshButton.disabled = false;
@@ -2497,8 +2521,18 @@ function bindEvents() {
   els.refreshButton.addEventListener("click", async () => {
     const stored=storePendingRangeEdit();
     if(stored===null) return;
+    invalidateDataCache();
+    trendScheduleEvidenceCache.clear();
     takeawayRangeKey="";
-    await refreshDashboard();
+    await withBusy(async ()=>{
+      await syncAvailableDataRange();
+      await renderProgramFilterOptions();
+      await Promise.all([
+        renderActiveTab(),
+        renderDataAvailability(),
+        renderCoverage()
+      ]);
+    });
   });
   els.trendViewButtons.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-trend-view]");
@@ -2588,7 +2622,6 @@ function bindEvents() {
     state.exploreView="audio-episodes";
     persistUiState();
     activateTab("explore");
-    void withBusy(()=>renderExplore());
   });
   els.detailDialogClose.addEventListener("click", () => els.detailDialog.close());
   els.trendZoomButton.addEventListener("click",()=>{
@@ -2695,9 +2728,8 @@ function bindEvents() {
     }
     clearTrendZoom();
     applyRangeControls();
-    activateTab("overview");
     persistUiState();
-    void withBusy(()=>refreshAnalysisViews());
+    activateTab("overview");
   });
   rangeInputs.forEach((input)=>{
     input.addEventListener("input",markRangeEdit);
@@ -2723,6 +2755,7 @@ function bindEvents() {
   els.dataInfoButton.addEventListener("click",()=>{
     if(typeof els.dataInfoDialog.showModal==="function") els.dataInfoDialog.showModal();
     else els.dataInfoDialog.setAttribute("open","");
+    void withBusy(()=>Promise.all([renderDataAvailability(),renderCoverage()]));
   });
   els.dataInfoDialogClose.addEventListener("click",()=>els.dataInfoDialog.close());
   els.copyViewButton.addEventListener("click", () => {
