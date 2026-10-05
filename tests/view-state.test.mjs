@@ -11,6 +11,8 @@ test("shareable view state round-trips through the query string", () => {
     trendMetrics:["streaming.listeners","streaming.listener_hours"],
     trendMode:"timeofday",
     trendHour:"08",
+    trendProfileCompare:"month",
+    trendDaySeries:["weekday","mon"],
     trendGrain:"week",
     trendWeekpart:"weekend",
     trendNotable:"exclude",
@@ -55,6 +57,22 @@ test("Trend Explorer time-of-day mode is shareable and wired to StreamGuys hourl
   assert.match(html,/id="trendQuickRangeButtons"/);
   assert.match(html,/Analysis period/);
   assert.match(app,/trace that hour across time/);
+});
+
+test("Time-of-Day profile controls expose day series, schedule-aware drilldown and episode detail", async () => {
+  const fs=await import("node:fs/promises");
+  const [app,html]=await Promise.all([
+    fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
+    fs.readFile(new URL("../index.html",import.meta.url),"utf8")
+  ]);
+  assert.match(html,/id="trendProfileCompareSelect"/);
+  assert.match(html,/id="trendAudioDetailButton"/);
+  assert.match(app,/buildDayComparisonSeries/);
+  assert.match(app,/conciseScheduleContext/);
+  assert.match(app,/profilePointTooltip/);
+  assert.match(app,/drillIntoTimeOfDayPoint/);
+  assert.match(app,/audio-episodes/);
+  assert.match(app,/loadLatestBreakdownForImportScope/);
 });
 
 test("shareable view parsing distinguishes absent values from explicit empty values", () => {
