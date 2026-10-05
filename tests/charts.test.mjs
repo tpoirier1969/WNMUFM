@@ -38,7 +38,7 @@ test("trend nodes are 50 percent larger than the previous compact markers", asyn
 test("multi-metric line paths cannot inherit a series fill", async () => {
   const fs = await import("node:fs/promises");
   const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
-  for (let i=0;i<8;i+=1) {
+  for (let i=0;i<10;i+=1) {
     assert.match(css,new RegExp("\\.chart-metric-line\\.chart-series-" + i + "\\s*\\{[^}]*fill:none;","s"));
     assert.match(css,new RegExp("\\.chart-metric-point\\.chart-series-" + i + "\\s*\\{[^}]*fill:","s"));
   }
@@ -112,13 +112,16 @@ test("single-metric comparison tooltips are structured as date plus WNMU and NPR
   assert.match(charts,/chart-tooltip-row/);
 });
 
-test("Listening by Hour tooltip uses typical program or genre only when confidence exists", async () => {
+test("Time-of-Day tooltips add concise schedule context without forcing a long program list", async () => {
   const fs = await import("node:fs/promises");
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
-  assert.match(app,/Typical program:/);
-  assert.match(app,/Typical genre:/);
-  assert.match(app,/buildTypicalHourContext\(typicalEntries\)/);
-  assert.match(app,/Tooltip program context may use Composer recurring definitions only when one program or genre clearly dominates that hour/);
+  const charts = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
+  assert.match(app,/conciseScheduleContext/);
+  assert.match(app,/ranked\[0\]\[1\]\/titles\.length>=0\.7/);
+  assert.match(app,/if\(ranked\.length<=2\)/);
+  assert.match(app,/Click point to view/);
+  assert.match(charts,/options\.onPointClick/);
+  assert.match(charts,/options\.tooltipModel/);
 });
 
 

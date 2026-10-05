@@ -31,7 +31,7 @@ test("common comparison windows use the overlap, not the union", () => {
 });
 
 
-test("the app shows a compact coverage ribbon and recommended common daily window", async () => {
+test("the app keeps coverage in Data info and exposes the common comparable period", async () => {
   const fs=await import("node:fs/promises");
   const [app,html]=await Promise.all([
     fs.readFile(new URL("../src/app.js",import.meta.url),"utf8"),
@@ -40,6 +40,6 @@ test("the app shows a compact coverage ribbon and recommended common daily windo
   assert.match(html,/id="dataAvailability"/);
   assert.match(html,/id="dataAvailabilityRows"/);
   assert.match(app,/Best cross-source daily comparison/);
-  assert.match(app,/Use common daily window/);
+  assert.match(app,/Use common comparable period/);
   assert.match(app,/Google Analytics 4 dated detail/);
 });

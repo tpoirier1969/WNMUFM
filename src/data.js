@@ -399,6 +399,40 @@ export async function loadBreakdownDimensionMetrics(metricKeys, dimensionType, d
   return rows.filter((row)=>breakdownRowIsUsable(row,context)).map((row)=>withBreakdownStatus(row,context));
 }
 
+export async function loadLatestBreakdownForImportScope(metricKey, dimensionType, { reportType="", selectedProgram=null, range={} } = {}) {
+  const context=await loadAnalysisContext();
+  const candidates=context.imports.filter((item)=>{
+    if(reportType && item.report_type!==reportType) return false;
+    if(selectedProgram!==null && String(item.selected_program || "")!==String(selectedProgram || "")) return false;
+    if(range?.startDate && item.report_start && item.report_start < range.startDate) return false;
+    if(range?.endDate && item.report_end && item.report_end > range.endDate) return false;
+    return true;
+  });
+  if(!candidates.length) return [];
+
+  const spanDays=(item)=>{
+    const start=new Date(`${item.report_start}T12:00:00Z`);
+    const end=new Date(`${item.report_end}T12:00:00Z`);
+    return Number.isFinite(start.getTime()) && Number.isFinite(end.getTime()) ? Math.max(0,(end-start)/86400000) : -1;
+  };
+  candidates.sort((a,b)=>
+    String(b.report_end || "").localeCompare(String(a.report_end || "")) ||
+    spanDays(b)-spanDays(a) ||
+    Number(b.id)-Number(a.id)
+  );
+  const chosen=candidates[0];
+  const params=new URLSearchParams({
+    select:"dimension_value,station_value,benchmark_value,benchmark_label,unit,period_start,period_end,grain,source_import_id",
+    metric_key:`eq.${metricKey}`,
+    dimension_type:`eq.${dimensionType}`,
+    source_import_id:`eq.${chosen.id}`,
+    filter_signature:`eq.${DEFAULT_FILTER_SIGNATURE}`,
+    order:"station_value.desc"
+  });
+  const rows=await selectPagedRows("wnmufm_analytics_observations",params,{pageSize:1000,maxRows:10000});
+  return rows.filter((row)=>breakdownRowIsUsable(row,context)).map((row)=>withBreakdownStatus(row,context));
+}
+
 export async function loadLatestValues(metricKeys, grain = "day", range = {}) {
   const context = await loadAnalysisContext();
   const output = {};
