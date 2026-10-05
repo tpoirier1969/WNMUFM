@@ -258,7 +258,7 @@ function sourceBadge(entryOrDay) {
   return `<span class="schedule-source-badge schedule-source-${escapeHtml(kind)}">${escapeHtml(labels[kind] || "Source")}</span>`;
 }
 
-export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=null}={}) {
+export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=null,availableStart="",availableEnd=""}={}) {
   const month=monthKey(anchorDate);
   return `
     <div class="schedule-view-heading">
@@ -282,7 +282,7 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=nul
     </div>`;
 }
 
-export function renderScheduleWeek(days,{windowStart=6,carryInDay=null}={}) {
+export function renderScheduleWeek(days,{windowStart=6,carryInDay=null,availableStart="",availableEnd=""}={}) {
   const startHour=Math.max(0,Math.min(18,Number(windowStart) || 0));
   const rows=Array.from({length:12},(_,index)=>startHour*60+index*30);
   const timeText=(minutes)=>`${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}`;
