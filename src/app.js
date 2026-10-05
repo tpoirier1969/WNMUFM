@@ -1,6 +1,6 @@
 import { APP_VERSION } from "./version.js";
 import { consumeOAuthCallback, currentUser, fetchRole, getSession, signIn, signInWithGitHub, signOut, updateRows } from "./api.js";
-import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadStreamGuysHourly, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
+import { invalidateDataCache, loadAvailableDataRange, loadBreakdownDimensionMetrics, loadDateObservations, loadImports, loadLatestBreakdown, loadLatestBreakdownForImportScope, loadLatestValues, loadLongestBreakdown, loadNewsletterScheduleEvidence, loadOpenAnomalies, loadReviewedAnomalies, loadStreamGuysHourly, loadTimeSeries, loadTimeSeriesRange } from "./data.js";
 import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, renderMultiLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
@@ -67,7 +67,7 @@ const state = {
   rangeMode:initialRangeMode,
   availableRange:{ startDate:"", endDate:"" },
   activeTab:validChoice(sharedOrRestored("activeTab","overview"), ["overview","takeaways","explore","schedule","imports"], "overview"),
-  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs"),
+  exploreView:validChoice(sharedOrRestored("exploreView","audio-programs"), ["audio-programs","audio-episodes","audio-players","ga4-pages","ga4-landing","ga4-traffic","ga4-sources","ga4-events","ga4-countries","ga4-cities","ga4-browser","ga4-devices","ga4-screens","website-channels","website-countries","streaming-devices","npr-one-podcasts","npr-one-audio","npr-one-clients"], "audio-programs"),
   takeawayCategory:validChoice(sharedOrRestored("takeawayCategory","all"), TAKEAWAY_CATEGORIES.map(([key])=>key), "all"),
   scheduleView:validChoice(sharedOrRestored("scheduleView","month"), ["month","week","day"], "month"),
   scheduleDate:validDateKey(sharedOrRestored("scheduleDate","")),
@@ -571,6 +571,14 @@ const EXPLORE_VIEWS = {
     dimension: "program",
     description: "Compare which WNMU-FM program/content buckets generated on-demand downloads in the latest complete export. Station Stories is a broad archive bucket and should not be treated as directly comparable with a discrete program."
   },
+  "audio-episodes": {
+    title: "On-demand downloads by episode",
+    metric: "audio.downloads_by_episode",
+    dimension: "episode",
+    reportType: "audio_downloads",
+    sourceRange: true,
+    description: "Episode-level detail from the latest complete all-audio export. This is the deeper layer beneath All on-demand audio; it ranks individual episode/audio items rather than only program buckets."
+  },
   "audio-players": {
     title: "On-demand downloads by player",
     metric: "audio.downloads_by_player",
@@ -703,6 +711,7 @@ const EXPLORE_ORDER = [
   ["ga4-devices","Device diagnostics"],
   ["ga4-screens","Screen diagnostics"],
   ["audio-programs","Downloads by program"],
+  ["audio-episodes","Downloads by episode"],
   ["audio-players","Downloads by player"],
   ["website-channels","NPR web sources"],
   ["website-countries","NPR web countries"],
@@ -2215,7 +2224,9 @@ async function renderExplore() {
     button.setAttribute("aria-pressed",String(button.dataset.exploreView===viewKey));
   });
   els.exploreDescription.textContent = view.description;
-  const rows = await loadLatestBreakdown(view.metric, view.dimension, "{}", view.sourceRange ? {} : selectedRange());
+  const rows = view.reportType
+    ? await loadLatestBreakdownForImportScope(view.metric,view.dimension,{reportType:view.reportType,selectedProgram:view.selectedProgram ?? null,range:view.sourceRange ? {} : selectedRange()})
+    : await loadLatestBreakdown(view.metric, view.dimension, "{}", view.sourceRange ? {} : selectedRange());
   if (requestId !== exploreRequestId) return;
   if (!rows.length) {
     els.explorePeriod.textContent = "";
