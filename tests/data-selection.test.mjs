@@ -77,7 +77,7 @@ test("newsletter dated overrides are selected by their actual date, not only the
   assert.match(body,/missingSourceIds/);
   assert.match(body,/selectPagedRows\("wnmufm_schedule_newsletter_entries",monthlyParams/);
   assert.match(body,/entries:\[\.\.\.monthlyEntries,\.\.\.datedEntries\]/);
-  assert.doesNotMatch(body,/monthSources\.map\(\(source\)=>/);
+  assert.doesNotMatch(body,/Promise\.all\(monthSources\.map/);
 });
 
 
