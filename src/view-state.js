@@ -17,6 +17,7 @@ const PARAMS = Object.freeze({
   trendProfileCompare:"profileBy",
   trendGrain:"grain",
   trendWeekpart:"weekpart",
+  trendDaySeries:"daySeries",
   trendNotable:"notable",
   trendProgram:"program",
   trendZoomStart:"zoomStart",
@@ -41,6 +42,11 @@ export function parseViewState(search = "") {
   for (const key of ["activeTab","startDate","endDate","rangeMode","trendMode","trendHour","trendProfileCompare","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory","scheduleView","scheduleDate","scheduleTime","scheduleWindowStart"]) {
     const value = read(key);
     if (value !== undefined) view[key] = value;
+  }
+
+  const daySeries = read("trendDaySeries");
+  if (daySeries !== undefined) {
+    view.trendDaySeries = daySeries.split(",").map((item) => item.trim()).filter(Boolean);
   }
 
   const metrics = read("trendMetrics");
@@ -71,6 +77,9 @@ export function buildViewSearch(view = {}) {
   set("trendProfileCompare", view.trendProfileCompare);
   set("trendGrain", view.trendGrain);
   set("trendWeekpart", view.trendWeekpart);
+  if (Array.isArray(view.trendDaySeries) && view.trendDaySeries.length) {
+    set("trendDaySeries", view.trendDaySeries.join(","));
+  }
   set("trendNotable", view.trendNotable);
   set("trendProgram", view.trendProgram, { allowEmpty:true });
   set("trendZoomStart", view.trendZoomStart, { allowEmpty:true });
