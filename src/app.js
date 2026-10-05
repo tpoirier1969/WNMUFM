@@ -2544,7 +2544,6 @@ async function boot() {
     renderTakeawayControlButtons();
     renderScheduleViewButtons();
     applyScheduleControls();
-    els.trendGrain.value = state.trendGrain;
     applyRangeControls();
     activateTab(state.activeTab,false);
     bindTabs();
