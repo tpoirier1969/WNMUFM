@@ -112,15 +112,15 @@ test("single-metric comparison tooltips are structured as date plus WNMU and NPR
   assert.match(charts,/chart-tooltip-row/);
 });
 
-test("Time-of-Day tooltips compress busy schedule context and expose explicit drill actions", async () => {
+test("Time-of-Day tooltips show every overlapping schedule block and expose explicit drill actions", async () => {
   const fs = await import("node:fs/promises");
   const app = await fs.readFile(new URL("../src/app.js", import.meta.url), "utf8");
   const charts = await fs.readFile(new URL("../src/charts.js", import.meta.url), "utf8");
   const css = await fs.readFile(new URL("../styles.css", import.meta.url), "utf8");
-  assert.match(app,/conciseScheduleContext/);
-  assert.match(app,/ranked\[0\]\[1\]\/titles\.length>=0\.7/);
-  assert.match(app,/ranked\.length<=3/);
-  assert.match(app,/ranked\.slice\(0,3\)/);
+  assert.match(app,/scheduleItemsForExactHour/);
+  assert.match(app,/scheduleTooltipRows/);
+  assert.match(app,/formatHourlyScheduleItem/);
+  assert.doesNotMatch(app,/conciseScheduleContext|ranked\.slice\(0,3\)|· dominant/);
   assert.match(app,/No schedule title is loaded for this period\/hour/);
   assert.match(app,/action:\{/);
   assert.match(app,/Drill into/);
@@ -128,6 +128,8 @@ test("Time-of-Day tooltips compress busy schedule context and expose explicit dr
   assert.match(charts,/model\.action\.onActivate\(\)/);
   assert.match(charts,/tooltip\._hideTimer=setTimeout/);
   assert.match(css,/\.chart-tooltip-action/);
+  assert.match(css,/max-height:min\(70vh,520px\)/);
+  assert.match(css,/overflow:auto/);
 });
 
 
