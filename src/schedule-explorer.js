@@ -262,6 +262,9 @@ export function renderScheduleMonth(days,{anchorDate,time="12:00",carryInDay=nul
     <div class="schedule-month-grid" role="grid" aria-label="${escapeHtml(formatMonth(anchorDate))} schedule at ${escapeHtml(formatTime(time))}">
       ${SHORT_DAY_NAMES.map((name)=>`<div class="schedule-month-weekday" role="columnheader">${escapeHtml(name)}</div>`).join("")}
       ${(days || []).map((day,index)=>{
+        if(!dateWithinAvailable(day.date,availableStart,availableEnd)) {
+          return '<div class="schedule-month-day outside-evidence" role="gridcell" aria-hidden="true"></div>';
+        }
         const programs=entriesAtTimeForDay(days,index,time,carryInDay?.entries || []);
         const inMonth=monthKey(day.date)===month;
         const source=programs[0] || day;
@@ -284,11 +287,12 @@ export function renderScheduleWeek(days,{windowStart=6,carryInDay=null}={}) {
     </div>
     <div class="table-wrap schedule-week-wrap">
       <table class="schedule-week-table">
-        <thead><tr><th>Time</th>${days.map((day)=>`<th>${escapeHtml(formatDate(day.date,{weekdayName:true}))}<br>${sourceBadge(day)}</th>`).join("")}</tr></thead>
+        <thead><tr><th>Time</th>${days.map((day)=>dateWithinAvailable(day.date,availableStart,availableEnd) ? `<th>${escapeHtml(formatDate(day.date,{weekdayName:true}))}<br>${sourceBadge(day)}</th>` : '<th class="outside-evidence" aria-hidden="true"></th>').join("")}</tr></thead>
         <tbody>
           ${rows.map((minutes)=>{
             const clock=timeText(minutes);
             return `<tr><th>${escapeHtml(formatTime(clock))}</th>${days.map((day,index)=>{
+              if(!dateWithinAvailable(day.date,availableStart,availableEnd)) return '<td class="outside-evidence" aria-hidden="true"></td>';
               const programs=entriesAtTimeForDay(days,index,clock,carryInDay?.entries || []);
               return `<td>${programs.length ? programs.map((item)=>`<span class="schedule-week-program">${escapeHtml(item.program)}</span>`).join("") : '<span class="schedule-empty">—</span>'}</td>`;
             }).join("")}</tr>`;
