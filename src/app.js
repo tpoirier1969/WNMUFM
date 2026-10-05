@@ -1411,6 +1411,9 @@ async function renderTimeOfDayTrend(requestId) {
       ariaLabel:`StreamGuys total listening hours at ${hourLabel(hourNumber)} over time`,
       grain:"day",
       primaryLabel:"TLH",
+      yAxisLabel:"Total Listening Hours",
+      yTickStep:20,
+      yTickFormat:"integer",
       zoomMode:state.trendZoomMode,
       onZoomSelect:setTrendZoom
     });
@@ -1452,6 +1455,9 @@ async function renderTimeOfDayTrend(requestId) {
       ariaLabel:"StreamGuys total listening hours by WNMU Eastern clock hour for selected day groups",
       series:dayComparison.series,
       formatValue:(value)=>formatMetric(value,"hours"),
+      yAxisLabel:"Total Listening Hours",
+      yTickStep:20,
+      yTickFormat:"integer",
       labelEvery:2
     });
     renderTrendDataTable("",0);
@@ -1476,6 +1482,9 @@ async function renderTimeOfDayTrend(requestId) {
       ariaLabel:`StreamGuys total listening hours by time of day compared by ${comparisonMode}`,
       series:profileComparison.series,
       formatValue:(value)=>formatMetric(value,"hours"),
+      yAxisLabel:"Total Listening Hours",
+      yTickStep:20,
+      yTickFormat:"integer",
       labelEvery:2
     });
     renderTrendDataTable("",0);
@@ -1533,6 +1542,9 @@ async function renderTimeOfDayTrend(requestId) {
     title:"StreamGuys TLH by time of day",
     ariaLabel:"Average StreamGuys total listening hours by WNMU Eastern clock hour",
     primaryLabel:"Average TLH",
+    yAxisLabel:"Total Listening Hours",
+    yTickStep:20,
+    yTickFormat:"integer",
     showBars:false,
     labelAngle:0,
     labelEvery:2,
