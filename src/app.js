@@ -1495,8 +1495,23 @@ async function loadHourlyScheduleContext(range) {
     loadTrendScheduleEvidence(range)
   ]).then(([rows,scheduleEvidence])=>{
     const scheduledRows=attachScheduleProgramsToHourlyRows(rows,scheduleEvidence);
+    const rowsByHour=new Map();
+    const rowsByProgram=new Map();
+    scheduledRows.forEach((row)=>{
+      const hour=String(row.schedule_hour || "").slice(0,2);
+      if(hour) {
+        if(!rowsByHour.has(hour)) rowsByHour.set(hour,[]);
+        rowsByHour.get(hour).push(row);
+      }
+      (row.scheduled_programs || []).forEach((program)=>{
+        if(!rowsByProgram.has(program)) rowsByProgram.set(program,[]);
+        rowsByProgram.get(program).push(row);
+      });
+    });
     return {
       rows:scheduledRows,
+      rowsByHour,
+      rowsByProgram,
       scheduleEvidence,
       programNames:scheduledProgramNames(scheduledRows),
       scheduleContextCache:new Map()
@@ -1519,11 +1534,11 @@ function hourlyScheduleItems(context,{hour,startDate,endDate,daySeriesKey="all"}
   if(context.scheduleContextCache?.has(cacheKey)) return context.scheduleContextCache.get(cacheKey);
   const seen=new Set();
   const items=[];
-  (context.rows || []).forEach((row)=>{
+  const hourKey=String(Number(hour)).padStart(2,"0");
+  (context.rowsByHour?.get(hourKey) || []).forEach((row)=>{
     if(row.schedule_date<startDate || row.schedule_date>endDate) return;
     const date=new Date(`${row.schedule_date}T12:00:00Z`);
     if(Number.isNaN(date.getTime()) || !weekdayMatchesSeriesKey(date.getUTCDay(),daySeriesKey)) return;
-    if(Number(String(row.schedule_hour || "").slice(0,2))!==Number(hour)) return;
     (row.scheduled_items || []).forEach((item)=>{
       const key=`${item.start}|${item.end}|${item.program}`;
       if(seen.has(key)) return;
@@ -1728,7 +1743,7 @@ async function renderTimeOfDayTrend(requestId) {
   if(state.startDate || state.endDate) filterNotes.push(`Range: ${state.startDate ? formatDayDate(state.startDate) : "earliest"} – ${state.endDate ? formatDayDate(state.endDate) : "latest"}`);
 
   const programFiltered=state.trendProgram
-    ? scheduledRows.filter((row)=>(row.scheduled_programs || []).includes(state.trendProgram))
+    ? (hourlyContext.rowsByProgram.get(state.trendProgram) || [])
     : scheduledRows;
   const notableFiltered=programFiltered.filter((row)=>matchesNotableDateMode(row.schedule_date,state.trendNotable));
   const filtered=notableFiltered.filter((row)=>matchesSelectedDaySeries(row.schedule_date));
@@ -2596,6 +2611,8 @@ async function processFiles(fileList) {
       }
     }
     invalidateDataCache();
+    trendHourlyScheduleCache.clear();
+    trendScheduleEvidenceCache.clear();
     takeawayRangeKey="";
     importRangeChange=await syncAvailableDataRange();
     await renderProgramFilterOptions();
@@ -2717,6 +2734,7 @@ function bindEvents() {
     if(stored===null) return;
     invalidateDataCache();
     trendScheduleEvidenceCache.clear();
+    trendHourlyScheduleCache.clear();
     takeawayRangeKey="";
     await withBusy(async ()=>{
       await syncAvailableDataRange();
@@ -3006,6 +3024,8 @@ function bindEvents() {
         reviewed_at: new Date().toISOString()
       });
       invalidateDataCache();
+      trendHourlyScheduleCache.clear();
+      trendScheduleEvidenceCache.clear();
       takeawayRangeKey="";
       await Promise.all([renderAnomalies(), refreshAnalysisViews()]);
     } catch (error) {
