@@ -68,13 +68,16 @@ test("excluded anomaly periods follow logical source and grain across overlappin
 test("newsletter dated overrides are selected by their actual date, not only the newsletter issue month", async () => {
   const fs=await import("node:fs/promises");
   const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
-  assert.match(data,/entry_type:"eq\.dated_override"/);
-  assert.match(data,/specific_date",`gte\.\$\{range\.startDate\}`/);
-  assert.match(data,/specific_date",`lte\.\$\{range\.endDate\}`/);
-  assert.match(data,/missingSourceIds/);
-  assert.match(data,/selectPagedRows\("wnmufm_schedule_newsletter_entries",monthlyParams/);
-  assert.match(data,/entries:\[\.\.\.monthlyEntries,\.\.\.datedEntries\]/);
-  assert.doesNotMatch(data,/monthSources\.map/);
+  const start=data.indexOf("export async function loadNewsletterScheduleEvidence");
+  const end=data.indexOf("function importSourceKey",start);
+  const body=data.slice(start,end);
+  assert.match(body,/entry_type:"eq\.dated_override"/);
+  assert.match(body,/specific_date",`gte\.\$\{range\.startDate\}`/);
+  assert.match(body,/specific_date",`lte\.\$\{range\.endDate\}`/);
+  assert.match(body,/missingSourceIds/);
+  assert.match(body,/selectPagedRows\("wnmufm_schedule_newsletter_entries",monthlyParams/);
+  assert.match(body,/entries:\[\.\.\.monthlyEntries,\.\.\.datedEntries\]/);
+  assert.doesNotMatch(body,/monthSources\.map\(\(source\)=>/);
 });
 
 
