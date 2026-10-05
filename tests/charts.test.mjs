@@ -187,3 +187,10 @@ test("Time-of-Day comparison series use explicit colors and compact checkbox con
   assert.match(charts,/fill:chartSeriesColor\(colorIndex\)/);
   assert.match(css,/\.day-series-option input\[type="checkbox"\]\s*\{[^}]*width:14px;[^}]*height:14px;[^}]*min-height:0;/s);
 });
+
+
+test("multi-line charts can connect sparse filtered series across hidden dates", async () => {
+  const fs=await import("node:fs/promises");
+  const source=await fs.readFile(new URL("../src/charts.js",import.meta.url),"utf8");
+  assert.match(source,/if\(!options\.connectGaps\) drawing=false/);
+});
