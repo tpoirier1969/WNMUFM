@@ -132,3 +132,5 @@ https://github.com/tpoirier1969/Web-App-Standards/blob/main/UNIVERSAL_PROJECT_RU
 93. Before pushing UI or behavior changes to main, reconcile affected tests and perform static/local verification first. Batch related edits on a work branch and use a single pull-request test run where practical so the push-triggered workflow does not generate avoidable failed-run notifications.
 
 94. Time-of-Day multi-series comparisons must visually distinguish every selected Days Included series. Checkbox controls must override global form sizing, and chart line/point colors should be explicit enough that a cached or reordered stylesheet cannot collapse a comparison into one apparent series.
+
+94. Days Included selections are analytical series, not merely a union filter, whenever more than one group is checked in Time-of-Day. This applies both to the 24-hour profile and to an individual Hour focus. Fixed series colors must remain consistent with the checkbox accents, and checkbox dimensions must be browser-independent.
