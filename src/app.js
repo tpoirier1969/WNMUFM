@@ -18,7 +18,7 @@ import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMo
 
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","userBadge","logoutButton","printButton",
-  "refreshButton","summaryCards","trendModeButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendGrainControl","trendGrain","trendHourControl","trendHourSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
+  "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
   "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","listeningHourEyebrow","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
@@ -268,8 +268,9 @@ function renderTrendControlButtons() {
 }
 
 function refreshTrendControlState() {
-  els.trendModeButtons.querySelectorAll("[data-trend-mode]").forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.trendMode === state.trendMode));
+  const activeView=state.trendMode==="timeofday" ? "timeofday" : state.trendGrain;
+  els.trendViewButtons.querySelectorAll("[data-trend-view]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.trendView === activeView));
   });
   if(els.trendHourSelect.value!==state.trendHour) els.trendHourSelect.value=state.trendHour;
   els.trendMetricButtons.querySelectorAll("[data-trend-metric]").forEach((button) => {
@@ -281,6 +282,50 @@ function refreshTrendControlState() {
   els.trendNotableButtons.querySelectorAll("[data-notable-mode]").forEach((button) => {
     button.setAttribute("aria-pressed", String(button.dataset.notableMode === state.trendNotable));
   });
+}
+
+function setTrendControlDisabled(container, disabled, reason = "") {
+  if(!container) return;
+  container.classList.toggle("is-disabled",disabled);
+  container.toggleAttribute("aria-disabled",disabled);
+  if(disabled && reason) container.setAttribute("title",reason);
+  else container.removeAttribute("title");
+  container.querySelectorAll("button,select,input").forEach((control)=>{
+    control.disabled=disabled;
+  });
+}
+
+function setTrendControlAvailability({ programCapable = false } = {}) {
+  const timeOfDay=state.trendMode==="timeofday";
+  const dayLevel=timeOfDay || state.trendGrain==="day";
+
+  setTrendControlDisabled(
+    els.trendWeekpartControls,
+    !dayLevel,
+    "Days included is available for Day and Time of day views."
+  );
+  setTrendControlDisabled(
+    els.trendNotableControls,
+    !dayLevel,
+    "Special-date filtering is available for Day and Time of day views."
+  );
+  setTrendControlDisabled(
+    els.trendMetricControl,
+    timeOfDay,
+    "Time of day currently uses StreamGuys TLH because that is the hourly history we have."
+  );
+  setTrendControlDisabled(
+    els.trendHourControl,
+    !timeOfDay,
+    "Hour focus is available only in Time of day view."
+  );
+  setTrendControlDisabled(
+    els.trendProgramControl,
+    timeOfDay || !programCapable,
+    timeOfDay
+      ? "Program filtering is not available for hourly TLH because an hour can contain more than one program."
+      : "Program filtering is available only for on-demand audio metrics."
+  );
 }
 
 
@@ -1168,12 +1213,7 @@ function rowClass(row, grain) {
 }
 
 async function renderTimeOfDayTrend(requestId) {
-  setHidden(els.trendMetricControl,true);
-  setHidden(els.trendGrainControl,true);
-  setHidden(els.trendHourControl,false);
-  setHidden(els.trendWeekpartControls,false);
-  setHidden(els.trendNotableControls,false);
-  setHidden(els.trendProgramControl,true);
+  setTrendControlAvailability({ programCapable:false });
   refreshTrendControlState();
 
   const filterNotes=[];
@@ -1338,9 +1378,6 @@ async function renderTrend() {
     await renderTimeOfDayTrend(requestId);
     return;
   }
-  setHidden(els.trendMetricControl,false);
-  setHidden(els.trendGrainControl,false);
-  setHidden(els.trendHourControl,true);
   setHidden(els.trendChartToolbar,false);
   const validMetricKeys = new Set(TREND_METRICS.map((item)=>item.key));
   state.trendMetrics = state.trendMetrics.filter((key)=>validMetricKeys.has(key));
@@ -1349,11 +1386,8 @@ async function renderTrend() {
   const metricKeys = [...state.trendMetrics];
   const multiple = metricKeys.length > 1;
   const grain = state.trendGrain;
-  if (els.trendGrain.value !== grain) els.trendGrain.value = grain;
   const programCapable = metricKeys.every((key)=>key === "audio.downloads" || key === "audio.users");
-  setHidden(els.trendWeekpartControls, grain !== "day");
-  setHidden(els.trendNotableControls, grain !== "day");
-  setHidden(els.trendProgramControl, !programCapable);
+  setTrendControlAvailability({ programCapable });
   refreshTrendControlState();
   updateTrendZoomControls();
 
@@ -2234,10 +2268,16 @@ function bindEvents() {
     takeawayRangeKey="";
     await refreshDashboard();
   });
-  els.trendModeButtons.addEventListener("click",(event)=>{
-    const button=event.target.closest("[data-trend-mode]");
+  els.trendViewButtons.addEventListener("click",(event)=>{
+    const button=event.target.closest("[data-trend-view]");
     if(!button) return;
-    state.trendMode=validChoice(button.dataset.trendMode,["overtime","timeofday"],"overtime");
+    const view=validChoice(button.dataset.trendView,["day","week","month","timeofday"],"day");
+    if(view==="timeofday") {
+      state.trendMode="timeofday";
+    } else {
+      state.trendMode="overtime";
+      state.trendGrain=view;
+    }
     clearTrendZoom();
     persistUiState();
     void withBusy(()=>renderTrend());
@@ -2306,11 +2346,6 @@ function bindEvents() {
   els.trendZoomReset.addEventListener("click",()=>{
     clearTrendZoom({persist:true});
     void renderTrend();
-  });
-  els.trendGrain.addEventListener("change", () => {
-    state.trendGrain = els.trendGrain.value;
-    persistUiState();
-    void withBusy(() => renderTrend());
   });
   els.exploreViewButtons.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-explore-view]");
