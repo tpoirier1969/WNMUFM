@@ -7,7 +7,7 @@ globalThis.localStorage = {
   removeItem() {}
 };
 
-const { buildObservationExclusionContext, collapseOpenAnomalies, selectAvailableObservationRange, selectLongestBreakdownRows } = await import("../src/data.js");
+const { buildObservationExclusionContext, collapseOpenAnomalies, selectAvailableObservationRange, selectLongestBreakdownRows, splitIsoRangeByMonth } = await import("../src/data.js");
 
 test("range profiles prefer the longest available source period", () => {
   const rows = [
@@ -72,9 +72,33 @@ test("newsletter dated overrides are selected by their actual date, not only the
   assert.match(data,/specific_date",`gte\.\$\{range\.startDate\}`/);
   assert.match(data,/specific_date",`lte\.\$\{range\.endDate\}`/);
   assert.match(data,/missingSourceIds/);
-  assert.match(data,/entries:\[\.\.\.monthlyBatches\.flat\(\),\.\.\.datedEntries\]/);
+  assert.match(data,/selectPagedRows\("wnmufm_schedule_newsletter_entries",monthlyParams/);
+  assert.match(data,/entries:\[\.\.\.monthlyEntries,\.\.\.datedEntries\]/);
+  assert.doesNotMatch(data,/monthSources\.map/);
 });
 
+
+test("StreamGuys hourly ranges split into month-sized chunks for bounded concurrent loading", () => {
+  assert.deepEqual(splitIsoRangeByMonth("2025-12-29","2026-02-03"),[
+    {startDate:"2025-12-29",endDate:"2025-12-31"},
+    {startDate:"2026-01-01",endDate:"2026-01-31"},
+    {startDate:"2026-02-01",endDate:"2026-02-03"}
+  ]);
+  assert.deepEqual(splitIsoRangeByMonth("2026-02-03","2026-02-03"),[
+    {startDate:"2026-02-03",endDate:"2026-02-03"}
+  ]);
+});
+
+test("summary latest values use one multi-metric query instead of one request per card", async () => {
+  const fs=await import("node:fs/promises");
+  const data=await fs.readFile(new URL("../src/data.js",import.meta.url),"utf8");
+  const start=data.indexOf("export async function loadLatestValues");
+  const end=data.indexOf("export async function loadDateObservations",start);
+  const body=data.slice(start,end);
+  assert.match(body,/metric_key: \`in\.\(/);
+  assert.doesNotMatch(body,/Promise\.all\(metricKeys\.map/);
+  assert.match(body,/latest-values\|/);
+});
 
 test("open anomaly rows collapse only when logical key and grain both match", () => {
   const collapsed=collapseOpenAnomalies([
