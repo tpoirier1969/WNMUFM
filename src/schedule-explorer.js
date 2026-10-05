@@ -93,31 +93,63 @@ function normalizeEntry(row,{date,evidenceKind,sourceLabel,exact=false}={}) {
   };
 }
 
-export function newsletterScheduleForDate(schedule,date) {
-  const sources=schedule?.sources || [];
-  const entries=schedule?.entries || [];
-  const source=sources.find((item)=>monthKey(item.issue_month)===monthKey(date));
+export function buildNewsletterScheduleIndex(schedule) {
+  const sourceByMonth=new Map();
+  const monthlyBySourceWeekday=new Map();
+  const datedByDate=new Map();
+
+  (schedule?.sources || []).forEach((source)=>{
+    const key=monthKey(source.issue_month);
+    if(key) sourceByMonth.set(key,source);
+  });
+
+  (schedule?.entries || []).forEach((row)=>{
+    if(row.entry_type==="monthly_grid") {
+      const key=`${Number(row.source_id)}|${Number(row.weekday)}`;
+      if(!monthlyBySourceWeekday.has(key)) monthlyBySourceWeekday.set(key,[]);
+      monthlyBySourceWeekday.get(key).push(row);
+      return;
+    }
+    if(row.entry_type==="dated_override" && row.specific_date) {
+      const key=String(row.specific_date);
+      if(!datedByDate.has(key)) datedByDate.set(key,[]);
+      datedByDate.get(key).push(row);
+    }
+  });
+
+  monthlyBySourceWeekday.forEach((rows)=>rows.sort((a,b)=>
+    String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
+    String(a.program_title || "").localeCompare(String(b.program_title || ""))
+  ));
+  datedByDate.forEach((rows)=>rows.sort((a,b)=>
+    String(a.start_time || "").localeCompare(String(b.start_time || "")) ||
+    String(a.program_title || "").localeCompare(String(b.program_title || ""))
+  ));
+
+  return {sourceByMonth,monthlyBySourceWeekday,datedByDate};
+}
+
+export function newsletterScheduleForDate(schedule,date,index=null) {
+  const lookup=index || buildNewsletterScheduleIndex(schedule);
+  const source=lookup.sourceByMonth.get(monthKey(date));
   const day=weekday(date);
   let base=[];
   if(source && day!==null) {
-    base=entries
-      .filter((row)=>row.entry_type==="monthly_grid" && Number(row.source_id)===Number(source.id) && Number(row.weekday)===day)
-      .map((row)=>normalizeEntry(row,{
-        date,
-        evidenceKind:"newsletter-grid",
-        sourceLabel:"Preview monthly grid",
-        exact:false
-      }));
+    const rows=lookup.monthlyBySourceWeekday.get(`${Number(source.id)}|${Number(day)}`) || [];
+    base=rows.map((row)=>normalizeEntry(row,{
+      date,
+      evidenceKind:"newsletter-grid",
+      sourceLabel:"Preview monthly grid",
+      exact:false
+    }));
   }
 
-  const overrides=entries
-    .filter((row)=>row.entry_type==="dated_override" && row.specific_date===date)
-    .map((row)=>normalizeEntry(row,{
-      date,
-      evidenceKind:"newsletter-dated",
-      sourceLabel:"Preview dated listing",
-      exact:true
-    }));
+  const overrides=(lookup.datedByDate.get(String(date)) || []).map((row)=>normalizeEntry(row,{
+    date,
+    evidenceKind:"newsletter-dated",
+    sourceLabel:"Preview dated listing",
+    exact:true
+  }));
 
   if(!overrides.length) return base.sort(entrySort);
   const filteredBase=base.filter((item)=>!overrides.some((override)=>overlaps(item,override)));
