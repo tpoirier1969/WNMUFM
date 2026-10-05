@@ -5,7 +5,7 @@ import { importExport } from "./importer.js";
 import { renderBarChart, renderIndexedMultiLineChart, renderLineChart, renderMultiLineChart, formatMetric } from "./charts.js";
 import { formatDayDate, formatPeriod, indexToMedian, isWeekendDate, matchesWeekpart, median, percentFromMedian, shortDayLabel, shortMonthLabel } from "./analysis.js";
 import { matchesNotableDateMode, notableContextLabel, notableDateContext } from "./notable-dates.js";
-import { buildHourSchedule, buildTypicalHourContext, entryHourDayOffset, hourLabel } from "./schedule.js";
+import { hourLabel } from "./schedule.js";
 import { fetchComposerSchedule, fetchExactComposerScheduleRange } from "./schedule-client.js";
 import { CONFIG } from "./config.js";
 import { buildViewSearch, parseViewState, validIsoDate } from "./view-state.js";
@@ -19,7 +19,7 @@ import { addScheduleDays, buildScheduleDays, renderScheduleDay, renderScheduleMo
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendProfileCompareControl","trendProfileCompareSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendAudioDetailButton","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","listeningHourPanel","listeningHourEyebrow","scheduleProgramFilterControl","scheduleProgramFilter","nprHourChart","nprHourTable","nprHourDescription","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -61,7 +61,6 @@ const state = {
   trendZoomStart:initialTrendZoomStart,
   trendZoomEnd:initialTrendZoomEnd,
   trendZoomMode:false,
-  scheduleProgram:"",
   startDate:initialStartDate,
   endDate:initialEndDate,
   rangeMode:initialRangeMode,
@@ -79,8 +78,6 @@ let trendRequestId = 0;
 let exploreRequestId = 0;
 let breakdownRequestId = 0;
 let scheduleRequestId = 0;
-let listeningHourContext = null;
-let listeningHourNoticeKey = "";
 let takeawayFindings = [];
 let takeawayRangeKey = "";
 let takeawayScheduleNotice = "";
@@ -2045,139 +2042,6 @@ function exploreDimensionLabel(viewKey, value) {
     "Other":"Other / unclassified"
   })[value] || value;
 }
-function titlesForHour(entries,day,hour) {
-  const seen = new Set();
-  return entries.filter((entry) => {
-    const dayOffset=entryHourDayOffset(entry,hour);
-    if(dayOffset===null) return false;
-    const date = new Date(`${entry.date}T12:00:00Z`);
-    if(Number.isNaN(date.getTime())) return false;
-    date.setUTCDate(date.getUTCDate()+dayOffset);
-    return date.getUTCDay() === day;
-  }).map((entry)=>entry.program).filter((name)=>name && !seen.has(name) && seen.add(name)).sort((a,b)=>a.localeCompare(b));
-}
-
-function programLines(names) {
-  const filtered = state.scheduleProgram ? names.filter((name)=>name === state.scheduleProgram) : names;
-  return filtered.length ? filtered.map((name)=>`<span class="program-line">${escapeHtml(name)}</span>`).join("") : '<span class="program-line muted">—</span>';
-}
-
-function typicalContextLine(context) {
-  if(!context?.label) return "";
-  return context.type === "program"
-    ? `Typical program: ${context.label}`
-    : context.type === "genre"
-      ? `Typical genre: ${context.label}`
-      : "";
-}
-
-function renderListeningHourContext(context) {
-  const { hours, entries, typicalEntries = entries, scheduleNote, periodStart, periodEnd, rangeMismatch = false, sourceType = "npr_one", alignment = null } = context;
-  const byKey=new Map(hours.map((row)=>[row.dimension_value,row]));
-  const typicalByHour=buildTypicalHourContext(typicalEntries);
-  const names=[...new Set(entries.map((entry)=>entry.program).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const previous=state.scheduleProgram;
-  els.scheduleProgramFilter.innerHTML='<option value="">All programs</option>'+names.map((name)=>`<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-  if(previous && names.includes(previous)) els.scheduleProgramFilter.value=previous; else state.scheduleProgram="";
-  setHidden(els.scheduleProgramFilterControl, names.length === 0);
-  els.listeningHourPanel.classList.remove("compact-empty");
-  if(els.listeningHourEyebrow) els.listeningHourEyebrow.textContent=sourceType==="streamguys" ? "StreamGuys + WNMU schedule" : "NPR One + WNMU schedule";
-
-  const rangeWarning = rangeMismatch
-    ? `<span class="source-range-warning" role="status"><strong>Source range notice</strong><span>Listening by Hour uses <b>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</b>; your Analysis Range is <b>${escapeHtml(formatDayDate(state.startDate))} – ${escapeHtml(formatDayDate(state.endDate))}</b>. NPR provides this profile only as a whole-report aggregate, so this graph remains on the NPR source period.</span></span> `
-    : "";
-  els.nprHourDescription.innerHTML=sourceType==="streamguys"
-    ? `StreamGuys TLH is averaged for each <strong>WNMU Eastern clock hour</strong> across <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>. The imported source hour is preserved unchanged; this view uses a <strong>provisional +${Number(alignment?.offset_hours || 0)} hour</strong> schedule alignment from ${escapeHtml(alignment?.source_timezone_label || "the StreamGuys source clock")}. Schedule columns provide program context; TLH is measured at the hour level, not by individual program when an hour contains a transition. ${escapeHtml(scheduleNote)}`
-    : `${rangeWarning}NPR One gives a <strong>weekday average</strong> and a <strong>weekend average</strong> for each clock hour across the source period <strong>${escapeHtml(formatDayDate(periodStart))} – ${escapeHtml(formatDayDate(periodEnd))}</strong>, not seven separate daily audience counts. Schedule columns are context, not program-level audience measurements. ${escapeHtml(scheduleNote)}`;
-
-  const hourPoints=[];
-  const weekdayRows=[];
-  const weekendRows=[];
-  for(let hour=0;hour<24;hour+=1){
-    const key=String(hour).padStart(2,"0");
-    const weekday=byKey.get(`weekday|${key}`);
-    const weekend=byKey.get(`weekend|${key}`);
-    const dayTitles=[0,1,2,3,4,5,6].map((day)=>titlesForHour(entries,day,hour));
-    const matchesWeekday=!state.scheduleProgram || [1,2,3,4,5].some((day)=>dayTitles[day].includes(state.scheduleProgram));
-    const matchesWeekend=!state.scheduleProgram || [6,0].some((day)=>dayTitles[day].includes(state.scheduleProgram));
-    const weekdayTypical=typicalByHour.get(`weekday|${key}`);
-    const weekendTypical=typicalByHour.get(`weekend|${key}`);
-    hourPoints.push({
-      label:hourLabel(hour),
-      shortLabel:hourLabel(hour).replace(":00",""),
-      value:weekday ? Number(weekday.station_value) : null,
-      secondaryValue:weekend ? Number(weekend.station_value) : null,
-      primaryTooltipModel:{
-        title:hourLabel(hour),
-        rows:[
-          { tone:"station", label:"Weekday", value:weekday ? formatMetric(weekday.station_value,weekday.unit) : "—", delta:typicalContextLine(weekdayTypical) }
-        ]
-      },
-      secondaryTooltipModel:{
-        title:hourLabel(hour),
-        rows:[
-          { tone:"benchmark", label:"Weekend", value:weekend ? formatMetric(weekend.station_value,weekend.unit) : "—", delta:typicalContextLine(weekendTypical) }
-        ]
-      }
-    });
-    if(matchesWeekday) weekdayRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekday ? escapeHtml(formatMetric(weekday.station_value,weekday.unit)) : "—"}</td><td>${programLines(dayTitles[1])}</td><td>${programLines(dayTitles[2])}</td><td>${programLines(dayTitles[3])}</td><td>${programLines(dayTitles[4])}</td><td>${programLines(dayTitles[5])}</td></tr>`);
-    if(matchesWeekend) weekendRows.push(`<tr><td>${escapeHtml(hourLabel(hour))}</td><td class="hour-average">${weekend ? escapeHtml(formatMetric(weekend.station_value,weekend.unit)) : "—"}</td><td>${programLines(dayTitles[6])}</td><td>${programLines(dayTitles[0])}</td></tr>`);
-  }
-  renderLineChart(els.nprHourChart,hourPoints,{
-    title:sourceType==="streamguys" ? "StreamGuys TLH by hour" : "NPR One listening by hour",
-    ariaLabel:sourceType==="streamguys" ? "Average StreamGuys total listening hours by Eastern clock hour, weekdays compared with weekends" : "Average NPR One hourly listeners, weekdays compared with weekends",
-    primaryLabel:"Weekday",
-    secondaryLabel:"Weekend",
-    showBars:false,
-    labelAngle:0,
-    labelEvery:2,
-    minLabelGap:12
-  });
-  const hourlyValueLabel=sourceType==="streamguys" ? "Avg. TLH" : "Avg.";
-  els.nprHourTable.innerHTML=entries.length ? `
-    <section class="hour-section"><h4>Monday–Friday schedule against weekday hourly average</h4><div class="table-wrap"><table class="hour-table weekday-hour-table"><thead><tr><th>Hour</th><th>Weekday<br>${hourlyValueLabel}</th><th>Monday</th><th>Tuesday</th><th>Wednesday</th><th>Thursday</th><th>Friday</th></tr></thead><tbody>${weekdayRows.join("") || '<tr><td colspan="7">No hours match this program filter.</td></tr>'}</tbody></table></div></section>
-    <section class="hour-section"><h4>Weekend schedule against weekend hourly average</h4><div class="table-wrap"><table class="hour-table weekend-hour-table"><thead><tr><th>Hour</th><th>Weekend<br>${hourlyValueLabel}</th><th>Saturday</th><th>Sunday</th></tr></thead><tbody>${weekendRows.join("") || '<tr><td colspan="4">No hours match this program filter.</td></tr>'}</tbody></table></div></section>` : "";
-}
-
-async function renderListeningByHour(hours, requestId = breakdownRequestId, { rangeMismatch = false, sourceType = "npr_one", alignment = null } = {}) {
-  if (!hours.length) {
-    listeningHourContext=null;
-    state.scheduleProgram="";
-    els.listeningHourPanel.classList.add("compact-empty");
-    setHidden(els.scheduleProgramFilterControl,true);
-    setHidden(els.nprHourChart,true);
-    els.nprHourTable.innerHTML="";
-    els.nprHourDescription.innerHTML=`<span class="source-range-warning"><strong>Listening by Hour unavailable.</strong> No imported ${sourceType==="streamguys" ? "StreamGuys hourly TLH" : "NPR One hour-of-day profile"} is available.</span>`;
-    const noticeKey="missing-hour-profile";
-    if(listeningHourNoticeKey !== noticeKey && state.activeTab === "overview") {
-      listeningHourNoticeKey=noticeKey;
-      openDetailDialog("Listening by Hour unavailable", "<p>No imported NPR One hour-of-day profile is available, so this panel has been collapsed rather than leaving a large empty area.</p>", "Data availability");
-    }
-    return;
-  }
-  setHidden(els.nprHourChart,false);
-  const periodStart=hours[0].period_start;
-  const periodEnd=hours[0].period_end;
-
-  let entries=[];
-  let typicalEntries=[];
-  let scheduleNote="";
-  try {
-    const result=await fetchComposerSchedule(periodStart,periodEnd);
-    if(requestId !== breakdownRequestId) return;
-    typicalEntries=result.entries;
-    entries=result.sourceType==="recurrences" ? [] : result.entries;
-    scheduleNote=result.sourceType==="recurrences"
-      ? "Exact dated schedule entries were unavailable. Tooltip program context may use Composer recurring definitions only when one program or genre clearly dominates that hour; the dated schedule table and program filter remain hidden."
-      : "Schedule context comes from dated Composer episodes for this report period. Typical-program hints are shown only when one program or genre clearly dominates an hour.";
-  } catch(error) {
-    if(requestId !== breakdownRequestId) return;
-    scheduleNote=`Schedule lookup unavailable: ${error.message}`;
-  }
-  listeningHourContext={hours,entries,typicalEntries,scheduleNote,periodStart,periodEnd,rangeMismatch,sourceType,alignment};
-  renderListeningHourContext(listeningHourContext);
-}
-
 async function renderStreamingWeekpart() {
   const rows=await loadTimeSeries("streaming.listeners","day","{}",selectedRange());
   const groups={weekday:[],weekend:[]};
