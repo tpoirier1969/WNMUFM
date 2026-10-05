@@ -713,6 +713,79 @@ export function renderIndexedMultiLineChart(container, points, options = {}) {
   container.appendChild(svg);
 }
 
+
+export function renderMultiLineChart(container, points, options = {}) {
+  clear(container);
+  const series=Array.isArray(options.series) ? options.series : [];
+  if(!points?.length || !series.length) {
+    container.innerHTML='<p class="empty-state">No comparable observations are available for this view.</p>';
+    return;
+  }
+  const width=1100;
+  const margin={top:48,right:42,bottom:62,left:74};
+  const plotHeight=300;
+  const height=margin.top+plotHeight+margin.bottom;
+  const plotWidth=width-margin.left-margin.right;
+  const values=points.flatMap((point)=>series.map((item)=>finiteNumber(point.values?.[item.key]))).filter((value)=>value!==null);
+  if(!values.length) {
+    container.innerHTML='<p class="empty-state">No comparable observations are available for this view.</p>';
+    return;
+  }
+  let min=Math.min(...values), max=Math.max(...values);
+  if(min===max){min=Math.max(0,min-1);max+=1;}
+  const pad=Math.max((max-min)*0.08,0.5);
+  min=Math.max(0,min-pad); max+=pad;
+
+  const svg=svgElement("svg",{viewBox:`0 0 ${width} ${height}`,role:"img","aria-label":options.ariaLabel||options.title||"Multi-line chart",class:"chart-svg"});
+  const xFor=(index)=>margin.left+(points.length===1?plotWidth/2:(index/(points.length-1))*plotWidth);
+  const yFor=(value)=>margin.top+((max-Number(value))/(max-min))*plotHeight;
+
+  for(let i=0;i<=4;i+=1){
+    const frac=i/4, y=margin.top+plotHeight*frac, value=max-(max-min)*frac;
+    svg.appendChild(svgElement("line",{x1:margin.left,x2:width-margin.right,y1:y,y2:y,class:"chart-grid"}));
+    const label=svgElement("text",{x:margin.left-10,y:y+4,"text-anchor":"end",class:"chart-axis-label"});
+    label.textContent=compactNumber(value); svg.appendChild(label);
+  }
+
+  let legendX=margin.left, legendY=20;
+  series.forEach((item,index)=>{
+    const est=Math.max(110,String(item.label||item.key).length*7+42);
+    if(legendX>margin.left && legendX+est>width-margin.right){legendX=margin.left;legendY+=18;}
+    svg.appendChild(svgElement("line",{x1:legendX,x2:legendX+20,y1:legendY,y2:legendY,class:"chart-metric-line chart-series-"+(index%8)}));
+    const label=svgElement("text",{x:legendX+26,y:legendY+4,class:"chart-legend-label"});
+    label.textContent=item.label||item.key; svg.appendChild(label); legendX+=est;
+  });
+
+  series.forEach((item,seriesIndex)=>{
+    let path="",drawing=false;
+    points.forEach((point,index)=>{
+      const value=finiteNumber(point.values?.[item.key]);
+      if(value===null){drawing=false;return;}
+      path+=(drawing?" L":"M")+xFor(index).toFixed(1)+","+yFor(value).toFixed(1);
+      drawing=true;
+    });
+    if(path) svg.appendChild(svgElement("path",{d:path,class:"chart-metric-line chart-series-"+(seriesIndex%8)}));
+    points.forEach((point,index)=>{
+      const value=finiteNumber(point.values?.[item.key]);
+      if(value===null) return;
+      const circle=svgElement("circle",{cx:xFor(index),cy:yFor(value),r:2.3,class:"chart-metric-point chart-series-"+(seriesIndex%8),tabindex:"0",role:"img"});
+      bindChartTooltip(container,circle,{
+        title:point.label,
+        rows:[{label:item.label||item.key,value:options.formatValue?options.formatValue(value):compactNumber(value),delta:""}]
+      });
+      svg.appendChild(circle);
+    });
+  });
+
+  const labelIndexes=new Set(selectSpacedLabelIndexes(points,plotWidth,{labelEvery:options.labelEvery||2,labelAngle:0,minLabelGap:10}));
+  points.forEach((point,index)=>{
+    if(!labelIndexes.has(index)) return;
+    const label=svgElement("text",{x:xFor(index),y:margin.top+plotHeight+22,"text-anchor":"middle",class:"chart-axis-label dense"});
+    label.textContent=point.shortLabel||point.label; svg.appendChild(label);
+  });
+  container.appendChild(svg);
+}
+
 export function renderBarChart(container, rows, options = {}) {
   clear(container);
   if (!rows?.length) {
