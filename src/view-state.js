@@ -14,6 +14,7 @@ const PARAMS = Object.freeze({
   trendMetrics:"metrics",
   trendMode:"trendView",
   trendHour:"hourView",
+  trendProfileCompare:"profileBy",
   trendGrain:"grain",
   trendWeekpart:"weekpart",
   trendNotable:"notable",
@@ -37,7 +38,7 @@ export function parseViewState(search = "") {
     return params.has(param) ? params.get(param) ?? "" : undefined;
   };
 
-  for (const key of ["activeTab","startDate","endDate","rangeMode","trendMode","trendHour","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory","scheduleView","scheduleDate","scheduleTime","scheduleWindowStart"]) {
+  for (const key of ["activeTab","startDate","endDate","rangeMode","trendMode","trendHour","trendProfileCompare","trendGrain","trendWeekpart","trendNotable","trendProgram","trendZoomStart","trendZoomEnd","exploreView","takeawayCategory","scheduleView","scheduleDate","scheduleTime","scheduleWindowStart"]) {
     const value = read(key);
     if (value !== undefined) view[key] = value;
   }
@@ -67,6 +68,7 @@ export function buildViewSearch(view = {}) {
   }
   set("trendMode", view.trendMode);
   set("trendHour", view.trendHour);
+  set("trendProfileCompare", view.trendProfileCompare);
   set("trendGrain", view.trendGrain);
   set("trendWeekpart", view.trendWeekpart);
   set("trendNotable", view.trendNotable);
