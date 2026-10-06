@@ -2458,7 +2458,7 @@ async function renderCollectionChecklist() {
     <div class="collection-source-strip">
       <div><strong>Google Analytics 4</strong><span>${ga4Status}</span><small>analytics.google.com · CSV exports</small></div>
       <div><strong>Program drilldowns</strong><span>${programs.length} program buckets loaded</span><small>studio.npr.org · add discrete local programs as assigned</small></div>
-      <div><strong>Schedule evidence</strong><span>Preview + Composer</span><small>Historical gaps remain source-bounded; never infer missing months.</small></div>
+      <div><strong>Schedule evidence</strong><span>Preview + Composer</span><small>Historical schedule: missing issues preserved as gaps; never infer missing months.</small></div>
     </div>
     <details class="collection-gaps">
       <summary>Additional collection and analysis needs</summary>
