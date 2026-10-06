@@ -113,7 +113,9 @@ test("the app exposes GA4 CSV imports and GA4 Explore views", async () => {
     fs.readFile(new URL("../index.html",import.meta.url),"utf8")
   ]);
   assert.match(html,/accept="\.zip,\.csv,application\/zip,text\/csv"/);
-  assert.match(html,/NPR Analytics ZIPs and Google Analytics 4 CSV exports are supported/);
+  assert.match(html,/Drop NPR ZIPs or Google Analytics 4 CSVs here/);
+  assert.match(html,/studio\.npr\.org/);
+  assert.match(html,/analytics\.google\.com/);
   assert.match(app,/["']ga4-pages["']/);
   assert.match(app,/["']ga4-landing["']/);
   assert.match(app,/["']ga4-traffic["']/);
