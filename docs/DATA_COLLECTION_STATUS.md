@@ -33,7 +33,7 @@ Very large GA4 dimensions are normalized only to the highest-activity rows neede
 
 ## Highest-priority downloads
 
-1. **Verify and extend live-stream time-of-day detail.** StreamGuys hourly TLH from June 2024 forward is now loaded and provisionally aligned from the source Central-time clock to WNMU Eastern schedule time without changing the raw hours. Next priority is confirming that timezone interpretation and obtaining half-hour/session-level detail if StreamGuys exposes it.
+1. **Maintain and verify live-stream time-of-day detail.** StreamGuys hourly TLH from June 2024 forward is loaded and provisionally aligned from the source Central-time clock to WNMU Eastern schedule time without changing the raw hours. The app now accepts StreamGuys `TLH by Day` Raw CSV exports directly when they contain `Day`, `TLH`, and `hour_of_day_local`. Routine refreshes should use the most recent 12 complete months. Next priority remains confirming the timezone interpretation and obtaining half-hour/session-level detail if StreamGuys exposes it.
 2. **The three missing WNMU-FM Preview issues: November 2025, December 2025, and January 2026**, plus any stronger dated schedule source for those months. The archive now otherwise contains Preview source issues from Sep 2023 through Oct 2026. Do not interpolate across the three-month gap.
 3. **Audio Program Drilldown for additional discrete local programs**, using the longest available Day range and Week/Month where available. The three currently loaded programs already have substantially longer coverage than the original September audit.
 4. **Additional dated Google Analytics 4 content history** when useful, especially Date + Page Path / Landing Page / event detail beyond the currently loaded 2026-07-23 through 2026-09-22 window.
@@ -85,3 +85,13 @@ As the history grows, analysis filters must include:
 - all days.
 
 Week-part filters should apply to daily observations without changing or re-aggregating the source facts.
+
+
+## Routine staff source locations
+
+- NPR Studio: `https://studio.npr.org/`
+- StreamGuys Portal: `https://portal.streamguys.com/home/users`
+- Google Analytics 4: `https://analytics.google.com/`
+- WNMU-FM Analytics import screen: `https://wnmufm.pages.dev/`
+
+Routine imports use a rolling 12 complete months. This gives overlap for corrected or missed reports without repeatedly downloading the entire historical archive.
