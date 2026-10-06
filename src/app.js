@@ -2406,11 +2406,22 @@ function coreHistoryNextTarget(imports,type,whenComplete,targetStart="2025-09-22
 
 async function renderCollectionChecklist() {
   const imports = await loadImports();
+  const streamGuysRows=imports.filter((item)=>
+    item.report_type==="station_streaming" &&
+    item.grain==="day" &&
+    item.report_start &&
+    item.filter_context?.source==="StreamGuys"
+  );
+  const streamGuysSpan=streamGuysRows.length ? {
+    start:streamGuysRows.reduce((value,item)=>!value || item.report_start<value ? item.report_start : value,null),
+    end:streamGuysRows.reduce((value,item)=>!value || item.report_end>value ? item.report_end : value,null)
+  } : null;
+
   const rows = [
-    { type:"station_streaming", label:"Live streaming", next:coreHistoryNextTarget(imports,"station_streaming","Core Day/Week/Month history plus StreamGuys hourly TLH is loaded. Hourly TLH is provisionally aligned to WNMU Eastern schedule time while the raw source hour remains preserved. Next priority: verify the source timezone interpretation and add finer half-hour/session detail if available.") },
-    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","Core Day/Week/Month history is loaded. Continue periodic refreshes; dated content analysis now belongs primarily in Google Analytics 4.") },
-    { type:"audio_downloads", label:"On-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","Core Day/Week/Month history is loaded. Next expand program drilldowns beyond the currently represented local programs.") },
-    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","Core Day/Week/Month history is loaded. Continue periodic refreshes as completed reporting periods become available.") }
+    { type:"station_streaming", label:"NPR live streaming", next:coreHistoryNextTarget(imports,"station_streaming","studio.npr.org · Refresh the most recent 12 complete months.") },
+    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","studio.npr.org · Refresh the most recent 12 complete months.") },
+    { type:"audio_downloads", label:"NPR on-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","studio.npr.org · Refresh the most recent 12 complete months; add program drilldowns as assigned.") },
+    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","studio.npr.org · Refresh the most recent 12 complete months.") }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
@@ -2419,13 +2430,13 @@ async function renderCollectionChecklist() {
   const ga4End=ga4Imports.reduce((value,item)=>!value || (item.report_end && item.report_end>value) ? item.report_end : value,null);
   const ga4Daily=collectionSpan(imports,"ga4_website","day");
   const ga4Status=ga4Imports.length
-    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports${ga4Daily ? ` · daily detail ${escapeHtml(formatDayDate(ga4Daily.start))} – ${escapeHtml(formatDayDate(ga4Daily.end))}` : ""}`
-    : '<span class="collection-status need">Not imported</span> · Google Analytics 4 CSV import is ready';
+    ? `<span class="collection-status good">Loaded</span> ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))}`
+    : '<span class="collection-status need">Not imported</span>';
 
   els.collectionChecklist.innerHTML = `
     <div class="table-wrap collection-table-wrap">
       <table class="collection-table">
-        <thead><tr><th>Source</th><th>Day</th><th>Week</th><th>Month</th><th>Next collection target</th></tr></thead>
+        <thead><tr><th>Source</th><th>Day</th><th>Week</th><th>Month</th><th>Routine refresh</th></tr></thead>
         <tbody>
           ${rows.map((row) => `<tr>
             <td><strong>${escapeHtml(row.label)}</strong></td>
@@ -2434,23 +2445,31 @@ async function renderCollectionChecklist() {
             <td>${collectionCell(collectionSpan(imports,row.type,"month"))}</td>
             <td>${escapeHtml(row.next)}</td>
           </tr>`).join("")}
+          <tr>
+            <td><strong>StreamGuys hourly TLH</strong></td>
+            <td>${collectionCell(streamGuysSpan)}</td>
+            <td class="collection-na">—</td>
+            <td class="collection-na">—</td>
+            <td>portal.streamguys.com · TLH by Day Raw CSV; refresh the most recent 12 complete months.</td>
+          </tr>
         </tbody>
       </table>
     </div>
-    <div class="collection-gaps">
-      <p><strong>Google Analytics 4:</strong> ${ga4Status}</p>
-      <p><strong>Content-first gaps:</strong></p>
+    <div class="collection-source-strip">
+      <div><strong>Google Analytics 4</strong><span>${ga4Status}</span><small>analytics.google.com · CSV exports</small></div>
+      <div><strong>Program drilldowns</strong><span>${programs.length} program buckets loaded</span><small>studio.npr.org · add discrete local programs as assigned</small></div>
+      <div><strong>Schedule evidence</strong><span>Preview + Composer</span><small>Historical gaps remain source-bounded; never infer missing months.</small></div>
+    </div>
+    <details class="collection-gaps">
+      <summary>Additional collection and analysis needs</summary>
       <ul>
-        <li><strong>Live-stream hour/daypart data:</strong> StreamGuys hourly TLH is now loaded and available for schedule-aligned analysis. The Central-to-Eastern mapping remains explicitly provisional and reversible.</li>
-        <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
-        <li><strong>Dated Google Analytics 4 content:</strong> ${ga4Daily ? "Date + Page Path / Landing Page daily detail is now supported. Next collect Date + Event name so station-relevant actions can be trended by day." : "Date + Page Path is the most valuable next website export because it allows content to enter Trend Explorer and daily drilldowns."}</li>
-        <li><strong>Google Analytics 4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
-        <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
-        <li><strong>Historical schedule:</strong> Preview newsletter evidence is loaded only for issue months we actually possess, with missing issues preserved as gaps. Composer recurrence history accumulates from actual archive captures. Exact dated logs remain especially valuable for preemptions and substitutions.</li>
+        <li><strong>StreamGuys:</strong> the Central-to-Eastern schedule mapping remains provisional and reversible; finer half-hour/session detail can be added if StreamGuys exposes it.</li>
+        <li><strong>Google Analytics 4:</strong> dated Page Path / Landing Page detail is supported; Date + Event name is the next useful dated action export.</li>
+        <li><strong>Audio-event detail:</strong> event parameters are still needed to identify what was played or how the player was used.</li>
+        <li><strong>Program taxonomy:</strong> news, classical, jazz, local arts, public affairs and specialty music still need durable classifications.</li>
       </ul>
-    </div>`;
+    </details>`;
 }
-
 
 async function renderImportHistory() {
   const imports = await loadImports();
