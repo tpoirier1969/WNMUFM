@@ -2,6 +2,7 @@ import { CONFIG } from "./config.js";
 import { parseCsv, normalizeLineEndings } from "./csv.js";
 import { detectAnomalies, detectReport, inferDrilldownProgram, normalizeReport, reportLabel, REPORT_TYPES } from "./reports.js";
 import { GA4_REPORT_TYPE, inspectGa4CsvText } from "./ga4.js";
+import { inspectStreamGuysCsvText, looksLikeStreamGuysCsvText } from "./streamguys.js";
 import { batchInsert, batchUpsert, insertRows, selectRows, updateRows } from "./api.js";
 
 const NPR_PARSER_VERSION = "npr-export-parser-1";
@@ -99,7 +100,7 @@ async function archiveSourceFile(importId, file) {
   let bytes = new Uint8Array(await file.arrayBuffer());
   let mimeType=file.type || "application/octet-stream";
 
-  // GA4 CSV exports can exceed the practical REST request size once bytea is
+  // CSV exports can exceed the practical REST request size once bytea is
   // hex-encoded. Compress the original CSV losslessly before archiving it.
   if(file.name.toLowerCase().endsWith(".csv")) {
     if (!window.JSZip) throw new Error("ZIP reader did not load.");
@@ -121,10 +122,37 @@ async function archiveSourceFile(importId, file) {
   }]);
 }
 
-export async function inspectExport(file, filterContext = {}) {
+export async function inspectExport(file, filterContext = {}, sourceHint = "auto") {
   const lowerName=String(file?.name || "").toLowerCase();
   if(lowerName.endsWith(".csv")) {
     const text=await file.text();
+    const isStreamGuys=looksLikeStreamGuysCsvText(text);
+    if(sourceHint==="streamguys" && !isStreamGuys) {
+      throw new Error("This does not look like a StreamGuys TLH by Day CSV. Download the Raw CSV with Day, TLH, and hour_of_day_local columns from portal.streamguys.com.");
+    }
+    if(isStreamGuys) {
+      const streamguys=inspectStreamGuysCsvText(text,{fileName:file.name,stationKey:CONFIG.stationKey});
+      const contentHash=await sha256(normalizeLineEndings(text).trimEnd());
+      const parsed=streamguys.parsed;
+      return {
+        file,
+        entries:[{name:file.name,text}],
+        files:new Map([[baseName(file.name),{...parsed,path:file.name,text}]]),
+        reportType:REPORT_TYPES.STREAMING,
+        reportLabel:streamguys.reportLabel,
+        selectedProgram:null,
+        programInference:null,
+        normalized:streamguys.normalized,
+        contentHash,
+        dataRowCount:streamguys.dataRowCount,
+        filterContext:streamguys.filterContext,
+        parserVersion:streamguys.parserVersion,
+        reportRunDate:streamguys.reportRunDate,
+        note:streamguys.note,
+        storeRawRows:true
+      };
+    }
+    if(sourceHint==="streamguys") throw new Error("Choose a StreamGuys TLH by Day CSV.");
     const ga4=inspectGa4CsvText(text,{fileName:file.name,stationKey:CONFIG.stationKey});
     const contentHash=await sha256(canonicalExportText([{name:file.name,text}]));
     return {
@@ -145,7 +173,8 @@ export async function inspectExport(file, filterContext = {}) {
       storeRawRows:false
     };
   }
-  if(!lowerName.endsWith(".zip")) throw new Error("Choose an NPR Analytics ZIP export or a Google Analytics 4 CSV export.");
+  if(sourceHint==="streamguys") throw new Error("StreamGuys imports must be Raw CSV files, not ZIP files.");
+  if(!lowerName.endsWith(".zip")) throw new Error("Choose an NPR Analytics ZIP export, a Google Analytics 4 CSV export, or a StreamGuys TLH by Day CSV.");
 
   const entries = await readZip(file);
   const files = parseEntries(entries);
@@ -254,7 +283,7 @@ export async function importInspectedExport(inspected, userEmail) {
   }
 }
 
-export async function importExport(file, filterContext, userEmail) {
-  const inspected = await inspectExport(file, filterContext);
+export async function importExport(file, filterContext, userEmail, sourceHint = "auto") {
+  const inspected = await inspectExport(file, filterContext, sourceHint);
   return importInspectedExport(inspected, userEmail);
 }
