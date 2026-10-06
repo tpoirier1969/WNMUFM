@@ -2,7 +2,7 @@
 
 Proof-of-concept analytics application for WNMU-FM.
 
-The application imports NPR Analytics ZIP exports and Google Analytics 4 CSV exports, preserves original source evidence, normalizes useful metrics into FM-specific Supabase tables, and presents station-focused trends, deterministic evidence-backed takeaways including actionability ordering, period-specific NPR benchmark trend comparisons, reviewed-anomaly context, and dated schedule-change context, including persistent recurring FM schedule changes and one-day special-programming effects inferred from daily same-weekday comparisons. StreamGuys Tier 1 hourly TLH exports are also preserved as raw hour-filtered observations and exposed through a reversible schedule-alignment layer so hourly listening can be compared with WNMU's Eastern-time program schedule without rewriting the source facts. A Schedule Explorer provides Month, Week, and Day views using the strongest defensible evidence available for each date: exact Composer episodes, WNMU-FM Preview evidence for its named month/date, then archived Composer recurrence snapshots. When Composer historical episodes are unavailable, the app preserves the recurring catalog in a daily WNMU-FM archive so recurring schedule history accumulates locally over time. The app also includes content/acquisition breakdowns, compact source coverage guidance, and grain-aware anomaly review so Day, Week, and Month flags remain distinct.
+The application imports NPR Studio ZIP exports, Google Analytics 4 CSV exports, and StreamGuys hourly TLH Raw CSV exports, preserves original source evidence, normalizes useful metrics into FM-specific Supabase tables, and presents station-focused trends, deterministic evidence-backed takeaways including actionability ordering, period-specific NPR benchmark trend comparisons, reviewed-anomaly context, and dated schedule-change context, including persistent recurring FM schedule changes and one-day special-programming effects inferred from daily same-weekday comparisons. StreamGuys Tier 1 hourly TLH exports are also preserved as raw hour-filtered observations and exposed through a reversible schedule-alignment layer so hourly listening can be compared with WNMU's Eastern-time program schedule without rewriting the source facts. A Schedule Explorer provides Month, Week, and Day views using the strongest defensible evidence available for each date: exact Composer episodes, WNMU-FM Preview evidence for its named month/date, then archived Composer recurrence snapshots. When Composer historical episodes are unavailable, the app preserves the recurring catalog in a daily WNMU-FM archive so recurring schedule history accumulates locally over time. The app also includes content/acquisition breakdowns, compact source coverage guidance, and grain-aware anomaly review so Day, Week, and Month flags remain distinct.
 
 ## Project governance
 
@@ -28,6 +28,7 @@ Read `PROJECT_RULES.md` before modifying the application.
 - Data-loading performance: Preview schedule evidence is fetched in batched/paged range queries instead of one request per month; summary cards share a multi-metric request; StreamGuys hourly rows are fetched in bounded parallel month chunks; and joined hourly schedule context is cached/indexed by analysis range, hour, and program. A dashboard-oriented observation index supports the common metric/grain/filter/date query path.
 - Authentication/authorization: Supabase Auth via GitHub OAuth or email/password, plus `wnmu_app_user_roles` with app key `wnmufm_analytics`
 - Google Analytics 4 import: source-period CSV exports for pages, landing pages, events, acquisition, geography and technical diagnostics; Google Analytics 4 aggregate reports remain separate from dated NPR website metrics
+- StreamGuys import: dedicated Raw CSV drop zone for `TLH by Day` exports containing `Day`, `TLH`, and `hour_of_day_local`; raw source hours are preserved and overlapping day/hour facts refresh the same canonical `streamguys.tlh` observations already used by Time of Day
 - Authoritative application version: `src/version.js`
 
 ## Run locally
@@ -78,3 +79,13 @@ Preview newsletter schedule evidence now feeds Scheduling Takeaways directly. Co
 - Time-of-Day schedule context: hourly/profile tooltips now keep useful schedule evidence visible even when several titles share a slot by showing up to three titles plus a compact remainder count. Tooltips include a visible Drill into action that narrows the analysis to the selected period and hour; missing schedule evidence is stated explicitly instead of silently omitting the schedule row.
 - Schedule evidence boundary: the Schedule date picker is limited to the actual stored Preview/newsletter and Composer archive evidence range. Dates before the earliest stored schedule source or after the latest stored evidence are not selectable, and archived Composer recurrences are never projected backward before the first archive capture.
 - Schedule picker bounds use actual evidence rows, not merely uploaded file dates: complete monthly grids contribute their month, dated Preview listings contribute only their explicit dates, and Composer history begins at actual archive captures.
+
+
+## Routine source websites
+
+- NPR Studio: `https://studio.npr.org/`
+- StreamGuys Portal: `https://portal.streamguys.com/home/users`
+- Google Analytics 4: `https://analytics.google.com/`
+- WNMU-FM Analytics: `https://wnmufm.pages.dev/`
+
+The Imports screen presents NPR/Google Analytics and StreamGuys as two compact upload panels. Routine refreshes should use the most recent 12 complete months rather than redownloading all historical data.
