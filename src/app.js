@@ -19,7 +19,7 @@ import { addScheduleDays, buildNewsletterScheduleIndex, buildScheduleDays, newsl
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendProfileCompareControl","trendProfileCompareSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendAudioDetailButton","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput","streamGuysDropZone","streamGuysFileInput","streamGuysImportQueue",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -2562,34 +2562,48 @@ function filterContext() {
   return name && value ? { [name]: value } : {};
 }
 
-function queueRow(file, status, kind = "") {
+function queueRow(file, status, kind = "", queueElement = els.importQueue) {
   const id = `import-${crypto.randomUUID()}`;
   const row = document.createElement("div");
   row.className = `import-row ${kind}`;
   row.id = id;
   row.innerHTML = `<div><strong>${escapeHtml(file.name)}</strong></div><div class="status">${escapeHtml(status)}</div>`;
-  els.importQueue.prepend(row);
+  queueElement.prepend(row);
   return row;
 }
 
-async function processFiles(fileList) {
-  const files = [...fileList].filter((file) => /\.(zip|csv)$/i.test(file.name));
+function renderImportBatchSummary(queueElement,{fileCount,importedCount,duplicateCount,errorMessages}) {
+  queueElement.innerHTML="";
+  const row=document.createElement("div");
+  row.className=`import-row import-batch-summary ${errorMessages.length ? "error" : "success"}`;
+  const pieces=[];
+  if(importedCount) pieces.push(`${importedCount} imported`);
+  if(duplicateCount) pieces.push(`${duplicateCount} already present`);
+  if(errorMessages.length) pieces.push(`${errorMessages.length} failed`);
+  row.innerHTML=`<div><strong>${fileCount} ${fileCount===1 ? "file" : "files"} checked</strong></div><div class="status">${escapeHtml(pieces.join(" · ") || "No changes")}</div>`;
+  queueElement.append(row);
+}
+
+async function processFiles(fileList,{sourceHint="auto",queueElement=els.importQueue,inputElement=els.fileInput}={}) {
+  const accepted=sourceHint==="streamguys" ? /\.csv$/i : /\.(zip|csv)$/i;
+  const files = [...fileList].filter((file) => accepted.test(file.name));
   if (!files.length) return;
+  queueElement.innerHTML="";
   const userEmail = currentUser()?.email || null;
-  const filters = filterContext();
+  const filters = sourceHint==="streamguys" ? {} : filterContext();
   let importedCount = 0;
   let duplicateCount = 0;
-  let errorCount = 0;
   let observationCount = 0;
   let anomalyCount = 0;
+  const errorMessages=[];
   const availableRangeBeforeImport={ ...state.availableRange };
   let importRangeChange=null;
 
   await withBusy(async () => {
     for (const file of files) {
-      const row = queueRow(file, "Inspecting…");
+      const row = queueRow(file, "Inspecting…","",queueElement);
       try {
-        const result = await importExport(file, filters, userEmail);
+        const result = await importExport(file, filters, userEmail, sourceHint);
         if (result.duplicate) {
           duplicateCount += 1;
           row.classList.add("success");
@@ -2601,11 +2615,11 @@ async function processFiles(fileList) {
           row.classList.add("success");
           const program = result.inspected.selectedProgram ? ` · ${result.inspected.selectedProgram}` : "";
           const viewLabel=result.inspected.normalized.range.grain === "unknown" ? "source-period aggregate" : result.inspected.normalized.range.grain;
-          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${viewLabel}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
+          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${viewLabel}${program} · ${result.normalizedCount} observations`;
         }
       } catch (error) {
-        errorCount += 1;
         console.error(error);
+        errorMessages.push({file:file.name,message:error.message});
         row.classList.add("error");
         row.querySelector(".status").textContent = error.message;
       }
@@ -2619,7 +2633,18 @@ async function processFiles(fileList) {
     await refreshDashboard();
   });
 
-  els.fileInput.value = "";
+  inputElement.value = "";
+  renderImportBatchSummary(queueElement,{
+    fileCount:files.length,
+    importedCount,
+    duplicateCount,
+    errorMessages
+  });
+
+  const errorDetails=errorMessages.length
+    ? `<div class="import-error-detail"><strong>Could not import:</strong><ul>${errorMessages.map((item)=>`<li><strong>${escapeHtml(item.file)}:</strong> ${escapeHtml(item.message)}</li>`).join("")}</ul></div>`
+    : "";
+
   if (importedCount > 0) {
     const reportWord = importedCount === 1 ? "report" : "reports";
     const observationWord = observationCount === 1 ? "observation" : "observations";
@@ -2637,22 +2662,39 @@ async function processFiles(fileList) {
       rangeNotice,
       anomalyCount ? `<p>${anomalyCount} data-quality ${anomalyCount === 1 ? "flag was" : "flags were"} created for review.</p>` : "",
       duplicateCount ? `<p>${duplicateCount} ${duplicateCount === 1 ? "file was" : "files were"} already imported.</p>` : "",
-      errorCount ? `<p>${errorCount} ${errorCount === 1 ? "file could not" : "files could not"} be imported. See the import queue for details.</p>` : ""
+      errorDetails
     ].join("");
-    openDetailDialog("Import complete", messages, "Analytics import");
-  } else if (duplicateCount > 0 && errorCount === 0) {
+    openDetailDialog("Import complete", messages, sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import");
+  } else if (duplicateCount > 0 && errorMessages.length === 0) {
     openDetailDialog(
       "Already imported",
       `<p>No new data was added because ${duplicateCount === 1 ? "this report is" : "these reports are"} already in the app.</p>`,
-      "Analytics import"
+      sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import"
     );
-  } else if (errorCount > 0) {
+  } else if (errorMessages.length > 0) {
     openDetailDialog(
       "Import not completed",
-      `<p>No new data was added. See the import queue for the ${errorCount === 1 ? "error" : "errors"}.</p>`,
-      "Analytics import"
+      `<p>No new data was added.</p>${errorDetails}`,
+      sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import"
     );
   }
+}
+
+function bindImportDropZone(zone,input,options={}) {
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); }
+  });
+  ["dragenter","dragover"].forEach((name) => zone.addEventListener(name, (event) => {
+    event.preventDefault();
+    zone.classList.add("dragging");
+  }));
+  ["dragleave","drop"].forEach((name) => zone.addEventListener(name, (event) => {
+    event.preventDefault();
+    zone.classList.remove("dragging");
+  }));
+  zone.addEventListener("drop", (event) => processFiles(event.dataTransfer.files,options));
+  input.addEventListener("change", () => processFiles(input.files,options));
 }
 
 function bindTabs() {
@@ -2994,18 +3036,16 @@ function bindEvents() {
     void withBusy(()=>refreshAnalysisViews());
   });
 
-  els.dropZone.addEventListener("click", () => els.fileInput.click());
-  els.dropZone.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); els.fileInput.click(); }
+  bindImportDropZone(els.dropZone,els.fileInput,{
+    sourceHint:"auto",
+    queueElement:els.importQueue,
+    inputElement:els.fileInput
   });
-  ["dragenter","dragover"].forEach((name) => els.dropZone.addEventListener(name, (event) => {
-    event.preventDefault(); els.dropZone.classList.add("dragging");
-  }));
-  ["dragleave","drop"].forEach((name) => els.dropZone.addEventListener(name, (event) => {
-    event.preventDefault(); els.dropZone.classList.remove("dragging");
-  }));
-  els.dropZone.addEventListener("drop", (event) => processFiles(event.dataTransfer.files));
-  els.fileInput.addEventListener("change", () => processFiles(els.fileInput.files));
+  bindImportDropZone(els.streamGuysDropZone,els.streamGuysFileInput,{
+    sourceHint:"streamguys",
+    queueElement:els.streamGuysImportQueue,
+    inputElement:els.streamGuysFileInput
+  });
 
   els.anomalyList.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("[data-anomaly-action]");
