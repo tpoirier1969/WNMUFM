@@ -19,7 +19,7 @@ import { addScheduleDays, buildNewsletterScheduleIndex, buildScheduleDays, newsl
 const els = Object.fromEntries([
   "startupPanel","authPanel","appPanel","loginForm","loginEmail","loginPassword","loginMessage","githubLoginButton","headerNav","dataInfoButton","dataInfoDialog","dataInfoDialogClose","userBadge","logoutButton","printButton",
   "refreshButton","summaryCards","trendViewButtons","trendMetricControl","trendMetricButtons","trendQuickRangeButtons","trendHourControl","trendHourSelect","trendProfileCompareControl","trendProfileCompareSelect","trendWeekpartControls","trendWeekpartButtons","trendNotableControls","trendNotableButtons","trendProgramControl","trendProgramSelect","trendAudioDetailButton","trendMedianSummary","trendBenchmarkNote","trendChartToolbar","trendZoomButton","trendZoomReset","trendZoomStatus","trendTitle","trendDescription","trendChart","trendDataDetails","trendDataSummary","trendTable","trendPrintColumns","programBars",
-  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput",
+  "deviceBars","channelBars","streamingWeekpartBars","streamingWeekpartNote","detailDialog","detailDialogEyebrow","detailDialogTitle","detailDialogBody","detailDialogClose","anomalyCount","anomalyList","coverageTable","dropZone","fileInput","streamGuysDropZone","streamGuysFileInput","streamGuysImportQueue",
   "filterName","filterValue","importQueue","importHistory","collectionChecklist","versionBadge","exploreViewButtons","exploreDescription","explorePeriod","exploreChart","takeawayCategoryButtons","takeawaySummary","takeawayList","scheduleViewButtons","scheduleAnchorDate","schedulePrevButton","scheduleTodayButton","scheduleNextButton","scheduleTimeControl","scheduleTime","scheduleWindowControl","scheduleWindowStart","scheduleSourceNote","scheduleExplorerBody","globalStartDate","globalEndDate","clearDateRange","copyViewButton","copyViewStatus","availableRangeLabel","dataAvailability","dataAvailabilityHint","dataAvailabilityRows"
 ].map((id) => [id, document.getElementById(id)]));
 
@@ -2406,11 +2406,22 @@ function coreHistoryNextTarget(imports,type,whenComplete,targetStart="2025-09-22
 
 async function renderCollectionChecklist() {
   const imports = await loadImports();
+  const streamGuysRows=imports.filter((item)=>
+    item.report_type==="station_streaming" &&
+    item.grain==="day" &&
+    item.report_start &&
+    item.filter_context?.source==="StreamGuys"
+  );
+  const streamGuysSpan=streamGuysRows.length ? {
+    start:streamGuysRows.reduce((value,item)=>!value || item.report_start<value ? item.report_start : value,null),
+    end:streamGuysRows.reduce((value,item)=>!value || item.report_end>value ? item.report_end : value,null)
+  } : null;
+
   const rows = [
-    { type:"station_streaming", label:"Live streaming", next:coreHistoryNextTarget(imports,"station_streaming","Core Day/Week/Month history plus StreamGuys hourly TLH is loaded. Hourly TLH is provisionally aligned to WNMU Eastern schedule time while the raw source hour remains preserved. Next priority: verify the source timezone interpretation and add finer half-hour/session detail if available.") },
-    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","Core Day/Week/Month history is loaded. Continue periodic refreshes; dated content analysis now belongs primarily in Google Analytics 4.") },
-    { type:"audio_downloads", label:"On-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","Core Day/Week/Month history is loaded. Next expand program drilldowns beyond the currently represented local programs.") },
-    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","Core Day/Week/Month history is loaded. Continue periodic refreshes as completed reporting periods become available.") }
+    { type:"station_streaming", label:"NPR live streaming", next:coreHistoryNextTarget(imports,"station_streaming","studio.npr.org · Refresh the most recent 12 complete months.") },
+    { type:"station_website", label:"NPR Website", next:coreHistoryNextTarget(imports,"station_website","studio.npr.org · Refresh the most recent 12 complete months.") },
+    { type:"audio_downloads", label:"NPR on-demand audio", next:coreHistoryNextTarget(imports,"audio_downloads","studio.npr.org · Refresh the most recent 12 complete months; add program drilldowns as assigned.") },
+    { type:"npr_one", label:"NPR One", next:coreHistoryNextTarget(imports,"npr_one","studio.npr.org · Refresh the most recent 12 complete months.") }
   ];
 
   const programs = [...new Set(imports.filter((item) => item.report_type === "audio_program_drilldown" && item.selected_program).map((item) => item.selected_program))].sort();
@@ -2419,13 +2430,13 @@ async function renderCollectionChecklist() {
   const ga4End=ga4Imports.reduce((value,item)=>!value || (item.report_end && item.report_end>value) ? item.report_end : value,null);
   const ga4Daily=collectionSpan(imports,"ga4_website","day");
   const ga4Status=ga4Imports.length
-    ? `<span class="collection-status good">Loaded</span> · ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))} · ${ga4Imports.length} exports${ga4Daily ? ` · daily detail ${escapeHtml(formatDayDate(ga4Daily.start))} – ${escapeHtml(formatDayDate(ga4Daily.end))}` : ""}`
-    : '<span class="collection-status need">Not imported</span> · Google Analytics 4 CSV import is ready';
+    ? `<span class="collection-status good">Loaded</span> ${escapeHtml(formatDayDate(ga4Start))} – ${escapeHtml(formatDayDate(ga4End))}`
+    : '<span class="collection-status need">Not imported</span>';
 
   els.collectionChecklist.innerHTML = `
     <div class="table-wrap collection-table-wrap">
       <table class="collection-table">
-        <thead><tr><th>Source</th><th>Day</th><th>Week</th><th>Month</th><th>Next collection target</th></tr></thead>
+        <thead><tr><th>Source</th><th>Day</th><th>Week</th><th>Month</th><th>Routine refresh</th></tr></thead>
         <tbody>
           ${rows.map((row) => `<tr>
             <td><strong>${escapeHtml(row.label)}</strong></td>
@@ -2434,23 +2445,31 @@ async function renderCollectionChecklist() {
             <td>${collectionCell(collectionSpan(imports,row.type,"month"))}</td>
             <td>${escapeHtml(row.next)}</td>
           </tr>`).join("")}
+          <tr>
+            <td><strong>StreamGuys hourly TLH</strong></td>
+            <td>${collectionCell(streamGuysSpan)}</td>
+            <td class="collection-na">—</td>
+            <td class="collection-na">—</td>
+            <td>portal.streamguys.com · TLH by Day Raw CSV; refresh the most recent 12 complete months.</td>
+          </tr>
         </tbody>
       </table>
     </div>
-    <div class="collection-gaps">
-      <p><strong>Google Analytics 4:</strong> ${ga4Status}</p>
-      <p><strong>Content-first gaps:</strong></p>
+    <div class="collection-source-strip">
+      <div><strong>Google Analytics 4</strong><span>${ga4Status}</span><small>analytics.google.com · CSV exports</small></div>
+      <div><strong>Program drilldowns</strong><span>${programs.length} program buckets loaded</span><small>studio.npr.org · add discrete local programs as assigned</small></div>
+      <div><strong>Schedule evidence</strong><span>Preview + Composer</span><small>Historical schedule: missing issues preserved as gaps; never infer missing months.</small></div>
+    </div>
+    <details class="collection-gaps">
+      <summary>Additional collection and analysis needs</summary>
       <ul>
-        <li><strong>Live-stream hour/daypart data:</strong> StreamGuys hourly TLH is now loaded and available for schedule-aligned analysis. The Central-to-Eastern mapping remains explicitly provisional and reversible.</li>
-        <li><strong>Program drilldowns:</strong> currently only ${programs.length} program buckets are represented (${escapeHtml(programs.join(", ") || "none")}). Get the longest available drilldown for every selectable discrete program.</li>
-        <li><strong>Dated Google Analytics 4 content:</strong> ${ga4Daily ? "Date + Page Path / Landing Page daily detail is now supported. Next collect Date + Event name so station-relevant actions can be trended by day." : "Date + Page Path is the most valuable next website export because it allows content to enter Trend Explorer and daily drilldowns."}</li>
-        <li><strong>Google Analytics 4 audio-event detail:</strong> event totals can show audio_action and player_interactions, but event parameters are still needed to identify what was played or how the player was used.</li>
-        <li><strong>Program/topic taxonomy:</strong> we need categories such as news, classical, jazz, local arts, public affairs and specialty music so performance can be compared by content type.</li>
-        <li><strong>Historical schedule:</strong> Preview newsletter evidence is loaded only for issue months we actually possess, with missing issues preserved as gaps. Composer recurrence history accumulates from actual archive captures. Exact dated logs remain especially valuable for preemptions and substitutions.</li>
+        <li><strong>StreamGuys:</strong> the Central-to-Eastern schedule mapping remains provisional and reversible; finer half-hour/session detail can be added if StreamGuys exposes it.</li>
+        <li><strong>Google Analytics 4:</strong> dated Page Path / Landing Page detail is supported; Date + Event name is the next useful dated action export.</li>
+        <li><strong>Audio-event detail:</strong> event parameters are still needed to identify what was played or how the player was used.</li>
+        <li><strong>Program taxonomy:</strong> news, classical, jazz, local arts, public affairs and specialty music still need durable classifications.</li>
       </ul>
-    </div>`;
+    </details>`;
 }
-
 
 async function renderImportHistory() {
   const imports = await loadImports();
@@ -2562,34 +2581,48 @@ function filterContext() {
   return name && value ? { [name]: value } : {};
 }
 
-function queueRow(file, status, kind = "") {
+function queueRow(file, status, kind = "", queueElement = els.importQueue) {
   const id = `import-${crypto.randomUUID()}`;
   const row = document.createElement("div");
   row.className = `import-row ${kind}`;
   row.id = id;
   row.innerHTML = `<div><strong>${escapeHtml(file.name)}</strong></div><div class="status">${escapeHtml(status)}</div>`;
-  els.importQueue.prepend(row);
+  queueElement.prepend(row);
   return row;
 }
 
-async function processFiles(fileList) {
-  const files = [...fileList].filter((file) => /\.(zip|csv)$/i.test(file.name));
+function renderImportBatchSummary(queueElement,{fileCount,importedCount,duplicateCount,errorMessages}) {
+  queueElement.innerHTML="";
+  const row=document.createElement("div");
+  row.className=`import-row import-batch-summary ${errorMessages.length ? "error" : "success"}`;
+  const pieces=[];
+  if(importedCount) pieces.push(`${importedCount} imported`);
+  if(duplicateCount) pieces.push(`${duplicateCount} already present`);
+  if(errorMessages.length) pieces.push(`${errorMessages.length} failed`);
+  row.innerHTML=`<div><strong>${fileCount} ${fileCount===1 ? "file" : "files"} checked</strong></div><div class="status">${escapeHtml(pieces.join(" · ") || "No changes")}</div>`;
+  queueElement.append(row);
+}
+
+async function processFiles(fileList,{sourceHint="auto",queueElement=els.importQueue,inputElement=els.fileInput}={}) {
+  const accepted=sourceHint==="streamguys" ? /\.csv$/i : /\.(zip|csv)$/i;
+  const files = [...fileList].filter((file) => accepted.test(file.name));
   if (!files.length) return;
+  queueElement.innerHTML="";
   const userEmail = currentUser()?.email || null;
-  const filters = filterContext();
+  const filters = sourceHint==="streamguys" ? {} : filterContext();
   let importedCount = 0;
   let duplicateCount = 0;
-  let errorCount = 0;
   let observationCount = 0;
   let anomalyCount = 0;
+  const errorMessages=[];
   const availableRangeBeforeImport={ ...state.availableRange };
   let importRangeChange=null;
 
   await withBusy(async () => {
     for (const file of files) {
-      const row = queueRow(file, "Inspecting…");
+      const row = queueRow(file, "Inspecting…","",queueElement);
       try {
-        const result = await importExport(file, filters, userEmail);
+        const result = await importExport(file, filters, userEmail, sourceHint);
         if (result.duplicate) {
           duplicateCount += 1;
           row.classList.add("success");
@@ -2601,11 +2634,11 @@ async function processFiles(fileList) {
           row.classList.add("success");
           const program = result.inspected.selectedProgram ? ` · ${result.inspected.selectedProgram}` : "";
           const viewLabel=result.inspected.normalized.range.grain === "unknown" ? "source-period aggregate" : result.inspected.normalized.range.grain;
-          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${viewLabel}${program} · ${result.normalizedCount} observations · ${result.anomalyCount} flags`;
+          row.querySelector(".status").textContent = `${result.inspected.reportLabel} · ${viewLabel}${program} · ${result.normalizedCount} observations`;
         }
       } catch (error) {
-        errorCount += 1;
         console.error(error);
+        errorMessages.push({file:file.name,message:error.message});
         row.classList.add("error");
         row.querySelector(".status").textContent = error.message;
       }
@@ -2619,7 +2652,18 @@ async function processFiles(fileList) {
     await refreshDashboard();
   });
 
-  els.fileInput.value = "";
+  inputElement.value = "";
+  renderImportBatchSummary(queueElement,{
+    fileCount:files.length,
+    importedCount,
+    duplicateCount,
+    errorMessages
+  });
+
+  const errorDetails=errorMessages.length
+    ? `<div class="import-error-detail"><strong>Could not import:</strong><ul>${errorMessages.map((item)=>`<li><strong>${escapeHtml(item.file)}:</strong> ${escapeHtml(item.message)}</li>`).join("")}</ul></div>`
+    : "";
+
   if (importedCount > 0) {
     const reportWord = importedCount === 1 ? "report" : "reports";
     const observationWord = observationCount === 1 ? "observation" : "observations";
@@ -2637,22 +2681,39 @@ async function processFiles(fileList) {
       rangeNotice,
       anomalyCount ? `<p>${anomalyCount} data-quality ${anomalyCount === 1 ? "flag was" : "flags were"} created for review.</p>` : "",
       duplicateCount ? `<p>${duplicateCount} ${duplicateCount === 1 ? "file was" : "files were"} already imported.</p>` : "",
-      errorCount ? `<p>${errorCount} ${errorCount === 1 ? "file could not" : "files could not"} be imported. See the import queue for details.</p>` : ""
+      errorDetails
     ].join("");
-    openDetailDialog("Import complete", messages, "Analytics import");
-  } else if (duplicateCount > 0 && errorCount === 0) {
+    openDetailDialog("Import complete", messages, sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import");
+  } else if (duplicateCount > 0 && errorMessages.length === 0) {
     openDetailDialog(
       "Already imported",
       `<p>No new data was added because ${duplicateCount === 1 ? "this report is" : "these reports are"} already in the app.</p>`,
-      "Analytics import"
+      sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import"
     );
-  } else if (errorCount > 0) {
+  } else if (errorMessages.length > 0) {
     openDetailDialog(
       "Import not completed",
-      `<p>No new data was added. See the import queue for the ${errorCount === 1 ? "error" : "errors"}.</p>`,
-      "Analytics import"
+      `<p>No new data was added.</p>${errorDetails}`,
+      sourceHint==="streamguys" ? "StreamGuys import" : "Analytics import"
     );
   }
+}
+
+function bindImportDropZone(zone,input,options={}) {
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); }
+  });
+  ["dragenter","dragover"].forEach((name) => zone.addEventListener(name, (event) => {
+    event.preventDefault();
+    zone.classList.add("dragging");
+  }));
+  ["dragleave","drop"].forEach((name) => zone.addEventListener(name, (event) => {
+    event.preventDefault();
+    zone.classList.remove("dragging");
+  }));
+  zone.addEventListener("drop", (event) => processFiles(event.dataTransfer.files,options));
+  input.addEventListener("change", () => processFiles(input.files,options));
 }
 
 function bindTabs() {
@@ -2994,18 +3055,16 @@ function bindEvents() {
     void withBusy(()=>refreshAnalysisViews());
   });
 
-  els.dropZone.addEventListener("click", () => els.fileInput.click());
-  els.dropZone.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); els.fileInput.click(); }
+  bindImportDropZone(els.dropZone,els.fileInput,{
+    sourceHint:"auto",
+    queueElement:els.importQueue,
+    inputElement:els.fileInput
   });
-  ["dragenter","dragover"].forEach((name) => els.dropZone.addEventListener(name, (event) => {
-    event.preventDefault(); els.dropZone.classList.add("dragging");
-  }));
-  ["dragleave","drop"].forEach((name) => els.dropZone.addEventListener(name, (event) => {
-    event.preventDefault(); els.dropZone.classList.remove("dragging");
-  }));
-  els.dropZone.addEventListener("drop", (event) => processFiles(event.dataTransfer.files));
-  els.fileInput.addEventListener("change", () => processFiles(els.fileInput.files));
+  bindImportDropZone(els.streamGuysDropZone,els.streamGuysFileInput,{
+    sourceHint:"streamguys",
+    queueElement:els.streamGuysImportQueue,
+    inputElement:els.streamGuysFileInput
+  });
 
   els.anomalyList.addEventListener("click", async (event) => {
     const actionButton = event.target.closest("[data-anomaly-action]");
