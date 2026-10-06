@@ -293,26 +293,38 @@
         </article>
       </section>
 
-      <section class="tab-panel" data-panel="imports" hidden>
-        <div class="section-heading">
+      <section class="tab-panel imports-panel" data-panel="imports" hidden>
+        <div class="section-heading imports-heading">
           <div>
             <p class="eyebrow">Source data</p>
             <h2>Import reports</h2>
-            <p>Drop NPR Analytics ZIP exports or Google Analytics 4 CSV exports here. The app preserves the original source file for provenance, deduplicates identical exports, and updates normalized chart data.</p>
+            <p>Download from the source website, then drop the original ZIP or CSV here. WNMU-FM Analytics preserves the source file, rejects unsupported formats, and updates the stored analytics facts.</p>
           </div>
         </div>
 
-        <div class="dashboard-grid two-column">
-          <article class="panel-card">
-            <h3>Upload</h3>
-            <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Choose NPR Analytics ZIP or Google Analytics CSV files">
-              <strong>Drop ZIP or CSV reports here</strong>
-              <span>NPR Analytics ZIPs and Google Analytics 4 CSV exports are supported</span>
+        <div class="imports-upload-grid">
+          <article class="panel-card import-upload-card">
+            <div class="import-source-heading">
+              <div>
+                <p class="eyebrow">NPR + website</p>
+                <h3>NPR Studio / Google Analytics 4</h3>
+              </div>
+              <div class="import-source-links">
+                <a href="https://studio.npr.org/" target="_blank" rel="noopener">studio.npr.org</a>
+                <a href="https://analytics.google.com/" target="_blank" rel="noopener">analytics.google.com</a>
+              </div>
+            </div>
+            <div id="dropZone" class="drop-zone compact-drop-zone" tabindex="0" role="button" aria-label="Choose NPR Studio ZIP or Google Analytics 4 CSV files">
+              <div>
+                <strong>Drop NPR ZIPs or Google Analytics 4 CSVs here</strong>
+                <span>Original downloads only. Do not unzip NPR reports.</span>
+              </div>
+              <span class="drop-zone-action">Choose files</span>
               <input id="fileInput" type="file" accept=".zip,.csv,application/zip,text/csv" multiple hidden>
             </div>
-            <div class="filter-context">
-              <h4>Optional export filter</h4>
-              <p>If an NPR Analytics ZIP was exported with a dashboard filter, record it here. Google Analytics 4 CSV source details are read from the export itself.</p>
+            <details class="filter-context compact-filter-context">
+              <summary>Optional NPR export filter</summary>
+              <p>Only use this when the NPR Studio report itself was exported with a filter.</p>
               <div class="inline-controls">
                 <label>Filter name
                   <input id="filterName" type="text" placeholder="e.g. device_type">
@@ -321,27 +333,54 @@
                   <input id="filterValue" type="text" placeholder="e.g. Mobile">
                 </label>
               </div>
-            </div>
-            <div id="importQueue" class="import-queue" aria-live="polite"></div>
+            </details>
+            <div id="importQueue" class="import-queue compact-import-queue" aria-live="polite"></div>
           </article>
 
-          <article class="panel-card">
-            <p class="eyebrow">Collection status</p>
-            <h3>What we have and what to get next</h3>
-            <p class="panel-note">This checklist updates from the imports already stored in WNMU-FM Analytics. “Year+” means the source reaches back to at least Sept. 22, 2025; “Short” means we have the report, but not enough history yet.</p>
-            <div id="collectionChecklist"></div>
+          <article class="panel-card import-upload-card">
+            <div class="import-source-heading">
+              <div>
+                <p class="eyebrow">Live stream</p>
+                <h3>StreamGuys hourly TLH</h3>
+              </div>
+              <div class="import-source-links">
+                <a href="https://portal.streamguys.com/home/users" target="_blank" rel="noopener">portal.streamguys.com</a>
+              </div>
+            </div>
+            <div id="streamGuysDropZone" class="drop-zone compact-drop-zone" tabindex="0" role="button" aria-label="Choose StreamGuys TLH by Day CSV files">
+              <div>
+                <strong>Drop StreamGuys Raw CSV files here</strong>
+                <span>TLH by Day with Day, TLH, and hour_of_day_local columns.</span>
+              </div>
+              <span class="drop-zone-action">Choose files</span>
+              <input id="streamGuysFileInput" type="file" accept=".csv,text/csv" multiple hidden>
+            </div>
+            <p class="import-help">From <strong>portal.streamguys.com</strong>, export the Raw CSV for TLH by Day. The app preserves the source clock hour and applies WNMU's schedule-time alignment separately.</p>
+            <div id="streamGuysImportQueue" class="import-queue compact-import-queue" aria-live="polite"></div>
           </article>
         </div>
 
-        <article class="panel-card">
-          <div class="panel-heading">
+        <article class="panel-card collection-status-card">
+          <div class="collection-status-heading">
             <div>
-              <p class="eyebrow">Provenance</p>
-              <h3>Import history</h3>
+              <p class="eyebrow">Collection status</p>
+              <h3>What we have and what to get next</h3>
             </div>
+            <p class="panel-note">Routine refreshes should use a rolling source window. Historical data already stored here does not need to be downloaded from the beginning again.</p>
           </div>
-          <div id="importHistory" class="table-wrap"></div>
+          <div id="collectionChecklist"></div>
         </article>
+
+        <details class="panel-card import-history-card">
+          <summary>
+            <span>
+              <span class="eyebrow">Provenance</span>
+              <strong>Import history</strong>
+            </span>
+            <span class="history-summary-hint">Show previous imports</span>
+          </summary>
+          <div id="importHistory" class="table-wrap"></div>
+        </details>
       </section>
 
         <dialog id="dataInfoDialog" class="detail-dialog data-info-dialog">
