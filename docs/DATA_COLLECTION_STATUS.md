@@ -1,6 +1,6 @@
 # WNMU-FM Data Collection Status
 
-Updated: 2026-10-06
+Updated: 2026-10-07
 
 This is the working inventory for the WNMU-FM audience analytics project. It records what is actually loaded, what remains short or missing, and what should be collected next. The goal is content-first analysis, not collecting every metric merely because NPR exposes it.
 
@@ -14,14 +14,14 @@ This is the working inventory for the WNMU-FM audience analytics project. It rec
 | Station Streaming Overview | **Year loaded:** 2025-09-12 through 2026-09-11 | **Historical series loaded:** 2023-09-04 through 2026-09-06 | **Historical series loaded:** 2023-09-01 through 2026-07-31 | listeners, sessions, listener-hours, session duration, device/format |
 | Audio Program Drilldowns | Three programs have extended Day/Week/Month history | Classiclectic and Station Stories reach 2024-12-29; Northern Arts & Culture reaches 2025-01-30 | All three reach 2025-01 through 2026-09 | Classiclectic, Northern Arts & Culture, Station Stories |
 | Google Analytics 4 dated exports | **Loaded:** 2026-07-23 through 2026-09-22 | Not currently supplied as a separate dated week source | Not currently supplied as a separate dated month source | dated site page views/sessions plus dated page, landing-page and event detail |
-| Preview newsletter schedules | **75 explicitly dated listings loaded** | n/a | **33 issue months have recurring-grid evidence** | 37 source issues span Sep 2023-Oct 2026; 4,162 recurring grid rows; July-Oct 2026 are preserved as source-only/dated evidence because the newer partial “Schedule at a Glance” layout is not treated as a complete grid |
+| Preview newsletter schedules | **104 explicitly dated listings loaded** | n/a | **34 issue months have recurring-grid evidence** | 38 source issues span Sep 2023-Oct 2026; 4,289 recurring grid rows; complete monthly grids now cover Sep 2023-Jun 2026 continuously; July-Oct 2026 are preserved as source-only/dated evidence because the newer partial “Schedule at a Glance” layout is not treated as a complete grid |
 | Composer recurring archive | Daily captures begin 2026-09-24 and continue forward | n/a | n/a | recurring-catalog snapshots for future schedule-change reconstruction; not exact episode logs |
 
 All imports remain in FM-owned `wnmufm_analytics_*` tables. Original source ZIPs and raw CSV rows are retained as provenance, while overlapping normalized observations can refresh the canonical chart facts.
 
 Historical schedule evidence is deliberately source-bounded. A Preview monthly grid describes only its named month. Composer recurrence snapshots describe the recurring catalog captured on or after the archive date. Neither source is silently extended into periods it does not document.
 
-Current Preview archive gap is **November 2025**. The December 2025 and January 2026 complete grids are now loaded from user-supplied Preview issues. July-October 2026 use a newer partial “Schedule at a Glance” format. Those PDFs are preserved as source records and their explicitly dated broadcasts are normalized, but omitted hours are not converted into empty schedule blocks or assumed cancellations.
+The Preview archive now contains a source issue for every month from **September 2023 through October 2026**. Complete recurring-grid evidence is continuous from September 2023 through June 2026. July-October 2026 use a newer partial “Schedule at a Glance” format. Those PDFs are preserved as source records and their explicitly dated broadcasts are normalized, but omitted hours are not converted into empty schedule blocks or assumed cancellations.
 
 ## Google Analytics 4 (GA4) source-period exports
 
@@ -34,7 +34,7 @@ Very large GA4 dimensions are normalized only to the highest-activity rows neede
 ## Highest-priority downloads
 
 1. **Maintain and verify live-stream time-of-day detail.** StreamGuys hourly TLH from June 2024 forward is loaded and provisionally aligned from the source Central-time clock to WNMU Eastern schedule time without changing the raw hours. The app now accepts StreamGuys `TLH by Day` Raw CSV exports directly when they contain `Day`, `TLH`, and `hour_of_day_local`. Routine refreshes should use the most recent 12 complete months. Next priority remains confirming the timezone interpretation and obtaining half-hour/session-level detail if StreamGuys exposes it.
-2. **The remaining missing WNMU-FM Preview issue: November 2025**, plus any stronger dated schedule source for that month. December 2025 and January 2026 are now loaded from complete user-supplied Preview grids. Do not interpolate across the remaining November gap.
+2. **Additional exact historical episode schedules or station logs** when available, especially for dates with known specials or preemptions. The Preview archive now has no missing issue months from Sep 2023 through Oct 2026, but monthly grids remain recurring-pattern evidence rather than exact episode logs.
 3. **Audio Program Drilldown for additional discrete local programs**, using the longest available Day range and Week/Month where available. The three currently loaded programs already have substantially longer coverage than the original September audit.
 4. **Additional dated Google Analytics 4 content history** when useful, especially Date + Page Path / Landing Page / event detail beyond the currently loaded 2026-07-23 through 2026-09-22 window.
 5. **Exact historical episode schedules or station logs** if they become available. Exact dated episode evidence remains stronger than recurring newsletter grids or Composer recurrence snapshots for preemptions and one-day specials.
